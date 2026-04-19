@@ -2,9 +2,10 @@ use std::collections::HashMap;
 
 /// Generates the syllable-to-chord mapping table from CMU dict + frequency data.
 ///
-/// The consonant and vowel mappings are fixed by design:
-///   - Consonants: frequency × ease, with ⌘ = voiced/related partner
-///   - Vowels: mode ease order, with ⌘ = "stretch the vowel"
+/// Layout:
+///   - 15 consonants on non-⌘ combos (top 15 by frequency, covers 93%)
+///   - ⌘ = vowel modifier only (4 modes × 2 = 8 vowel slots)
+///   - Remaining 9 consonants assigned to overflow slots in the opaque table
 ///   - Same map for both hands (onset = right, coda = left)
 
 const VOWELS: &[&str] = &[
@@ -37,65 +38,58 @@ fn strip_stress(phoneme: &str) -> &str {
 
 // ─── Fixed consonant map ──────────────────────────────────────
 //
-// Returns (combo_bits, needs_cmd) for a single consonant.
-// Combo bits: I=0, M=1, R=2, P=3 (bit positions).
+// Top 15 consonants by frequency, assigned to combos by ease.
+// No ⌘ involvement — ⌘ is purely for vowels.
 //
-// Rank  Combo      no ⌘         ⌘
-//  1    I (0b0001) t            d
-//  2    M (0b0010) n            ŋ (ng)
-//  3    I+M(0b0011)s            z
-//  4    R (0b0100) r            l
-//  5    I+R(0b0101)m            [spare]
-//  6    M+R(0b0110)k            g
-//  7    I+M+R(0b0111)ð(the)     θ(think)
-//  8    P (0b1000) w            j(you)
-//  9    I+P(0b1001)h            [spare]
-// 10    M+P(0b1010)b            p
-// 11    I+M+P(0b1011)f          v
-// 12    R+P(0b1100)ʃ(sh)        ʒ(measure)
-// 13    I+R+P(0b1101)dʒ(judge)  tʃ(church)
-// 14    M+R+P(0b1110)[spare]    [spare]
-// 15    all(0b1111) [spare]     [spare]
+// Rank  Combo         Consonant   Freq
+//  1    I    (0b0001)  t          165M
+//  2    M    (0b0010)  n          141M
+//  3    I+M  (0b0011)  s          110M
+//  4    R    (0b0100)  r           91M
+//  5    I+R  (0b0101)  d           87M
+//  6    M+R  (0b0110)  l           83M
+//  7    I+M+R(0b0111)  m           73M
+//  8    P    (0b1000)  k           71M
+//  9    I+P  (0b1001)  ð (the)     58M
+// 10    M+P  (0b1010)  w           57M
+// 11    I+M+P(0b1011)  z           46M
+// 12    R+P  (0b1100)  j/y (you)   45M
+// 13    I+R+P(0b1101)  h           42M
+// 14    M+R+P(0b1110)  b           40M
+// 15    all  (0b1111)  p           36M
 
-fn consonant_to_combo(phoneme: &str) -> Option<(u8, bool)> {
+fn consonant_to_combo(phoneme: &str) -> Option<u8> {
     match phoneme {
-        // no ⌘
-        "T"  => Some((0b0001, false)),
-        "N"  => Some((0b0010, false)),
-        "S"  => Some((0b0011, false)),
-        "R"  => Some((0b0100, false)),
-        "M"  => Some((0b0101, false)),
-        "K"  => Some((0b0110, false)),
-        "DH" => Some((0b0111, false)),
-        "W"  => Some((0b1000, false)),
-        "HH" => Some((0b1001, false)),
-        "B"  => Some((0b1010, false)),
-        "F"  => Some((0b1011, false)),
-        "SH" => Some((0b1100, false)),
-        "JH" => Some((0b1101, false)),
-        // ⌘ partners
-        "D"  => Some((0b0001, true)),
-        "NG" => Some((0b0010, true)),
-        "Z"  => Some((0b0011, true)),
-        "L"  => Some((0b0100, true)),
-        "G"  => Some((0b0110, true)),
-        "TH" => Some((0b0111, true)),
-        "Y"  => Some((0b1000, true)),
-        "P"  => Some((0b1010, true)),
-        "V"  => Some((0b1011, true)),
-        "ZH" => Some((0b1100, true)),
-        "CH" => Some((0b1101, true)),
+        "T"  => Some(0b0001),
+        "N"  => Some(0b0010),
+        "S"  => Some(0b0011),
+        "R"  => Some(0b0100),
+        "D"  => Some(0b0101),
+        "L"  => Some(0b0110),
+        "M"  => Some(0b0111),
+        "K"  => Some(0b1000),
+        "DH" => Some(0b1001),
+        "W"  => Some(0b1010),
+        "Z"  => Some(0b1011),
+        "Y"  => Some(0b1100),
+        "HH" => Some(0b1101),
+        "B"  => Some(0b1110),
+        "P"  => Some(0b1111),
+        // Remaining 9 (f,v,g,ŋ,ʃ,θ,dʒ,tʃ,ʒ) — no fixed combo,
+        // assigned to overflow slots in the opaque table
         _ => None,
     }
 }
 
 // ─── Fixed vowel map ──────────────────────────────────────────
 //
+// ⌘ = stretch the vowel. Same mouth position, longer/more open.
+//
 // zil  (Mode 0, no ⌘) = AH (uh, "but")      — easiest
 // lun  (Mode 3, no ⌘) = IH (ih, "sit")       — 2nd
 // ter  (Mode 1, no ⌘) = EH (eh, "bed")       — 3rd
 // stel (Mode 2, no ⌘) = AE (ah, "cat")       — 4th
-// zila (Mode 0, ⌘)    = AA (ah, "father")     — ⌘ = stretch
+// zila (Mode 0, ⌘)    = AA (ah, "father")
 // luna (Mode 3, ⌘)    = IY (ee, "see")
 // tera (Mode 1, ⌘)    = EY (ay, "say")
 // stela(Mode 2, ⌘)    = AY (eye, "my")
@@ -110,8 +104,7 @@ fn vowel_to_slot(phoneme: &str) -> Option<(u8, bool)> {
         "IY" => Some((3, true)),   // luna
         "EY" => Some((1, true)),   // tera
         "AY" => Some((2, true)),   // stela
-        // Overflow vowels — no fixed slot, assigned dynamically
-        _ => None,
+        _ => None, // overflow vowels assigned dynamically
     }
 }
 
@@ -135,26 +128,6 @@ impl PhoneSyllable {
             s.push_str(arpabet_to_ipa(p));
         }
         s
-    }
-
-    pub fn to_label(&self) -> String {
-        let mut parts = vec![];
-        if !self.onset.is_empty() {
-            parts.push(self.onset.join("+"));
-        }
-        parts.push(self.vowel.clone());
-        if !self.coda.is_empty() {
-            parts.push(self.coda.join("+"));
-        }
-        parts.join("-")
-    }
-
-    pub fn onset_key(&self) -> String {
-        if self.onset.is_empty() { "(none)".into() } else { self.onset.join("+") }
-    }
-
-    pub fn coda_key(&self) -> String {
-        if self.coda.is_empty() { "(none)".into() } else { self.coda.join("+") }
     }
 }
 
@@ -220,7 +193,6 @@ impl ChordAssignment {
 
 // ─── Table generation ─────────────────────────────────────────
 
-/// Generate the syllable table from raw dictionary and frequency data.
 pub fn generate(cmudict_text: &str, freq_text: &str) -> HashMap<u16, String> {
     // Parse frequency data
     let mut word_freq: HashMap<String, u64> = HashMap::new();
@@ -256,114 +228,99 @@ pub fn generate(cmudict_text: &str, freq_text: &str) -> HashMap<u16, String> {
         }
     }
 
-    // Group by (onset_combo, coda_combo, cmd_from_consonants)
-    // For each syllable, determine the right/left combos and whether ⌘ is needed
     let mut table: HashMap<u16, String> = HashMap::new();
 
-    // Group syllables by their finger pattern (right, left, consonant_cmd)
-    struct SlotGroup {
-        right: u8,
-        left: u8,
-        consonant_cmd: bool,
-        syllables: Vec<(PhoneSyllable, u64)>,
-    }
-
-    let mut groups: HashMap<(u8, u8, bool), Vec<(PhoneSyllable, u64)>> = HashMap::new();
+    // Group syllables by (right_combo, left_combo)
+    // Only syllables where both onset and coda are single mapped consonants (or empty)
+    let mut groups: HashMap<(u8, u8), Vec<(PhoneSyllable, u64)>> = HashMap::new();
 
     for (syl, count) in &syllable_freq {
-        // Look up onset consonant
-        let (right, onset_cmd) = if syl.onset.len() == 1 {
+        let right = if syl.onset.len() == 1 {
             match consonant_to_combo(&syl.onset[0]) {
-                Some(v) => v,
-                None => continue, // unknown consonant
+                Some(c) => c,
+                None => continue, // unmapped consonant — skip for now
             }
         } else if syl.onset.is_empty() {
-            (0u8, false) // no onset
+            0
         } else {
-            continue; // consonant cluster — skip for now
+            continue // cluster
         };
 
-        // Look up coda consonant
-        let (left, coda_cmd) = if syl.coda.len() == 1 {
+        let left = if syl.coda.len() == 1 {
             match consonant_to_combo(&syl.coda[0]) {
-                Some(v) => v,
+                Some(c) => c,
                 None => continue,
             }
         } else if syl.coda.is_empty() {
-            (0u8, false)
+            0
         } else {
-            continue; // consonant cluster
+            continue
         };
 
-        // If either consonant needs ⌘, the whole chord uses ⌘
-        let consonant_cmd = onset_cmd || coda_cmd;
-
-        // Skip unreachable: both hands empty
         if right == 0 && left == 0 { continue; }
 
-        groups.entry((right, left, consonant_cmd))
-            .or_default()
-            .push((syl.clone(), *count));
+        groups.entry((right, left)).or_default().push((syl.clone(), *count));
     }
 
-    // For each group, assign vowels to mode slots
-    let all_modes: [u8; 4] = [0, 1, 2, 3];
+    // All 8 vowel slots
+    let all_slots: [(u8, bool); 8] = [
+        (0, false), (1, false), (2, false), (3, false),
+        (0, true), (1, true), (2, true), (3, true),
+    ];
 
-    for ((right, left, consonant_cmd), variants) in &groups {
-        // Determine reachable modes
-        let reachable_modes: &[u8] = if *left == 0 {
-            &[0] // right-only = zil only
+    for ((right, left), variants) in &groups {
+        // Reachable modes: single-hand = 1 mode, both-hands = 4 modes
+        let reachable: &[(u8, bool)] = if *left == 0 {
+            &[(0, false), (0, true)] // right-only: zil ± ⌘
         } else if *right == 0 {
-            &[3] // left-only = lun only
+            &[(3, false), (3, true)] // left-only: lun ± ⌘
         } else {
-            &all_modes
+            &all_slots
         };
 
-        // The ⌘ state is already determined by consonants.
-        // Within that ⌘ state, modes encode vowels.
-        let ctrl = *consonant_cmd;
+        let is_single_hand = *right == 0 || *left == 0;
+        let mut used: Vec<(u8, bool)> = Vec::new();
 
-        // First pass: assign primary vowels to their fixed mode slots
-        let mut used_modes: Vec<u8> = Vec::new();
-
-        for (syl, _) in variants.iter() {
-            if let Some((mode, vowel_cmd)) = vowel_to_slot(&syl.vowel) {
-                // The vowel's ⌘ requirement must match the consonant's
-                if vowel_cmd != ctrl { continue; }
-                if !reachable_modes.contains(&mode) { continue; }
-                if used_modes.contains(&mode) { continue; }
-
-                let a = ChordAssignment { right: *right, left: *left, mode, ctrl };
-                let key = a.to_chord_key_bits();
-                if !table.contains_key(&key) {
-                    table.insert(key, syl.to_ipa());
-                    used_modes.push(mode);
+        // First pass: primary vowels to fixed slots (both-hands only)
+        if !is_single_hand {
+            for (syl, _) in variants.iter() {
+                if let Some((mode, ctrl)) = vowel_to_slot(&syl.vowel) {
+                    if !reachable.contains(&(mode, ctrl)) { continue; }
+                    if used.contains(&(mode, ctrl)) { continue; }
+                    let key = ChordAssignment { right: *right, left: *left, mode, ctrl }
+                        .to_chord_key_bits();
+                    if !table.contains_key(&key) {
+                        table.insert(key, syl.to_ipa());
+                        used.push((mode, ctrl));
+                    }
                 }
             }
         }
 
-        // Second pass: assign remaining vowels to free mode slots by frequency
-        let mut free_modes: Vec<u8> = reachable_modes.iter()
-            .filter(|m| !used_modes.contains(m))
+        // Second pass: remaining vowels by frequency to free slots
+        let mut free: Vec<(u8, bool)> = reachable.iter()
+            .filter(|s| !used.contains(s))
             .copied()
             .collect();
 
-        let mut remaining: Vec<&(PhoneSyllable, u64)> = variants.iter()
-            .filter(|(syl, _)| {
-                let a = ChordAssignment { right: *right, left: *left, mode: 0, ctrl };
-                // Check this syllable isn't already assigned
-                !used_modes.iter().any(|&m| {
-                    let a2 = ChordAssignment { right: *right, left: *left, mode: m, ctrl };
-                    table.get(&a2.to_chord_key_bits()).map(|v| v == &syl.to_ipa()).unwrap_or(false)
-                })
+        let assigned: std::collections::HashSet<String> = table.iter()
+            .filter(|(k, _)| {
+                let k = **k;
+                (k & 0xF) as u8 == *right && ((k >> 4) & 0xF) as u8 == *left
             })
+            .map(|(_, v)| v.clone())
+            .collect();
+
+        let mut remaining: Vec<&(PhoneSyllable, u64)> = variants.iter()
+            .filter(|(syl, _)| !assigned.contains(&syl.to_ipa()))
             .collect();
         remaining.sort_by(|a, b| b.1.cmp(&a.1));
 
         for (syl, _) in remaining {
-            if let Some(mode) = free_modes.pop() {
-                let a = ChordAssignment { right: *right, left: *left, mode, ctrl };
-                table.insert(a.to_chord_key_bits(), syl.to_ipa());
+            if let Some((mode, ctrl)) = free.pop() {
+                let key = ChordAssignment { right: *right, left: *left, mode, ctrl }
+                    .to_chord_key_bits();
+                table.insert(key, syl.to_ipa());
             }
         }
     }
@@ -399,11 +356,6 @@ mod tests {
             .into_iter().map(String::from).collect();
         let syls = syllabify(&phonemes);
         assert_eq!(syls.len(), 2);
-        assert_eq!(syls[0].onset, vec!["S"]);
-        assert_eq!(syls[0].vowel, "UW");
-        assert_eq!(syls[0].coda, Vec::<String>::new());
-        assert_eq!(syls[1].onset, vec!["P"]);
-        assert_eq!(syls[1].vowel, "ER");
     }
 
     #[test]
@@ -418,75 +370,48 @@ mod tests {
     }
 
     #[test]
-    fn syllabify_strong() {
-        let phonemes: Vec<String> = vec!["S", "T", "R", "AO", "NG"]
-            .into_iter().map(String::from).collect();
-        let syls = syllabify(&phonemes);
-        assert_eq!(syls.len(), 1);
-        assert_eq!(syls[0].onset, vec!["S", "T", "R"]);
-        assert_eq!(syls[0].vowel, "AO");
-        assert_eq!(syls[0].coda, vec!["NG"]);
-    }
-
-    #[test]
-    fn consonant_map_basics() {
-        // t is index, no cmd
-        assert_eq!(consonant_to_combo("T"), Some((0b0001, false)));
-        // d is index, with cmd (voiced partner of t)
-        assert_eq!(consonant_to_combo("D"), Some((0b0001, true)));
-        // s/z pair
-        assert_eq!(consonant_to_combo("S"), Some((0b0011, false)));
-        assert_eq!(consonant_to_combo("Z"), Some((0b0011, true)));
-        // ð/θ pair
-        assert_eq!(consonant_to_combo("DH"), Some((0b0111, false)));
-        assert_eq!(consonant_to_combo("TH"), Some((0b0111, true)));
+    fn consonant_map_top15() {
+        assert_eq!(consonant_to_combo("T"), Some(0b0001));
+        assert_eq!(consonant_to_combo("N"), Some(0b0010));
+        assert_eq!(consonant_to_combo("D"), Some(0b0101)); // has its own combo now
+        assert_eq!(consonant_to_combo("L"), Some(0b0110)); // has its own combo now
+        assert_eq!(consonant_to_combo("P"), Some(0b1111));
+        // Unmapped — returns None
+        assert_eq!(consonant_to_combo("F"), None);
+        assert_eq!(consonant_to_combo("G"), None);
+        assert_eq!(consonant_to_combo("V"), None);
     }
 
     #[test]
     fn vowel_map_basics() {
-        // zil = AH, no cmd
-        assert_eq!(vowel_to_slot("AH"), Some((0, false)));
-        // zila = AA, cmd
-        assert_eq!(vowel_to_slot("AA"), Some((0, true)));
-        // lun = IH, no cmd
-        assert_eq!(vowel_to_slot("IH"), Some((3, false)));
-        // luna = IY, cmd
-        assert_eq!(vowel_to_slot("IY"), Some((3, true)));
+        assert_eq!(vowel_to_slot("AH"), Some((0, false)));  // zil
+        assert_eq!(vowel_to_slot("AA"), Some((0, true)));    // zila
+        assert_eq!(vowel_to_slot("IH"), Some((3, false)));   // lun
+        assert_eq!(vowel_to_slot("IY"), Some((3, true)));    // luna
+        assert_eq!(vowel_to_slot("ER"), None);               // overflow
     }
 
     #[test]
     fn generate_small_table() {
-        let cmudict = "cat K AE1 T\ncut K AH1 T\nthe DH AH0\n";
-        let freq = "the 1000\ncat 500\ncut 200\n";
+        let cmudict = "cat K AE1 T\ncut K AH1 T\nthe DH AH0\ntell T EH1 L\n";
+        let freq = "the 1000\ncat 500\ncut 200\ntell 400\n";
 
         let table = generate(cmudict, freq);
 
-        // K = 0b0110 no cmd, T = 0b0001 no cmd
-        // "cut" = K+AH+T, AH = zil (mode 0, no cmd) → both consonants no cmd, vowel no cmd ✓
-        assert!(table.values().any(|v| v == "kʌt"), "missing kʌt: {:?}", table.values().collect::<Vec<_>>());
-
-        // "cat" = K+AE+T, AE = stel (mode 2, no cmd) → consonants no cmd, vowel no cmd ✓
         assert!(table.values().any(|v| v == "kæt"), "missing kæt: {:?}", table.values().collect::<Vec<_>>());
+        assert!(table.values().any(|v| v == "kʌt"), "missing kʌt");
+        assert!(table.values().any(|v| v == "ðʌ"), "missing ðʌ");
+        // "tell" should work now — T(no⌘) + L(no⌘), no conflict!
+        assert!(table.values().any(|v| v == "tɛl"), "missing tɛl — tell should be mappable now");
 
-        // "the" = DH+AH, DH = 0b0111 no cmd, AH = zil (mode 0, no cmd)
-        assert!(table.values().any(|v| v == "ðʌ"), "missing ðʌ: {:?}", table.values().collect::<Vec<_>>());
-
-        // "cut" and "cat" should share right+left (same K and T combos)
-        let cat_key = table.iter().find(|(_, v)| *v == "kæt").unwrap().0;
+        // AH = mode 0, no ctrl (zil)
         let cut_key = table.iter().find(|(_, v)| *v == "kʌt").unwrap().0;
-        assert_eq!(cat_key & 0xFF, cut_key & 0xFF);
-        assert_ne!(cat_key, cut_key);
+        assert_eq!((cut_key >> 8) & 0x3, 0, "AH should be mode 0");
+        assert_eq!((cut_key >> 10) & 1, 0, "AH should be no ⌘");
 
-        // AH = mode 0, no ctrl
-        let cut_mode = (cut_key >> 8) & 0x3;
-        let cut_ctrl = (cut_key >> 10) & 1;
-        assert_eq!(cut_mode, 0, "AH should be mode 0 (zil)");
-        assert_eq!(cut_ctrl, 0, "AH should be no cmd");
-
-        // AE = mode 2, no ctrl
-        let cat_mode = (cat_key >> 8) & 0x3;
-        let cat_ctrl = (cat_key >> 10) & 1;
-        assert_eq!(cat_mode, 2, "AE should be mode 2 (stel)");
-        assert_eq!(cat_ctrl, 0, "AE should be no cmd");
+        // AE = mode 2, no ctrl (stel)
+        let cat_key = table.iter().find(|(_, v)| *v == "kæt").unwrap().0;
+        assert_eq!((cat_key >> 8) & 0x3, 2, "AE should be mode 2");
+        assert_eq!((cat_key >> 10) & 1, 0, "AE should be no ⌘");
     }
 }

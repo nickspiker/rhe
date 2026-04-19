@@ -438,8 +438,8 @@ fn draw(
 fn draw_keyboard(frame: &mut Frame, area: Rect, word: &ChordStep,
                   needs_space: bool, next_step: Option<&ChordStep>) {
     // Key labels: IPA consonant for each finger position
-    let left_ipa = ["w", "r", "n", "t"];   // pinky=w, ring=r, middle=n, index=t (bits 3,2,1,0)
-    let right_ipa = ["t", "n", "r", "w"];  // index=t, middle=n, ring=r, pinky=w (bits 0,1,2,3)
+    let left_ipa = ["k", "r", "n", "t"];   // pinky=k, ring=r, middle=n, index=t (bits 3,2,1,0)
+    let right_ipa = ["t", "n", "r", "k"];  // index=t, middle=n, ring=r, pinky=k (bits 0,1,2,3)
 
     let mut lines: Vec<Line> = Vec::new();
 
