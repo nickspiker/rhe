@@ -3,6 +3,7 @@ name = "rhe"
 version = "0.0.0"
 edition = "2024"
 description = "Rhe — from Greek ῥέω (to flow). A first-principles stenography engine using temporal hand ordering."
+license = "MPL-2.0"
 
 [dependencies]
 rdev = { version = "0.5", features = ["unstable_grab"] }
