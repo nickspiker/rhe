@@ -1,5 +1,9 @@
 # Rhe
 
+<p align="center">
+  <img src="logo.png" width="300" alt="Rhe">
+</p>
+
 From Greek *rheo* — to flow. A first-principles stenography engine.
 
 10 keys. No finger movement. Chord syllables at the speed of thought.

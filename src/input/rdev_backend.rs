@@ -10,7 +10,7 @@ use std::sync::Arc;
 ///
 /// On macOS: requires Accessibility permissions.
 pub struct RdevInput {
-    rx: mpsc::Receiver<KeyEvent>,
+    pub rx: mpsc::Receiver<KeyEvent>,
 }
 
 impl RdevInput {
@@ -29,7 +29,16 @@ impl RdevInput {
 
                 if let Some(key_event) = convert(&event) {
                     let _ = tx.send(key_event);
-                    None // suppress when enabled
+
+                    // ⌘ always passes through to OS (for ⌘+C, ⌘+Tab, etc.)
+                    // We capture the event for chord detection but don't suppress it
+                    match event.event_type {
+                        rdev::EventType::KeyPress(rdev::Key::MetaLeft | rdev::Key::MetaRight) |
+                        rdev::EventType::KeyRelease(rdev::Key::MetaLeft | rdev::Key::MetaRight) => {
+                            Some(event) // pass through
+                        }
+                        _ => None, // suppress finger keys and space
+                    }
                 } else {
                     Some(event) // pass through non-home-row keys
                 }
@@ -93,9 +102,10 @@ fn rdev_to_physical(key: rdev::Key) -> Option<PhysicalKey> {
         rdev::Key::KeyL => Some(PhysicalKey::Finger(Hand::Right, Finger::Ring)),
         rdev::Key::SemiColon => Some(PhysicalKey::Finger(Hand::Right, Finger::Pinky)),
 
-        // Thumbs
+        // Thumbs — space is right thumb, left ⌘ is rhe's thumb (grabbed)
+        // Right ⌘ is untouched — use it for normal macOS shortcuts
         rdev::Key::Space => Some(PhysicalKey::Thumb(Thumb::Space)),
-        rdev::Key::ControlLeft => Some(PhysicalKey::Thumb(Thumb::Ctrl)),
+        rdev::Key::MetaLeft => Some(PhysicalKey::Thumb(Thumb::Ctrl)),
 
         _ => None,
     }

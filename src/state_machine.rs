@@ -5,21 +5,16 @@ use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey, Thumb};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
     /// A chord was completed (all fingers released).
+    /// Chord.space_held indicates if this is a syllable (true) or brief (false).
     Chord(Chord),
-    /// Space was pressed — begin a word.
-    WordStart,
-    /// Space was released — end the current word.
-    WordEnd,
-    /// All 10 keys pressed simultaneously — undo.
-    Undo,
+    /// Space was released — emit buffered word if any.
+    SpaceUp,
 }
 
 /// Tracks key events and emits chords + word boundary events.
 ///
 /// Space is word-level: press to start a word, release to end it.
 /// Ctrl is per-syllable: captured at chord completion time.
-/// All 10 keys at once = undo signal.
-///
 /// For finger chords, only two signals matter:
 ///   - First-down: which hand pressed a finger key first
 ///   - First-up: which hand released a finger key first
@@ -77,7 +72,7 @@ impl StateMachine {
                 if self.phase == Phase::Accumulating {
                     self.ctrl_max = true;
                 }
-                self.check_undo()
+                vec![]
             }
             (Thumb::Ctrl, KeyDirection::Up) => {
                 self.ctrl_held = false;
@@ -85,13 +80,11 @@ impl StateMachine {
             }
             (Thumb::Space, KeyDirection::Down) => {
                 self.space_held = true;
-                let mut events = vec![Event::WordStart];
-                events.extend(self.check_undo());
-                events
+                vec![]
             }
             (Thumb::Space, KeyDirection::Up) => {
                 self.space_held = false;
-                vec![Event::WordEnd]
+                vec![Event::SpaceUp]
             }
         }
     }
@@ -100,7 +93,7 @@ impl StateMachine {
         match direction {
             KeyDirection::Down => {
                 self.finger_down(hand, finger);
-                self.check_undo()
+                vec![]
             }
             KeyDirection::Up => self.finger_up(hand, finger),
         }
@@ -172,21 +165,10 @@ impl StateMachine {
             } else {
                 ThumbState::NONE
             },
+            space_held: self.space_held,
         })]
     }
 
-    fn check_undo(&self) -> Vec<Event> {
-        // All 10 keys: 8 fingers + ctrl + space
-        if self.left.0 == 0b1111
-            && self.right.0 == 0b1111
-            && self.ctrl_held
-            && self.space_held
-        {
-            vec![Event::Undo]
-        } else {
-            vec![]
-        }
-    }
 }
 
 #[cfg(test)]
@@ -319,27 +301,38 @@ mod tests {
     }
 
     #[test]
-    fn word_boundary() {
+    fn space_held_on_chord() {
         let mut sm = StateMachine::new();
 
-        let events = feed_all(&mut sm, &[
-            thumb(Thumb::Space, KeyDirection::Down),
-        ]);
-        assert!(events.contains(&Event::WordStart));
+        // Space down
+        sm.feed(thumb(Thumb::Space, KeyDirection::Down));
 
-        // Chord inside word
+        // Chord while space held
         let events = feed_all(&mut sm, &[
             finger(Hand::Right, Finger::Index, KeyDirection::Down),
             finger(Hand::Right, Finger::Index, KeyDirection::Up),
         ]);
         assert_eq!(events.len(), 1);
-        assert!(matches!(events[0], Event::Chord(_)));
+        let Event::Chord(chord) = &events[0] else { panic!() };
+        assert!(chord.space_held);
 
-        // End word
+        // Space up
         let events = feed_all(&mut sm, &[
             thumb(Thumb::Space, KeyDirection::Up),
         ]);
-        assert!(events.contains(&Event::WordEnd));
+        assert!(events.contains(&Event::SpaceUp));
+    }
+
+    #[test]
+    fn no_space_on_chord() {
+        let mut sm = StateMachine::new();
+
+        let events = feed_all(&mut sm, &[
+            finger(Hand::Right, Finger::Index, KeyDirection::Down),
+            finger(Hand::Right, Finger::Index, KeyDirection::Up),
+        ]);
+        let Event::Chord(chord) = &events[0] else { panic!() };
+        assert!(!chord.space_held);
     }
 
     #[test]
@@ -376,28 +369,6 @@ mod tests {
         let Event::Chord(chord) = &events[0] else { panic!() };
         assert_eq!(chord.mode, Mode::Mode1);
         assert!(chord.left.is_empty());
-    }
-
-    #[test]
-    fn undo_all_ten() {
-        let mut sm = StateMachine::new();
-
-        // Press space first (word mode)
-        sm.feed(thumb(Thumb::Space, KeyDirection::Down));
-        sm.feed(thumb(Thumb::Ctrl, KeyDirection::Down));
-
-        // Press all 8 fingers
-        for f in [Finger::Index, Finger::Middle, Finger::Ring, Finger::Pinky] {
-            sm.feed(finger(Hand::Left, f, KeyDirection::Down));
-        }
-        // Last finger should trigger undo check
-        let mut events = vec![];
-        for f in [Finger::Index, Finger::Middle, Finger::Ring] {
-            events.extend(sm.feed(finger(Hand::Right, f, KeyDirection::Down)));
-        }
-        events.extend(sm.feed(finger(Hand::Right, Finger::Pinky, KeyDirection::Down)));
-
-        assert!(events.contains(&Event::Undo));
     }
 
     #[test]

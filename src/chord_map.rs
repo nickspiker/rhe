@@ -98,7 +98,7 @@ mod tests {
             mode: Mode::Mode2,
             right: FingerChord(0b0101),  // index+ring
             left: FingerChord(0b0011),   // index+middle
-            thumbs: ThumbState(0b01),    // ctrl only
+            thumbs: ThumbState(0b01), ..Default::default()
         };
 
         let key = ChordKey::from_chord(&chord);
@@ -114,7 +114,7 @@ mod tests {
             mode: Mode::Mode1,
             right: FingerChord(0b1010),
             left: FingerChord(0b0000),
-            thumbs: ThumbState::NONE,
+            thumbs: ThumbState::NONE, ..Default::default()
         };
 
         let key = ChordKey::from_chord(&chord);
@@ -128,7 +128,7 @@ mod tests {
             mode: Mode::Mode4,
             right: FingerChord(0b1111),
             left: FingerChord(0b1111),
-            thumbs: ThumbState(0b01), // ctrl
+            thumbs: ThumbState(0b01), ..Default::default()
         };
 
         let key = ChordKey::from_chord(&chord);
@@ -160,7 +160,7 @@ mod tests {
                             mode: mode_from_bits(mode),
                             right: FingerChord(right),
                             left: FingerChord(left),
-                            thumbs: if ctrl { ThumbState(0b01) } else { ThumbState::NONE },
+                            thumbs: if ctrl { ThumbState(0b01) } else { ThumbState::NONE }, ..Default::default()
                         };
                         let key = ChordKey::from_chord(&chord);
                         assert!(seen.insert(key.0), "Duplicate key {}", key.0);

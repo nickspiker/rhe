@@ -288,24 +288,37 @@ pub fn generate(cmudict_text: &str, freq_text: &str) -> HashMap<u16, String> {
     let mut coda_ranked: Vec<(String, u64)> = coda_freq.into_iter().collect();
     coda_ranked.sort_by(|a, b| b.1.cmp(&a.1));
 
-    // Sort finger combos 0-15 by effort
-    let mut combos_by_effort: Vec<(u8, f64)> = (0..16)
+    // Sort finger combos 1-15 by effort (skip 0 — no fingers = unreachable)
+    let mut combos_by_effort: Vec<(u8, f64)> = (1..16)
         .map(|bits| (bits, combo_effort(bits)))
         .collect();
     combos_by_effort.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
-    // Assign: most frequent onset → easiest combo
+    // Assign: "(none)" always gets combo 0 (no fingers = no consonant)
+    // Real consonants get combos 1-15 by frequency → effort
     let mut onset_to_combo: HashMap<String, u8> = HashMap::new();
-    for (i, (onset, _)) in onset_ranked.iter().enumerate() {
-        if i < combos_by_effort.len() {
-            onset_to_combo.insert(onset.clone(), combos_by_effort[i].0);
+    onset_to_combo.insert("(none)".to_string(), 0);
+    let mut combo_idx = 0;
+    for (onset, _) in onset_ranked.iter() {
+        if onset == "(none)" {
+            continue;
+        }
+        if combo_idx < combos_by_effort.len() {
+            onset_to_combo.insert(onset.clone(), combos_by_effort[combo_idx].0);
+            combo_idx += 1;
         }
     }
 
     let mut coda_to_combo: HashMap<String, u8> = HashMap::new();
-    for (i, (coda, _)) in coda_ranked.iter().enumerate() {
-        if i < combos_by_effort.len() {
-            coda_to_combo.insert(coda.clone(), combos_by_effort[i].0);
+    coda_to_combo.insert("(none)".to_string(), 0);
+    combo_idx = 0;
+    for (coda, _) in coda_ranked.iter() {
+        if coda == "(none)" {
+            continue;
+        }
+        if combo_idx < combos_by_effort.len() {
+            coda_to_combo.insert(coda.clone(), combos_by_effort[combo_idx].0);
+            combo_idx += 1;
         }
     }
 
@@ -353,32 +366,70 @@ pub fn generate(cmudict_text: &str, freq_text: &str) -> HashMap<u16, String> {
         let Some(&right) = onset_to_combo.get(onset_key) else { continue };
         let Some(&left) = coda_to_combo.get(coda_key) else { continue };
 
-        // Track which slots are used for this pair
+        // Skip R:0000 L:0000 — unreachable (no fingers = no chord)
+        if right == 0 && left == 0 {
+            continue;
+        }
+
+        // Determine reachable modes based on hand involvement:
+        //   Right-only (left=0): only Mode 1 (mode=0) — R first down, R first up
+        //   Left-only (right=0): only Mode 4 (mode=3) — L first down, L first up
+        //   Both hands: all 4 modes
+        let reachable_slots: Vec<(u8, bool)> = if left == 0 {
+            // Right-hand only → Mode 1 (mode=0) ± ctrl
+            vec![(0, false), (0, true)]
+        } else if right == 0 {
+            // Left-hand only → Mode 4 (mode=3) ± ctrl
+            vec![(3, false), (3, true)]
+        } else {
+            // Both hands → all 8
+            all_slots.clone()
+        };
+
+        let is_single_hand = right == 0 || left == 0;
+
         let mut used_slots: Vec<(u8, bool)> = Vec::new();
 
-        // First pass: assign primary vowels to their fixed slots
-        for (syl, _) in variants.iter() {
-            if let Some(&(mode, ctrl)) = vowel_slot_map.get(syl.vowel.as_str()) {
-                let assignment = ChordAssignment { right, left, mode, ctrl };
-                let key = assignment.to_chord_key_bits();
-                if !table.contains_key(&key) {
-                    table.insert(key, syl.to_ipa());
-                    used_slots.push((mode, ctrl));
+        if !is_single_hand {
+            // Both hands: assign primary vowels to their fixed slots
+            for (syl, _) in variants.iter() {
+                if let Some(&(mode, ctrl)) = vowel_slot_map.get(syl.vowel.as_str()) {
+                    if !reachable_slots.contains(&(mode, ctrl)) {
+                        continue;
+                    }
+                    let assignment = ChordAssignment { right, left, mode, ctrl };
+                    let key = assignment.to_chord_key_bits();
+                    if !table.contains_key(&key) {
+                        table.insert(key, syl.to_ipa());
+                        used_slots.push((mode, ctrl));
+                    }
                 }
             }
         }
+        // For single-hand: skip fixed vowel pass entirely.
+        // Only 2 slots — assign purely by frequency below.
 
-        // Second pass: assign overflow vowels to unused slots
-        let mut free_slots: Vec<(u8, bool)> = all_slots
+        // Assign remaining variants to free slots, most frequent first
+        let mut free_slots: Vec<(u8, bool)> = reachable_slots
             .iter()
             .filter(|s| !used_slots.contains(s))
             .copied()
             .collect();
 
-        // Sort overflow variants by frequency (most common first)
+        let assigned_ipas: std::collections::HashSet<String> = table
+            .iter()
+            .filter(|(k, _)| {
+                let k = **k;
+                let r = (k & 0xF) as u8;
+                let l = ((k >> 4) & 0xF) as u8;
+                r == right && l == left
+            })
+            .map(|(_, v)| v.clone())
+            .collect();
+
         let mut overflow: Vec<&(PhoneSyllable, u64)> = variants
             .iter()
-            .filter(|(syl, _)| overflow_vowels.contains(&syl.vowel.as_str()))
+            .filter(|(syl, _)| !assigned_ipas.contains(&syl.to_ipa()))
             .collect();
         overflow.sort_by(|a, b| b.1.cmp(&a.1));
 

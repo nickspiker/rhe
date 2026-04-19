@@ -57,8 +57,9 @@ impl ThumbState {
 }
 
 /// The four hand-order modes, determined by first-down and first-up.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Mode {
+    #[default]
     /// Right first down, right first up.
     Mode1,
     /// Right first down, left first up.
@@ -81,10 +82,12 @@ impl Mode {
 }
 
 /// A fully resolved chord: everything the interpreter needs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Chord {
     pub mode: Mode,
     pub right: FingerChord,
     pub left: FingerChord,
     pub thumbs: ThumbState,
+    /// Was space held when this chord completed?
+    pub space_held: bool,
 }
