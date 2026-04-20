@@ -7,3 +7,4 @@ pub trait KeyInput {
 }
 
 pub mod rdev_backend;
+pub mod iohid_backend;

@@ -17,8 +17,8 @@ pub enum Finger {
 /// Thumb keys (one per thumb).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Thumb {
-    /// Left thumb — mapped to Left Control.
-    Ctrl,
+    /// Left thumb — mapped to Left ⌘ (mod key).
+    Mod,
     /// Right thumb — mapped to Space.
     Space,
 }
@@ -50,7 +50,8 @@ pub struct KeyEvent {
 ///   Right hand: D  H  T  N  S   (index, middle, ring, pinky, [pinky stretch])
 ///
 /// We use the 4 main keys per hand on Dvorak home row.
-/// Left Control = left thumb, Space = right thumb.
+/// Left ⌘ = left thumb, Space = right thumb.
+#[allow(dead_code)]
 pub fn scancode_to_key(scancode: u16) -> Option<PhysicalKey> {
     // macOS virtual keycodes for Dvorak home row
     // These are hardware scancodes, not affected by software layout.
@@ -62,7 +63,7 @@ pub fn scancode_to_key(scancode: u16) -> Option<PhysicalKey> {
     // Actually, macOS keycodes are positional (QWERTY-based):
     //   A=0x00  S=0x01  D=0x02  F=0x03  (left hand home row)
     //   J=0x26  K=0x28  L=0x25  ;=0x29  (right hand home row)
-    //   Space=0x31  Left Control=0x3B
+    //   Space=0x31  Left ⌘=0x3B
     //
     // On Dvorak these physical positions produce: a o e u / d h t n
     // But we don't care about the letters — we care about the physical positions.
@@ -82,7 +83,7 @@ pub fn scancode_to_key(scancode: u16) -> Option<PhysicalKey> {
 
         // Thumbs
         0x31 => Some(PhysicalKey::Thumb(Thumb::Space)),
-        0x3B => Some(PhysicalKey::Thumb(Thumb::Ctrl)),
+        0x3B => Some(PhysicalKey::Thumb(Thumb::Mod)),
 
         _ => None,
     }

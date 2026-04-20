@@ -1,8 +1,8 @@
 use tao::event_loop::{ControlFlow, EventLoop};
 use tray_icon::{Icon, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const ICON_SIZE: u32 = 22;
 
@@ -65,11 +65,19 @@ pub fn run_tray(enabled: Arc<AtomicBool>) {
         );
 
         while let Ok(tray_event) = rx.try_recv() {
-            if let TrayIconEvent::Click { button_state: MouseButtonState::Up, .. } = tray_event {
+            if let TrayIconEvent::Click {
+                button_state: MouseButtonState::Up,
+                ..
+            } = tray_event
+            {
                 let now = !enabled.load(Ordering::Relaxed);
                 enabled.store(now, Ordering::Relaxed);
 
-                let icon = if now { icon_on.clone() } else { icon_off.clone() };
+                let icon = if now {
+                    icon_on.clone()
+                } else {
+                    icon_off.clone()
+                };
                 tray.set_icon(Some(icon)).ok();
 
                 let state = if now { "ON" } else { "OFF" };

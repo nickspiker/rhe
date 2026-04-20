@@ -1,174 +1,253 @@
-use crate::chord_state::{Chord, FingerChord, Mode, ThumbState};
+use crate::chord_state::Chord;
 
-/// A chord key: the unique index into the syllable table.
+/// A chord key: unique index into phoneme/brief tables.
 ///
-/// Encoding: 11 bits total
-///   bits 0-3:  right hand finger chord (4 bits, 0-15)
-///   bits 4-7:  left hand finger chord (4 bits, 0-15)
-///   bits 8-9:  mode (2 bits, 0-3)
-///   bit 10:    ctrl state (1 bit)
+/// Encoding: 9 bits total
+///   bits 0-3: right hand finger chord (4 bits, 0-15)
+///   bits 4-7: left hand finger chord (4 bits, 0-15)
+///   bit 8:    mod (⌘) state (1 bit)
 ///
-/// Total: 2^11 = 2,048 possible chord keys.
+/// Total: 2^9 = 512 possible chord keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ChordKey(pub u16);
 
 impl ChordKey {
-    pub const MAX: u16 = 2048;
+    pub const MAX: u16 = 512;
 
     pub fn from_chord(chord: &Chord) -> Self {
         let right = chord.right.0 as u16 & 0xF;
         let left = (chord.left.0 as u16 & 0xF) << 4;
-        let mode = (mode_to_bits(chord.mode) as u16) << 8;
-        let ctrl = if chord.thumbs.has_ctrl() { 1u16 << 10 } else { 0 };
-        Self(right | left | mode | ctrl)
+        let modkey = if chord.modkey { 1u16 << 8 } else { 0 };
+        Self(right | left | modkey)
     }
 
-    pub fn right_fingers(self) -> FingerChord {
-        FingerChord((self.0 & 0xF) as u8)
+    pub fn right_bits(self) -> u8 {
+        (self.0 & 0xF) as u8
     }
 
-    pub fn left_fingers(self) -> FingerChord {
-        FingerChord(((self.0 >> 4) & 0xF) as u8)
+    pub fn left_bits(self) -> u8 {
+        ((self.0 >> 4) & 0xF) as u8
     }
 
-    pub fn mode(self) -> Mode {
-        mode_from_bits(((self.0 >> 8) & 0x3) as u8)
-    }
-
-    pub fn has_ctrl(self) -> bool {
-        self.0 & (1 << 10) != 0
+    pub fn has_mod(self) -> bool {
+        self.0 & (1 << 8) != 0
     }
 }
 
-fn mode_to_bits(mode: Mode) -> u8 {
-    match mode {
-        Mode::Mode1 => 0,
-        Mode::Mode2 => 1,
-        Mode::Mode3 => 2,
-        Mode::Mode4 => 3,
+/// The 39 English phonemes, split into consonants (right hand) and vowels (left hand).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Phoneme {
+    // Consonants (right hand) — 24 total
+    T, D, S, Z, K, G, P, B,
+    N, M, R, Dh,  // ð
+    L, H, F, V, W,
+    Th,           // θ
+    Sh, Zh,       // ʃ ʒ
+    Ch, Jh,       // tʃ dʒ
+    Ng,           // ŋ
+    Y,            // j
+
+    // Vowels (left hand) — 15 total
+    Ah, Ih, Eh, Ae,       // ʌ/ə ɪ ɛ æ
+    Iy, Aa, Ey, Er,       // iː ɑ eɪ ɝ
+    Ay, Ow, Ao,           // aɪ oʊ ɔ
+    Uw, Aw, Uh, Oy,      // uː aʊ ʊ ɔɪ
+}
+
+impl Phoneme {
+    /// Convert ARPABET symbol (from CMU dict) to Phoneme.
+    pub fn from_arpabet(s: &str) -> Option<Self> {
+        match s {
+            "T" => Some(Self::T),   "D" => Some(Self::D),
+            "S" => Some(Self::S),   "Z" => Some(Self::Z),
+            "K" => Some(Self::K),   "G" => Some(Self::G),
+            "P" => Some(Self::P),   "B" => Some(Self::B),
+            "N" => Some(Self::N),   "M" => Some(Self::M),
+            "R" => Some(Self::R),   "DH" => Some(Self::Dh),
+            "L" => Some(Self::L),   "HH" => Some(Self::H),
+            "F" => Some(Self::F),   "V" => Some(Self::V),
+            "W" => Some(Self::W),   "TH" => Some(Self::Th),
+            "SH" => Some(Self::Sh), "ZH" => Some(Self::Zh),
+            "CH" => Some(Self::Ch), "JH" => Some(Self::Jh),
+            "NG" => Some(Self::Ng), "Y" => Some(Self::Y),
+
+            "AH" => Some(Self::Ah), "IH" => Some(Self::Ih),
+            "EH" => Some(Self::Eh), "AE" => Some(Self::Ae),
+            "IY" => Some(Self::Iy), "AA" => Some(Self::Aa),
+            "EY" => Some(Self::Ey), "ER" => Some(Self::Er),
+            "AY" => Some(Self::Ay), "OW" => Some(Self::Ow),
+            "AO" => Some(Self::Ao), "UW" => Some(Self::Uw),
+            "AW" => Some(Self::Aw), "UH" => Some(Self::Uh),
+            "OY" => Some(Self::Oy),
+
+            _ => None,
+        }
+    }
+
+    /// IPA representation.
+    pub fn to_ipa(self) -> &'static str {
+        match self {
+            Self::T => "t",   Self::D => "d",
+            Self::S => "s",   Self::Z => "z",
+            Self::K => "k",   Self::G => "g",
+            Self::P => "p",   Self::B => "b",
+            Self::N => "n",   Self::M => "m",
+            Self::R => "ɹ",   Self::Dh => "ð",
+            Self::L => "l",   Self::H => "h",
+            Self::F => "f",   Self::V => "v",
+            Self::W => "w",   Self::Th => "θ",
+            Self::Sh => "ʃ",  Self::Zh => "ʒ",
+            Self::Ch => "tʃ", Self::Jh => "dʒ",
+            Self::Ng => "ŋ",  Self::Y => "j",
+
+            Self::Ah => "ʌ",  Self::Ih => "ɪ",
+            Self::Eh => "ɛ",  Self::Ae => "æ",
+            Self::Iy => "iː", Self::Aa => "ɑ",
+            Self::Ey => "eɪ", Self::Er => "ɝ",
+            Self::Ay => "aɪ", Self::Ow => "oʊ",
+            Self::Ao => "ɔ",  Self::Uw => "uː",
+            Self::Aw => "aʊ", Self::Uh => "ʊ",
+            Self::Oy => "ɔɪ",
+        }
+    }
+
+    /// The ChordKey for this phoneme.
+    pub fn chord_key(self) -> ChordKey {
+        use Phoneme::*;
+        let (right, left, modkey) = match self {
+            // Consonants: right hand, no mod
+            T  => (0b0001, 0, false), S  => (0b0010, 0, false),
+            K  => (0b0100, 0, false), P  => (0b1000, 0, false),
+            N  => (0b0011, 0, false), R  => (0b0101, 0, false),
+            L  => (0b0110, 0, false), H  => (0b0111, 0, false),
+            F  => (0b1001, 0, false), W  => (0b1010, 0, false),
+            Th => (0b1100, 0, false), Sh => (0b1011, 0, false),
+            Ch => (0b1101, 0, false), Ng => (0b1110, 0, false),
+            Y  => (0b1111, 0, false),
+            // Consonants: right hand, with mod (voiced pairs)
+            D  => (0b0001, 0, true),  Z  => (0b0010, 0, true),
+            G  => (0b0100, 0, true),  B  => (0b1000, 0, true),
+            M  => (0b0011, 0, true),  Dh => (0b0101, 0, true),
+            V  => (0b1001, 0, true),  Zh => (0b1011, 0, true),
+            Jh => (0b1101, 0, true),
+            // Vowels: left hand, no mod
+            Ah => (0, 0b0001, false), Ih => (0, 0b0010, false),
+            Eh => (0, 0b0100, false), Ae => (0, 0b1000, false),
+            Iy => (0, 0b0011, false), Aa => (0, 0b0101, false),
+            Ey => (0, 0b0110, false), Er => (0, 0b0111, false),
+            Ay => (0, 0b1001, false), Ow => (0, 0b1010, false),
+            Ao => (0, 0b1100, false), Uw => (0, 0b1011, false),
+            Aw => (0, 0b1101, false), Uh => (0, 0b1110, false),
+            Oy => (0, 0b1111, false),
+        };
+        ChordKey(right as u16 | (left as u16) << 4 | if modkey { 1u16 << 8 } else { 0 })
     }
 }
 
-fn mode_from_bits(bits: u8) -> Mode {
-    match bits & 0x3 {
-        0 => Mode::Mode1,
-        1 => Mode::Mode2,
-        2 => Mode::Mode3,
-        _ => Mode::Mode4,
+/// Phoneme table: maps ChordKey → Phoneme.
+pub struct PhonemeTable {
+    entries: Vec<Option<Phoneme>>,
+}
+
+impl PhonemeTable {
+    /// Build the table from all phoneme definitions.
+    pub fn new() -> Self {
+        let mut entries = vec![None; ChordKey::MAX as usize];
+        let all_phonemes = [
+            Phoneme::T, Phoneme::D, Phoneme::S, Phoneme::Z,
+            Phoneme::K, Phoneme::G, Phoneme::P, Phoneme::B,
+            Phoneme::N, Phoneme::M, Phoneme::R, Phoneme::Dh,
+            Phoneme::L, Phoneme::H, Phoneme::F, Phoneme::V,
+            Phoneme::W, Phoneme::Th, Phoneme::Sh, Phoneme::Zh,
+            Phoneme::Ch, Phoneme::Jh, Phoneme::Ng, Phoneme::Y,
+            Phoneme::Ah, Phoneme::Ih, Phoneme::Eh, Phoneme::Ae,
+            Phoneme::Iy, Phoneme::Aa, Phoneme::Ey, Phoneme::Er,
+            Phoneme::Ay, Phoneme::Ow, Phoneme::Ao, Phoneme::Uw,
+            Phoneme::Aw, Phoneme::Uh, Phoneme::Oy,
+        ];
+        for p in all_phonemes {
+            entries[p.chord_key().0 as usize] = Some(p);
+        }
+        Self { entries }
+    }
+
+    pub fn lookup(&self, key: ChordKey) -> Option<Phoneme> {
+        self.entries.get(key.0 as usize).copied().flatten()
     }
 }
 
-/// The syllable table: maps ChordKey → syllable string.
-///
-/// This is the core lookup. Generated at build time from CMU dict +
-/// frequency data. At runtime it's a flat array indexed by ChordKey.
-///
-/// Entries are `Option<&str>` — None means the chord is unassigned.
-pub struct SyllableTable {
+/// Brief table: maps ChordKey → word string (for instant output without space).
+pub struct BriefTable {
     entries: Vec<Option<String>>,
 }
 
-impl SyllableTable {
+impl BriefTable {
     pub fn new() -> Self {
         Self {
             entries: vec![None; ChordKey::MAX as usize],
         }
     }
 
-    pub fn insert(&mut self, key: ChordKey, syllable: String) {
-        self.entries[key.0 as usize] = Some(syllable);
+    pub fn insert(&mut self, key: ChordKey, word: String) {
+        self.entries[key.0 as usize] = Some(word);
     }
 
     pub fn lookup(&self, key: ChordKey) -> Option<&str> {
-        self.entries[key.0 as usize].as_deref()
-    }
-
-    pub fn assigned_count(&self) -> usize {
-        self.entries.iter().filter(|e| e.is_some()).count()
+        self.entries.get(key.0 as usize)?.as_deref()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chord_state::FingerChord;
 
     #[test]
     fn chord_key_roundtrip() {
         let chord = Chord {
-            mode: Mode::Mode2,
-            right: FingerChord(0b0101),  // index+ring
-            left: FingerChord(0b0011),   // index+middle
-            thumbs: ThumbState(0b01), ..Default::default()
+            right: FingerChord(0b0101),
+            left: FingerChord(0b0011),
+            modkey: true,
+            space_held: false,
         };
-
         let key = ChordKey::from_chord(&chord);
-        assert_eq!(key.right_fingers(), FingerChord(0b0101));
-        assert_eq!(key.left_fingers(), FingerChord(0b0011));
-        assert_eq!(key.mode(), Mode::Mode2);
-        assert!(key.has_ctrl());
+        assert_eq!(key.right_bits(), 0b0101);
+        assert_eq!(key.left_bits(), 0b0011);
+        assert!(key.has_mod());
     }
 
     #[test]
-    fn chord_key_no_ctrl() {
-        let chord = Chord {
-            mode: Mode::Mode1,
-            right: FingerChord(0b1010),
-            left: FingerChord(0b0000),
-            thumbs: ThumbState::NONE, ..Default::default()
-        };
-
-        let key = ChordKey::from_chord(&chord);
-        assert!(!key.has_ctrl());
-        assert_eq!(key.mode(), Mode::Mode1);
+    fn phoneme_table_covers_all() {
+        let table = PhonemeTable::new();
+        // Every phoneme should be reachable
+        assert_eq!(table.lookup(Phoneme::T.chord_key()), Some(Phoneme::T));
+        assert_eq!(table.lookup(Phoneme::Ah.chord_key()), Some(Phoneme::Ah));
+        assert_eq!(table.lookup(Phoneme::Jh.chord_key()), Some(Phoneme::Jh));
+        assert_eq!(table.lookup(Phoneme::Oy.chord_key()), Some(Phoneme::Oy));
     }
 
     #[test]
-    fn chord_key_max_value() {
-        let chord = Chord {
-            mode: Mode::Mode4,
-            right: FingerChord(0b1111),
-            left: FingerChord(0b1111),
-            thumbs: ThumbState(0b01), ..Default::default()
-        };
-
-        let key = ChordKey::from_chord(&chord);
-        assert!(key.0 < ChordKey::MAX);
+    fn no_phoneme_collisions() {
+        let table = PhonemeTable::new();
+        let count = table.entries.iter().filter(|e| e.is_some()).count();
+        assert_eq!(count, 39);
     }
 
     #[test]
-    fn syllable_table_basic() {
-        let mut table = SyllableTable::new();
-        let key = ChordKey(42);
-
-        assert!(table.lookup(key).is_none());
-
-        table.insert(key, "cat".to_string());
-        assert_eq!(table.lookup(key), Some("cat"));
-    }
-
-    #[test]
-    fn all_keys_unique() {
-        // Verify no two different chord inputs produce the same key
-        use std::collections::HashSet;
-        let mut seen = HashSet::new();
-
-        for right in 0..16u8 {
-            for left in 0..16u8 {
-                for mode in 0..4u8 {
-                    for ctrl in [false, true] {
-                        let chord = Chord {
-                            mode: mode_from_bits(mode),
-                            right: FingerChord(right),
-                            left: FingerChord(left),
-                            thumbs: if ctrl { ThumbState(0b01) } else { ThumbState::NONE }, ..Default::default()
-                        };
-                        let key = ChordKey::from_chord(&chord);
-                        assert!(seen.insert(key.0), "Duplicate key {}", key.0);
-                    }
-                }
-            }
+    fn consonants_are_right_hand() {
+        for p in [Phoneme::T, Phoneme::D, Phoneme::S, Phoneme::N, Phoneme::Ng] {
+            let key = p.chord_key();
+            assert!(key.right_bits() != 0, "{:?} should be right hand", p);
+            assert_eq!(key.left_bits(), 0, "{:?} should have no left hand", p);
         }
+    }
 
-        assert_eq!(seen.len(), 2048);
+    #[test]
+    fn vowels_are_left_hand() {
+        for p in [Phoneme::Ah, Phoneme::Ih, Phoneme::Ey, Phoneme::Oy] {
+            let key = p.chord_key();
+            assert_eq!(key.right_bits(), 0, "{:?} should have no right hand", p);
+            assert!(key.left_bits() != 0, "{:?} should be left hand", p);
+        }
     }
 }

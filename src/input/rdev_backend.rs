@@ -1,7 +1,7 @@
-use crate::hand::{KeyDirection, KeyEvent, PhysicalKey, Hand, Finger, Thumb};
+use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey, Thumb};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
 
 /// Cross-platform key event capture using the `rdev` crate.
 ///
@@ -33,8 +33,9 @@ impl RdevInput {
                     // ⌘ always passes through to OS (for ⌘+C, ⌘+Tab, etc.)
                     // We capture the event for chord detection but don't suppress it
                     match event.event_type {
-                        rdev::EventType::KeyPress(rdev::Key::MetaLeft | rdev::Key::MetaRight) |
-                        rdev::EventType::KeyRelease(rdev::Key::MetaLeft | rdev::Key::MetaRight) => {
+                        rdev::EventType::KeyPress(rdev::Key::MetaLeft | rdev::Key::MetaRight)
+                        | rdev::EventType::KeyRelease(rdev::Key::MetaLeft | rdev::Key::MetaRight) =>
+                        {
                             Some(event) // pass through
                         }
                         _ => None, // suppress finger keys and space
@@ -105,7 +106,7 @@ fn rdev_to_physical(key: rdev::Key) -> Option<PhysicalKey> {
         // Thumbs — space is right thumb, left ⌘ is rhe's thumb (grabbed)
         // Right ⌘ is untouched — use it for normal macOS shortcuts
         rdev::Key::Space => Some(PhysicalKey::Thumb(Thumb::Space)),
-        rdev::Key::MetaLeft => Some(PhysicalKey::Thumb(Thumb::Ctrl)),
+        rdev::Key::MetaLeft => Some(PhysicalKey::Thumb(Thumb::Mod)),
 
         _ => None,
     }

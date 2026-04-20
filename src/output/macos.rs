@@ -28,8 +28,8 @@ impl super::TextOutput for MacOSOutput {
             );
         }
 
-        let event_up = CGEvent::new_keyboard_event(source, 0, false)
-            .expect("failed to create key event");
+        let event_up =
+            CGEvent::new_keyboard_event(source, 0, false).expect("failed to create key event");
 
         // Post to Session level, not HID — avoids our own grab re-catching these
         event_down.post(CGEventTapLocation::Session);

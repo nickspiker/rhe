@@ -1,67 +1,68 @@
-use std::collections::HashMap;
 use std::io;
-use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-use crate::chord_map::ChordKey;
+use crate::chord_map::{BriefTable, Phoneme, PhonemeTable};
 use crate::hand::{Finger, Hand, KeyDirection, KeyEvent as RheKeyEvent, PhysicalKey, Thumb};
-use crate::input::rdev_backend::RdevInput;
-use crate::state_machine::{Event as SmEvent, StateMachine};
-use crate::table_gen;
-use crate::word_lookup::{WordChords, WordLookup};
+use crate::input::iohid_backend::{IoHidInput, HidEvent};
+use crate::interpreter::Interpreter;
+use crate::output::macos::MacOSOutput;
+use crate::output::TextOutput;
+use crate::state_machine::StateMachine;
+use crate::table_gen::PhonemeDictionary;
+use crate::word_lookup::WordLookup;
 
-/// Mode name using rhe terminology.
-fn mode_name(mode: u8, ctrl: bool, single_hand_right: bool, single_hand_left: bool) -> &'static str {
-    if single_hand_right {
-        if ctrl { "⌘right" } else { "right" }
-    } else if single_hand_left {
-        if ctrl { "⌘left" } else { "left" }
-    } else {
-        match (mode, ctrl) {
-            (0, false) => "zil",
-            (1, false) => "ter",
-            (2, false) => "stel",
-            (3, false) => "lun",
-            (0, true) => "zila",
-            (1, true) => "tera",
-            (2, true) => "stela",
-            (3, true) => "luna",
-            _ => "?",
-        }
+// ─── Target: a 10-bit snapshot of what keys should be pressed ───
+
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+struct Target {
+    right: u8,
+    left: u8,
+    modkey: bool,
+    space: bool,
+}
+
+impl Target {
+    /// Does the live key state have any key pressed that's NOT in this target?
+    fn has_extra(&self, state: &KeyState) -> bool {
+        let extra_right = state.right_bits() & !self.right;
+        let extra_left = state.left_bits() & !self.left;
+        let extra_mod = state.modkey && !self.modkey;
+        let extra_space = state.space && !self.space;
+        extra_right != 0 || extra_left != 0 || extra_mod || extra_space
+    }
+
+    /// Does the live key state exactly match this target?
+    fn matches(&self, state: &KeyState) -> bool {
+        state.right_bits() == self.right
+            && state.left_bits() == self.left
+            && state.modkey == self.modkey
+            && state.space == self.space
     }
 }
 
-/// A single chord step (one press-release of fingers).
-struct ChordStep {
-    ipa: String,
-    chord_key: u16,
-    right_fingers: u8,
-    left_fingers: u8,
-    mode: u8,
-    ctrl: bool,
+// ─── Steps for a word ───
+
+struct Step {
+    target: Target,
+    phoneme: Option<Phoneme>,
+    /// If true, only check space state — ignore fingers/mod (used for "commit" step)
+    space_only: bool,
 }
 
-
-/// A word to practice — either a single brief or multi-syllable with space.
 struct PracticeWord {
     word: String,
-    full_ipa: String,
-    /// true = hold space, chord syllables, release space
-    needs_space: bool,
-    /// The chord(s) to press, in order.
-    steps: Vec<ChordStep>,
+    steps: Vec<Step>,
 }
 
 #[derive(Default, Clone)]
 struct KeyState {
     left: [bool; 4],
     right: [bool; 4],
-    ctrl: bool,
+    modkey: bool,
     space: bool,
 }
 
@@ -79,16 +80,7 @@ impl KeyState {
             | (self.right[2] as u8) << 2
             | (self.right[3] as u8) << 3
     }
-
-    fn any_left(&self) -> bool {
-        self.left.iter().any(|&k| k)
-    }
-
-    fn any_right(&self) -> bool {
-        self.right.iter().any(|&k| k)
-    }
 }
-
 
 struct Practice {
     sentences: Vec<Vec<PracticeWord>>,
@@ -102,16 +94,20 @@ impl Practice {
         self.sentences.get(self.sentence_idx)?.get(self.word_idx)
     }
 
-    fn current_step(&self) -> Option<&ChordStep> {
-        let word = self.current_word()?;
-        word.steps.get(self.step_idx)
+    fn current_step(&self) -> Option<&Step> {
+        self.current_word()?.steps.get(self.step_idx)
+    }
+
+    fn current_target(&self) -> Option<&Target> {
+        Some(&self.current_step()?.target)
     }
 
     fn advance_step(&mut self) {
-        let word = &self.sentences[self.sentence_idx][self.word_idx];
         self.step_idx += 1;
-        if self.step_idx >= word.steps.len() {
-            self.next_word();
+        if let Some(word) = self.current_word() {
+            if self.step_idx >= word.steps.len() {
+                self.next_word();
+            }
         }
     }
 
@@ -128,172 +124,220 @@ impl Practice {
             }
         }
     }
+
+    fn reset_word(&mut self) {
+        self.step_idx = 0;
+    }
 }
+
+// ─── Main loop ───
 
 pub fn run_tutor() {
     let cmudict = std::fs::read_to_string("data/cmudict.dict").unwrap();
-    let freq = std::fs::read_to_string("data/en_freq.txt").unwrap();
-    let syllable_table = table_gen::generate(&cmudict, &freq);
-    let brief_map = crate::briefs::generate_briefs(&cmudict, &freq, &syllable_table);
-
-    let lookup = WordLookup::new(&brief_map, &syllable_table, &cmudict);
-
+    let lookup = WordLookup::new(&cmudict);
     let practice = build_practice(&lookup);
-
-    let grab_enabled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
-    let input = RdevInput::start_grab(grab_enabled).expect("failed to start key capture");
 
     terminal::enable_raw_mode().unwrap();
     io::stdout().execute(EnterAlternateScreen).unwrap();
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout())).unwrap();
 
+    let grab_enabled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let input = IoHidInput::start_grab(grab_enabled).expect("failed to start key capture");
+
+    // Real output pipeline: same events → state machine → interpreter → text injection
     let mut sm = StateMachine::new();
+    let freq_data = std::fs::read_to_string("data/word_freq.txt").unwrap_or_default();
+    let dict = PhonemeDictionary::build(&cmudict, &freq_data);
+    let mut interp = Interpreter::new(PhonemeTable::new(), BriefTable::new(), dict);
+    let output = MacOSOutput::new();
+
+    let mut log: Vec<String> = Vec::new();
     let mut key_state = KeyState::default();
     let mut practice = practice;
-    let mut correct = 0usize;
-    let mut attempts = 0usize;
-    let mut last_result: Option<bool> = None;
+    let mut errored = false; // true = all dark, wait for all keys off
+
+    // Initial draw
+    terminal.draw(|f| draw(f, &practice, false)).ok();
+
     loop {
-        terminal.draw(|f| {
-            draw(f, &practice, &key_state, correct, attempts, last_result);
-        }).ok();
+        // Block on next event
+        let hid_event = match input.rx.recv() {
+            Ok(ev) => ev,
+            Err(_) => break,
+        };
+        let rhe_event = match hid_event {
+            HidEvent::Quit => break,
+            HidEvent::Key(ev) => ev,
+        };
 
-        if event::poll(Duration::from_millis(16)).unwrap_or(false) {
-            if let Ok(Event::Key(key)) = event::read() {
-                if key.code == KeyCode::Esc && key.kind == KeyEventKind::Press {
-                    break;
+        update_key_state(&mut key_state, &rhe_event);
+
+        // Feed real output pipeline
+        for sm_event in sm.feed(rhe_event) {
+            if let Some(action) = interp.process(&sm_event) {
+                match action {
+                    crate::interpreter::Action::Emit(text) => output.emit(&text),
+                    crate::interpreter::Action::Backspace(n) => output.backspace(n),
                 }
             }
         }
 
-        while let Ok(rhe_event) = input.rx.try_recv() {
-            update_key_state(&mut key_state, &rhe_event);
+        let all_off = key_state.right_bits() == 0 && key_state.left_bits() == 0
+            && !key_state.modkey && !key_state.space;
 
-            for sm_event in sm.feed(rhe_event) {
-                if let SmEvent::Chord(chord) = sm_event {
-                    attempts += 1;
-                    let key = ChordKey::from_chord(&chord);
+        // Log every key change
+        log.push(format!("state R:{:04b} L:{:04b} sp={} mod={} | step={} err={}",
+            key_state.right_bits(), key_state.left_bits(), key_state.space, key_state.modkey,
+            practice.step_idx, errored));
 
-                    if let Some(step) = practice.current_step() {
-                        if key.0 == step.chord_key {
-                            correct += 1;
-                            last_result = Some(true);
-                            practice.advance_step();
-                        } else {
-                            last_result = Some(false);
-                        }
-                    }
+        if errored {
+            // Wait for all keys off, then clear
+            if all_off {
+                log.push("  → ERROR CLEAR".to_string());
+                errored = false;
+            }
+        } else if let Some(target) = practice.current_target() {
+            let target = *target;
+            let is_key_down = rhe_event.direction == KeyDirection::Down;
+            let step = practice.current_step().unwrap();
+
+            if step.space_only {
+                if !key_state.space {
+                    log.push("  → MATCH (commit)".to_string());
+                    practice.advance_step();
+                }
+            } else {
+                let space_dropped = rhe_event.key == PhysicalKey::Thumb(Thumb::Space)
+                    && rhe_event.direction == KeyDirection::Up
+                    && target.space
+                    && practice.step_idx > 0;
+
+                if space_dropped {
+                    log.push("  → RESET (space released mid-word)".to_string());
+                    practice.reset_word();
+                    if !all_off { errored = true; }
+                } else if is_key_down && target.has_extra(&key_state) {
+                    log.push("  → RESET (extra key down)".to_string());
+                    practice.reset_word();
+                    if !all_off { errored = true; }
+                } else if target.matches(&key_state) {
+                    log.push("  → MATCH".to_string());
+                    practice.advance_step();
                 }
             }
         }
+
+        // Draw after every event
+        terminal.draw(|f| draw(f, &practice, errored)).ok();
     }
 
     terminal::disable_raw_mode().ok();
     io::stdout().execute(LeaveAlternateScreen).ok();
 
-    let pct = if attempts > 0 { correct as f64 / attempts as f64 * 100.0 } else { 0.0 };
-    println!("Session: {}/{} ({:.0}%)", correct, attempts, pct);
+    let log_path = "tutor_debug.log";
+    std::fs::write(log_path, log.join("\n")).ok();
+    println!("Debug log written to {}", log_path);
 }
 
+// ─── Build practice steps ───
 
 fn build_practice(lookup: &WordLookup) -> Practice {
-    // Build text dynamically from words we actually have chords for.
-    // Use the lookup to filter — only include words that resolve to Brief or MultiSyllable.
     let common_text = [
-        "i think we should go now but he said no",
-        "what do you want me to do with all of this",
-        "she was not like that at all and i know it",
-        "can you tell me what time it is right now",
-        "we have to get out of here as soon as we can",
-        "do you know where he went last night",
-        "just tell me the truth and i will help you",
-        "i did not want to go but she made me",
-        "they all want to know what we think about it",
-        "he got up and went out the door",
-        "i was just about to call you when you came in",
-        "we should not have let them go like that",
-        "she was the one who told him to do it",
-        "you have to be here for this one",
-        "do not tell me what to do",
-        "i know what you want but i said no",
-        "he can come with us if he wants to",
-        "just get it and go",
-        "what if we go up there and look",
-        "she did not like what he said to her",
-        "they want us to come in now and sit down",
-        "i have no idea what that is",
-        "you know i like you right",
-        "we can do this if we want to",
-        "he was here just a bit ago",
-        "she got him to go with her to the store",
-        "they should be here by now",
-        "do you want me to come with you or not",
-        "all i know is that it was not me",
-        "we have to go now or we will be late",
-        "i can not do this on my own you know",
-        "what do you think about all of this stuff",
-        "if you want to go then just go",
-        "she told him not to do that but he did",
-        "i was about to go but then he came in",
-        "you and me we can do this",
-        "tell me what you know about him and her",
-        "i think that is the best thing to do",
-        "we need to find out where they went",
-        "he did not say a word to me about it",
+        "alice was beginning to get very tired of sitting by her sister on the bank",
+        "and of having nothing to do once or twice she had into the book",
+        "her sister was reading but it had no pictures or conversations in it",
+        "and what is the use of a book thought alice without pictures or conversations",
+        "so she was considering in her own mind as well as she could",
+        "for the hot day made her feel very and stupid",
+        "whether the pleasure of making a daisy chain would be worth the trouble",
+        "of getting up and picking the when suddenly a white rabbit",
+        "with pink eyes ran close by her there was nothing so very remarkable in that",
+        "nor did alice think it so very much out of the way to hear the rabbit say",
+        "oh dear oh dear i shall be late when she thought it over afterwards",
+        "it occurred to her that she ought to have wondered at this",
+        "but at the time it all seemed quite natural",
+        "but when the rabbit actually took a watch out of its pocket and looked at it",
+        "and then hurried on alice started to her feet",
+        "for it flashed across her mind that she had never before seen a rabbit",
+        "with either a pocket or a watch to take out of it",
+        "and burning with curiosity she ran across the field after it",
+        "and fortunately was just in time to see it pop down a large rabbit hole",
+        "under the hedge in another moment down went alice after it",
     ];
 
     let mut sentences: Vec<Vec<PracticeWord>> = Vec::new();
 
     for line in &common_text {
-        let word_chords = lookup.parse_text(line);
+        let words: Vec<&str> = line.split_whitespace().collect();
+        let mut skipped = Vec::new();
 
-        for group in word_chords.chunks(8) {
+        for group in words.chunks(8) {
             let mut sentence: Vec<PracticeWord> = Vec::new();
 
-            for wc in group {
-                match wc {
-                    WordChords::Brief { word, chord_key, ipa } => {
-                        sentence.push(PracticeWord {
-                            word: word.clone(),
-                            full_ipa: ipa.clone(),
-                            needs_space: false,
-                            steps: vec![ChordStep {
-                                ipa: ipa.clone(),
-                                chord_key: *chord_key,
-                                right_fingers: (chord_key & 0xF) as u8,
-                                left_fingers: ((chord_key >> 4) & 0xF) as u8,
-                                mode: ((chord_key >> 8) & 0x3) as u8,
-                                ctrl: (chord_key >> 10) & 1 == 1,
-                            }],
+            for &word_str in group {
+                let clean: String = word_str.chars()
+                    .filter(|c| c.is_alphabetic() || *c == '\'')
+                    .collect();
+
+                let Some(phonemes) = lookup.lookup(&clean) else {
+                    skipped.push(clean);
+                    continue;
+                };
+
+                let mut steps: Vec<Step> = Vec::new();
+
+                for (i, &phoneme) in phonemes.iter().enumerate() {
+                    let key = phoneme.chord_key();
+                    let r = key.right_bits();
+                    let l = key.left_bits();
+                    let m = key.has_mod();
+
+                    if i == 0 {
+                        // First phoneme: space + chord
+                        steps.push(Step {
+                            target: Target { right: r, left: l, modkey: m, space: true },
+                            phoneme: Some(phoneme),
+                            space_only: false,
+                        });
+                    } else {
+                        let prev_key = phonemes[i - 1].chord_key();
+                        // Down: both hands + space
+                        steps.push(Step {
+                            target: Target {
+                                right: prev_key.right_bits() | r,
+                                left: prev_key.left_bits() | l,
+                                modkey: prev_key.has_mod() || m,
+                                space: true,
+                            },
+                            phoneme: Some(phoneme),
+                            space_only: false,
+                        });
+                        // Up: release prev hand, keep new chord + space
+                        steps.push(Step {
+                            target: Target { right: r, left: l, modkey: m, space: true },
+                            phoneme: None,
+                            space_only: false,
                         });
                     }
-                    WordChords::MultiSyllable { word, syllables } => {
-                        let full_ipa = syllables.iter()
-                            .map(|s| s.ipa.as_str())
-                            .collect::<Vec<_>>()
-                            .join("·");
-                        let steps = syllables.iter().map(|s| ChordStep {
-                            ipa: s.ipa.clone(),
-                            chord_key: s.chord_key,
-                            right_fingers: s.right_fingers,
-                            left_fingers: s.left_fingers,
-                            mode: s.mode,
-                            ctrl: s.ctrl,
-                        }).collect();
-                        sentence.push(PracticeWord {
-                            word: word.clone(),
-                            full_ipa,
-                            needs_space: true,
-                            steps,
-                        });
-                    }
-                    WordChords::Unknown(_) => {}
                 }
+
+                // Commit: space up (fingers don't matter)
+                steps.push(Step {
+                    target: Target { space: false, ..Target::default() },
+                    phoneme: None,
+                    space_only: true,
+                });
+
+                sentence.push(PracticeWord { word: clean, steps });
             }
 
             if !sentence.is_empty() {
                 sentences.push(sentence);
             }
+        }
+
+        if !skipped.is_empty() {
+            eprintln!("  SKIP unknown: {}", skipped.join(", "));
         }
     }
 
@@ -304,6 +348,8 @@ fn build_practice(lookup: &WordLookup) -> Practice {
         step_idx: 0,
     }
 }
+
+// ─── Key state update ───
 
 fn update_key_state(state: &mut KeyState, event: &RheKeyEvent) {
     let pressed = event.direction == KeyDirection::Down;
@@ -316,21 +362,14 @@ fn update_key_state(state: &mut KeyState, event: &RheKeyEvent) {
         PhysicalKey::Finger(Hand::Right, Finger::Middle) => state.right[1] = pressed,
         PhysicalKey::Finger(Hand::Right, Finger::Ring) => state.right[2] = pressed,
         PhysicalKey::Finger(Hand::Right, Finger::Pinky) => state.right[3] = pressed,
-        PhysicalKey::Thumb(Thumb::Ctrl) => state.ctrl = pressed,
+        PhysicalKey::Thumb(Thumb::Mod) => state.modkey = pressed,
         PhysicalKey::Thumb(Thumb::Space) => state.space = pressed,
     }
 }
 
-// ─── Drawing ───────────────────────────────────────────────────
+// ─── Drawing ───
 
-fn draw(
-    frame: &mut Frame,
-    practice: &Practice,
-    keys: &KeyState,
-    correct: usize,
-    attempts: usize,
-    last_result: Option<bool>,
-) {
+fn draw(frame: &mut Frame, practice: &Practice, errored: bool) {
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -339,9 +378,8 @@ fn draw(
             Constraint::Length(2),  // title
             Constraint::Length(3),  // sentence
             Constraint::Length(4),  // word detail
-            Constraint::Length(11), // keyboard + preview
-            Constraint::Length(2),  // result
-            Constraint::Min(0),    // stats
+            Constraint::Length(7),  // keyboard
+            Constraint::Min(0),    // padding
         ])
         .split(area);
 
@@ -371,172 +409,89 @@ fn draw(
         );
     }
 
-    // Word detail
+    // Word detail + phoneme hint
     if let Some(pw) = practice.current_word() {
-        let step_info = if let Some(s) = practice.current_step() {
-            let name = mode_name(
-                s.mode, s.ctrl,
-                s.right_fingers > 0 && s.left_fingers == 0,
-                s.left_fingers > 0 && s.right_fingers == 0,
-            );
-            if pw.needs_space {
-                format!("{}  syllable {}/{}", name, practice.step_idx + 1, pw.steps.len())
-            } else {
-                name.to_string()
-            }
-        } else {
-            String::new()
-        };
+        let phoneme_label = practice.current_step()
+            .and_then(|s| s.phoneme)
+            .map(|p| format!(" {}", p.to_ipa()))
+            .unwrap_or_default();
 
-        let mut word_spans = vec![
-            Span::styled(" ", Style::default()),
-            Span::styled(&pw.word, Style::default().fg(Color::White).bold()),
+        let lines = vec![
+            Line::from(vec![
+                Span::styled(" ", Style::default()),
+                Span::styled(&pw.word, Style::default().fg(Color::White).bold()),
+            ]),
+            Line::from(vec![
+                Span::styled(phoneme_label, Style::default().fg(Color::Gray)),
+            ]),
         ];
 
         frame.render_widget(
-            Paragraph::new(vec![Line::from(word_spans)])
+            Paragraph::new(lines)
                 .block(Block::default().borders(Borders::ALL).title(" Target ")),
             chunks[2],
         );
 
-        if let Some(step) = practice.current_step() {
-            // Peek at next step for grey preview
-            let next = if practice.step_idx + 1 < pw.steps.len() {
-                Some(&pw.steps[practice.step_idx + 1])
-            } else {
-                // Next word's first step
-                let next_word_idx = if practice.word_idx + 1 < practice.sentences[practice.sentence_idx].len() {
-                    Some(practice.word_idx + 1)
-                } else { None };
-                next_word_idx.and_then(|wi| practice.sentences[practice.sentence_idx][wi].steps.first())
-            };
-            draw_keyboard(frame, chunks[3], step, pw.needs_space, next);
+        // Keyboard: all dark when errored, otherwise show target
+        if errored {
+            draw_keyboard(frame, chunks[3], 0, 0, false, false);
+        } else if let Some(step) = practice.current_step() {
+            draw_keyboard(frame, chunks[3],
+                step.target.right, step.target.left,
+                step.target.modkey, step.target.space);
         }
     }
-
-    // Result
-    let result = match last_result {
-        Some(true) => Span::styled(" Correct!", Style::default().fg(Color::Green)),
-        Some(false) => Span::styled(" Try again", Style::default().fg(Color::Red)),
-        None => Span::styled(" ", Style::default()),
-    };
-    frame.render_widget(Paragraph::new(Line::from(result)), chunks[4]);
-
-    // Stats
-    let pct = if attempts > 0 { correct as f64 / attempts as f64 * 100.0 } else { 0.0 };
-    frame.render_widget(
-        Paragraph::new(format!(
-            " Sentence {}/{}  |  Accuracy: {}/{} ({:.0}%)",
-            practice.sentence_idx + 1,
-            practice.sentences.len(),
-            correct, attempts, pct,
-        )).style(Style::default().fg(Color::DarkGray)),
-        chunks[5],
-    );
 }
 
-fn draw_keyboard(frame: &mut Frame, area: Rect, word: &ChordStep,
-                  needs_space: bool, next_step: Option<&ChordStep>) {
-    // Key labels: IPA consonant for each finger position
-    let left_ipa = ["k", "r", "n", "t"];   // pinky=k, ring=r, middle=n, index=t (bits 3,2,1,0)
-    let right_ipa = ["t", "n", "r", "k"];  // index=t, middle=n, ring=r, pinky=k (bits 0,1,2,3)
+fn draw_keyboard(
+    frame: &mut Frame,
+    area: Rect,
+    right_fingers: u8,
+    left_fingers: u8,
+    modkey: bool,
+    space: bool,
+) {
+    let left_labels = ["P", "R", "M", "I"];
+    let right_labels = ["I", "M", "R", "P"];
+
+    let target_style = Style::default().fg(Color::Black).bg(Color::White);
+    let dim_style = Style::default().fg(Color::DarkGray);
 
     let mut lines: Vec<Line> = Vec::new();
 
     lines.push(Line::from("  ┌─────┬─────┬─────┬─────┐  ┌─────┬─────┬─────┬─────┐"));
 
-    // Key row
     let mut row: Vec<Span> = vec![Span::raw("  ")];
-
-    // Which hand leads? mode 0,1 = right first; mode 2,3 = left first
-    let right_leads = word.mode < 2;
 
     for i in 0..4 {
         let bit = 3 - i;
-        let target = word.left_fingers & (1 << bit) != 0;
-        let style = target_style(target, word.mode, !right_leads);
+        let target = left_fingers & (1 << bit) != 0;
+        let style = if target { target_style } else { dim_style };
         row.push(Span::raw("│"));
-        row.push(Span::styled(format!("  {}  ", left_ipa[i]), style));
+        row.push(Span::styled(format!("  {}  ", left_labels[i]), style));
     }
     row.push(Span::raw("│  "));
 
     for i in 0..4 {
-        let bit = i;
-        let target = word.right_fingers & (1 << bit) != 0;
-        let style = target_style(target, word.mode, right_leads);
+        let target = right_fingers & (1 << i) != 0;
+        let style = if target { target_style } else { dim_style };
         row.push(Span::raw("│"));
-        row.push(Span::styled(format!("  {}  ", right_ipa[i]), style));
+        row.push(Span::styled(format!("  {}  ", right_labels[i]), style));
     }
     row.push(Span::raw("│"));
     lines.push(Line::from(row));
 
     lines.push(Line::from("  └─────┴─────┴─────┴─────┘  └─────┴─────┴─────┴─────┘"));
 
-    // Thumbs — static, just show what's needed
-    let cmd_style = if word.ctrl {
-        Style::default().fg(Color::Black).bg(Color::White)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
-    let space_style = if needs_space {
-        Style::default().fg(Color::Black).bg(Color::White)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
+    let mod_style = if modkey { target_style } else { dim_style };
+    let space_style = if space { target_style } else { dim_style };
 
     lines.push(Line::from(vec![
         Span::raw("         "),
-        Span::styled("  ⌘  ", cmd_style),
+        Span::styled("  ⌘  ", mod_style),
         Span::raw("  "),
         Span::styled("[space]", space_style),
     ]));
 
-    // Next chord preview in dark grey (if available)
-    if let Some(next) = next_step {
-        lines.push(Line::from("  ┌─────┬─────┬─────┬─────┐  ┌─────┬─────┬─────┬─────┐"));
-        let mut next_row: Vec<Span> = vec![Span::raw("  ")];
-        for i in 0..4 {
-            let bit = 3 - i;
-            let target = next.left_fingers & (1 << bit) != 0;
-            let style = if target {
-                Style::default().fg(Color::Rgb(60, 60, 60))
-            } else {
-                Style::default().fg(Color::Rgb(30, 30, 30))
-            };
-            next_row.push(Span::raw("│"));
-            next_row.push(Span::styled(format!("  {}  ", left_ipa[i]), style));
-        }
-        next_row.push(Span::raw("│  "));
-        for i in 0..4 {
-            let bit = i;
-            let target = next.right_fingers & (1 << bit) != 0;
-            let style = if target {
-                Style::default().fg(Color::Rgb(60, 60, 60))
-            } else {
-                Style::default().fg(Color::Rgb(30, 30, 30))
-            };
-            next_row.push(Span::raw("│"));
-            next_row.push(Span::styled(format!("  {}  ", right_ipa[i]), style));
-        }
-        next_row.push(Span::raw("│"));
-        lines.push(Line::from(next_row));
-        lines.push(Line::from("  └─────┴─────┴─────┴─────┘  └─────┴─────┴─────┴─────┘"));
-    }
-
     frame.render_widget(Paragraph::new(lines), area);
-}
-
-/// Static target display. No live key feedback.
-/// Bright = lead hand (press first). Dim = follow hand.
-fn target_style(target: bool, mode: u8, lead: bool) -> Style {
-    if !target {
-        return Style::default().fg(Color::DarkGray);
-    }
-    let color = match mode {
-        0 => if lead { Color::Red } else { Color::Rgb(100, 30, 30) },
-        1 => if lead { Color::Yellow } else { Color::Rgb(100, 100, 30) },
-        2 => if lead { Color::Green } else { Color::Rgb(30, 100, 30) },
-        _ => if lead { Color::Blue } else { Color::Rgb(30, 30, 100) },
-    };
-    Style::default().fg(Color::Black).bg(color)
 }
