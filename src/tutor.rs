@@ -7,9 +7,16 @@ use ratatui::widgets::*;
 
 use crate::chord_map::{BriefTable, Phoneme, PhonemeTable};
 use crate::hand::{Finger, Hand, KeyDirection, KeyEvent as RheKeyEvent, PhysicalKey, Thumb};
-use crate::input::iohid_backend::{IoHidInput, HidEvent};
+use crate::input::HidEvent;
+#[cfg(target_os = "macos")]
+use crate::input::iohid_backend::IoHidInput as GrabInput;
+#[cfg(target_os = "linux")]
+use crate::input::evdev_backend::EvdevInput as GrabInput;
 use crate::interpreter::Interpreter;
-use crate::output::macos::MacOSOutput;
+#[cfg(target_os = "macos")]
+use crate::output::macos::MacOSOutput as PlatformOutput;
+#[cfg(not(target_os = "macos"))]
+use crate::output::NullOutput as PlatformOutput;
 use crate::output::TextOutput;
 use crate::state_machine::StateMachine;
 use crate::table_gen::PhonemeDictionary;
@@ -133,7 +140,7 @@ impl Practice {
 // ─── Main loop ───
 
 pub fn run_tutor() {
-    let cmudict = std::fs::read_to_string("data/cmudict.dict").unwrap();
+    let cmudict = crate::data::load_cmudict();
     let lookup = WordLookup::new(&cmudict);
     let practice = build_practice(&lookup);
 
@@ -142,14 +149,14 @@ pub fn run_tutor() {
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout())).unwrap();
 
     let grab_enabled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
-    let input = IoHidInput::start_grab(grab_enabled).expect("failed to start key capture");
+    let input = GrabInput::start_grab(grab_enabled).expect("failed to start key capture");
 
     // Real output pipeline: same events → state machine → interpreter → text injection
     let mut sm = StateMachine::new();
-    let freq_data = std::fs::read_to_string("data/word_freq.txt").unwrap_or_default();
+    let freq_data = crate::data::load_word_freq();
     let dict = PhonemeDictionary::build(&cmudict, &freq_data);
     let mut interp = Interpreter::new(PhonemeTable::new(), BriefTable::new(), dict);
-    let output = MacOSOutput::new();
+    let output = PlatformOutput::new();
 
     let mut log: Vec<String> = Vec::new();
     let mut key_state = KeyState::default();

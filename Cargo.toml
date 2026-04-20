@@ -4,17 +4,35 @@ version = "0.0.0"
 edition = "2024"
 description = "Rhe — from Greek ῥέω (to flow). A first-principles stenography engine using temporal hand ordering."
 license = "MPL-2.0"
+repository = "https://github.com/nickspiker/rhe"
+homepage = "https://github.com/nickspiker/rhe"
+documentation = "https://github.com/nickspiker/rhe"
+readme = "README.md"
+keywords = ["stenography", "chording", "phonetic", "typing", "input"]
+categories = ["command-line-utilities"]
+exclude = [
+    "data/en_freq.txt",
+    "data/cmudict.dict",
+    "data/*.py",
+    "logo.png",
+    "tutor_debug.log",
+    "target/*",
+]
 
 [dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+ureq = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
 rdev = { version = "0.5", features = ["unstable_grab"] }
 tray-icon = "0.22"
 tao = "0.34"
-ratatui = "0.29"
-crossterm = "0.28"
-
-[target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.24"
 core-foundation = "0.10"
 foreign-types = "0.5"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]

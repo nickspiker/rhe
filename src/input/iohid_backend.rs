@@ -4,6 +4,7 @@
 //! No OS key repeat. No rdev.
 
 use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey, Thumb};
+use super::HidEvent;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -128,13 +129,6 @@ mod ffi {
     }
 
     pub const kCFStringEncodingUTF8: u32 = 0x08000100;
-}
-
-/// Events sent from HID callback to main thread.
-#[derive(Debug, Clone, Copy)]
-pub enum HidEvent {
-    Key(KeyEvent),
-    Quit,
 }
 
 /// Context passed to the HID callback.

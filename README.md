@@ -1,7 +1,7 @@
 # Rhe
 
 <p align="center">
-  <img src="logo.png" width="300" alt="Rhe">
+  <img src="https://raw.githubusercontent.com/nickspiker/rhe/main/logo.png" width="300" alt="Rhe">
 </p>
 
 From Greek *rheo* — to flow. A first-principles phonetic chord engine.

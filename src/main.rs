@@ -1,18 +1,23 @@
 mod briefs;
 mod chord_map;
 mod chord_state;
+mod data;
 mod hand;
 mod input;
 mod interpreter;
 mod output;
 mod state_machine;
 mod table_gen;
+#[cfg(target_os = "macos")]
 mod tray;
 mod tutor;
 mod word_lookup;
 
+#[cfg(target_os = "macos")]
 use input::KeyInput;
+#[cfg(target_os = "macos")]
 use std::sync::Arc;
+#[cfg(target_os = "macos")]
 use std::sync::atomic::AtomicBool;
 
 fn main() {
@@ -92,8 +97,8 @@ fn show_map() {
 }
 
 fn show_briefs() {
-    let cmudict = std::fs::read_to_string("data/cmudict.dict").unwrap();
-    let freq = std::fs::read_to_string("data/en_freq.txt").unwrap();
+    let cmudict = data::load_cmudict();
+    let freq = data::load_word_freq();
     let brief_table = briefs::generate_briefs(&cmudict, &freq);
     briefs::print_coverage(&brief_table, &freq);
 
@@ -127,6 +132,7 @@ fn show_briefs() {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn listen() {
     println!("rhe listen — press home row keys, ctrl-C to quit");
     println!("right hand = consonants | left hand = vowels | ⌘ = mod | space = word");
@@ -158,7 +164,14 @@ fn listen() {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
+fn listen() {
+    eprintln!("rhe listen: not yet supported on this platform.");
+    eprintln!("use `rhe tutor` to see chord recognition in action.");
+}
+
 /// Full engine with menu bar app.
+#[cfg(target_os = "macos")]
 fn run() {
     eprintln!("rhe — loading...");
 
@@ -166,10 +179,8 @@ fn run() {
     let enabled_engine = enabled.clone();
 
     std::thread::spawn(move || {
-        let cmudict = std::fs::read_to_string("data/cmudict.dict")
-            .expect("data/cmudict.dict not found — run from project root");
-        let freq = std::fs::read_to_string("data/en_freq.txt")
-            .expect("data/en_freq.txt not found — run from project root");
+        let cmudict = data::load_cmudict();
+        let freq = data::load_word_freq();
 
         let phoneme_table = chord_map::PhonemeTable::new();
         let dictionary = table_gen::PhonemeDictionary::build(&cmudict, &freq);
@@ -180,7 +191,6 @@ fn run() {
 
         eprintln!("rhe: ready. click menu bar icon to enable.");
 
-        #[cfg(target_os = "macos")]
         let out = output::macos::MacOSOutput::new();
 
         let mut input = input::rdev_backend::RdevInput::start_grab(enabled_engine)
@@ -220,4 +230,10 @@ fn run() {
     });
 
     tray::run_tray(enabled);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn run() {
+    eprintln!("rhe run: text injection is not yet supported on this platform.");
+    eprintln!("use `rhe tutor` to practice chords without emitting text.");
 }
