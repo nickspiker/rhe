@@ -32,6 +32,7 @@ fn main() {
         Some("run") => run(),
         Some("tutor") => tutor::run_tutor(),
         Some("rollover") => rollover_test(),
+        Some("bench") => tutor::run_bench(),
         _ => {
             println!("rhe v{}", env!("CARGO_PKG_VERSION"));
             println!();
@@ -41,6 +42,7 @@ fn main() {
             println!("  rhe listen    — show raw key events + chords");
             println!("  rhe run       — menu bar app + full engine");
             println!("  rhe tutor     — interactive typing tutor");
+            println!("  rhe bench     — measure chord speed per finger combo");
             println!("  rhe rollover  — test simultaneous key count");
         }
     }

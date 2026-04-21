@@ -956,3 +956,360 @@ fn draw_keyboard(
 
     frame.render_widget(Paragraph::new(lines), area);
 }
+
+// ─── Bench mode: measure chord speed per finger combo ───
+
+pub fn run_bench() {
+    terminal::enable_raw_mode().unwrap();
+    io::stdout().execute(EnterAlternateScreen).unwrap();
+    let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout())).unwrap();
+
+    let grab_enabled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let input = GrabInput::start_grab(grab_enabled).expect("failed to start key capture");
+
+    let mut key_state = KeyState::default();
+
+    use std::time::{Instant, SystemTime};
+    use std::collections::HashMap;
+
+    let mut right_chords: Vec<u8> = (1..32u8).collect(); // 1-31 (5 bits)
+    let mut left_chords: Vec<u8> = (1..16u8).collect();  // 1-15 (4 bits)
+
+    let mut seed = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos();
+
+    // Build sequence: all right-hand chords shuffled, then all left-hand shuffled
+    fn build_round(right: &mut Vec<u8>, left: &mut Vec<u8>, seed: &mut u32) -> Vec<(char, u8)> {
+        shuffle(right, *seed);
+        *seed = seed.wrapping_mul(2654435761);
+        shuffle(left, *seed);
+        *seed = seed.wrapping_mul(2654435761);
+
+        let mut seq = Vec::new();
+        for &r in right.iter() {
+            seq.push(('R', r));
+        }
+        for &l in left.iter() {
+            seq.push(('L', l));
+        }
+        seq
+    }
+
+    let mut test_seq = build_round(&mut right_chords, &mut left_chords, &mut seed);
+    let total = test_seq.len();
+    let mut all_results: Vec<(char, u8, u128)> = Vec::new();
+    let mut current = 0;
+    let mut round = 1;
+    let mut phase = BenchPhase::WaitChord;
+    let mut chord_start = Instant::now();
+    let mut accum: u8 = 0; // accumulated bits for target hand since chord started
+
+    // Initial draw
+    terminal
+        .draw(|f| draw_bench(f, &test_seq, current, total, &all_results, &key_state, &phase, round))
+        .ok();
+
+    loop {
+        let hid_event = match input.rx.recv() {
+            Ok(ev) => ev,
+            Err(_) => break,
+        };
+        let rhe_event = match hid_event {
+            HidEvent::Quit => break,
+            HidEvent::Key(ev) => ev,
+        };
+
+        update_key_state(&mut key_state, &rhe_event);
+
+        let all_off = key_state.right_bits() == 0 && key_state.left_bits() == 0 && !key_state.word;
+
+        if current >= total {
+            // Round complete — reshuffle and start next round
+            if all_off {
+                test_seq = build_round(&mut right_chords, &mut left_chords, &mut seed);
+                current = 0;
+                round += 1;
+                chord_start = Instant::now();
+                accum = 0;
+                phase = BenchPhase::WaitChord;
+            }
+            terminal
+                .draw(|f| draw_bench(f, &test_seq, current, total, &all_results, &key_state, &phase, round))
+                .ok();
+            continue;
+        }
+
+        let (hand, target_bits) = test_seq[current];
+
+        // Accumulate bits on key-down for target hand
+        if phase == BenchPhase::Timing && rhe_event.direction == KeyDirection::Down {
+            match (hand, rhe_event.key) {
+                ('R', PhysicalKey::Finger(Hand::Right, _)) => {
+                    accum |= key_state.right_bits();
+                }
+                ('L', PhysicalKey::Finger(Hand::Left, _)) => {
+                    accum |= key_state.left_bits();
+                }
+                _ => {}
+            }
+        }
+
+        match phase {
+            BenchPhase::WaitClean => {
+                // Error recovery: wait for all keys off, then restart
+                if all_off {
+                    chord_start = Instant::now();
+                    accum = 0;
+                    phase = BenchPhase::WaitChord;
+                }
+            }
+            BenchPhase::WaitChord => {
+                // Clock is running. First key down → start accumulating.
+                if rhe_event.direction == KeyDirection::Down && rhe_event.key != PhysicalKey::Word {
+                    // Accumulate this first press
+                    match (hand, rhe_event.key) {
+                        ('R', PhysicalKey::Finger(Hand::Right, _)) => {
+                            accum |= key_state.right_bits();
+                        }
+                        ('L', PhysicalKey::Finger(Hand::Left, _)) => {
+                            accum |= key_state.left_bits();
+                        }
+                        _ => {}
+                    }
+                    phase = BenchPhase::Timing;
+                }
+            }
+            BenchPhase::Timing => {
+                // All keys off → chord complete. Check accumulated bits.
+                if all_off {
+                    if accum == target_bits {
+                        // Correct chord — save time (includes any fumble time), advance
+                        let elapsed = chord_start.elapsed().as_millis();
+                        all_results.push((hand, target_bits, elapsed));
+                        current += 1;
+                        // Reset clock for next chord
+                        chord_start = Instant::now();
+                        phase = BenchPhase::WaitChord;
+                    }
+                    // Wrong chord — reset accum, clock keeps running, try again
+                    accum = 0;
+                }
+            }
+            BenchPhase::WaitRelease => {}
+        }
+
+        terminal
+            .draw(|f| draw_bench(f, &test_seq, current, total, &all_results, &key_state, &phase, round))
+            .ok();
+    }
+
+    terminal::disable_raw_mode().ok();
+    io::stdout().execute(LeaveAlternateScreen).ok();
+
+    // Dump results
+    if !all_results.is_empty() {
+        // Average times per chord across all rounds
+        let mut totals: HashMap<(char, u8), (u128, u32)> = HashMap::new();
+        for &(hand, bits, ms) in &all_results {
+            let entry = totals.entry((hand, bits)).or_insert((0, 0));
+            entry.0 += ms;
+            entry.1 += 1;
+        }
+        let mut averages: Vec<(char, u8, u128, u32)> = totals
+            .iter()
+            .map(|(&(h, b), &(total, count))| (h, b, total / count as u128, count))
+            .collect();
+
+        println!("\nChord benchmark — {} rounds, {} total measurements",
+            round - 1, all_results.len());
+        println!("{:<6} {:<8} {:<8} {:<6}", "Hand", "Chord", "Avg ms", "N");
+        println!("{}", "─".repeat(32));
+
+        println!("\n--- Right hand (fastest → slowest) ---");
+        let mut right_avg: Vec<_> = averages.iter().filter(|(h, _, _, _)| *h == 'R').collect();
+        right_avg.sort_by_key(|&&(_, _, avg, _)| avg);
+        for &&(_, bits, avg, count) in &right_avg {
+            println!("  {:05b}  {:<8}  {}ms  (n={})", bits, chord_label_right(bits), avg, count);
+        }
+
+        println!("\n--- Left hand (fastest → slowest) ---");
+        let mut left_avg: Vec<_> = averages.iter().filter(|(h, _, _, _)| *h == 'L').collect();
+        left_avg.sort_by_key(|&&(_, _, avg, _)| avg);
+        for &&(_, bits, avg, count) in &left_avg {
+            println!("  {:04b}  {:<8}  {}ms  (n={})", bits, chord_label_left(bits), avg, count);
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum BenchPhase {
+    WaitClean,
+    WaitChord,
+    Timing,
+    WaitRelease,
+}
+
+fn shuffle(v: &mut Vec<u8>, mut seed: u32) {
+    for i in (1..v.len()).rev() {
+        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+        let j = (seed as usize) % (i + 1);
+        v.swap(i, j);
+    }
+}
+
+fn chord_label_right(bits: u8) -> String {
+    let names = ["I", "M", "R", "P", "T"];
+    (0..5)
+        .filter(|&i| bits & (1 << i) != 0)
+        .map(|i| names[i])
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+fn chord_label_left(bits: u8) -> String {
+    let names = ["I", "M", "R", "P"];
+    (0..4)
+        .filter(|&i| bits & (1 << i) != 0)
+        .map(|i| names[i])
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+fn draw_bench(
+    frame: &mut Frame,
+    test_seq: &[(char, u8)],
+    current: usize,
+    total: usize,
+    results: &[(char, u8, u128)],
+    key_state: &KeyState,
+    phase: &BenchPhase,
+    round: usize,
+) {
+    let area = frame.area();
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),  // title
+            Constraint::Length(3),  // progress (same slot as sentence)
+            Constraint::Length(4),  // target detail (same slot as word detail)
+            Constraint::Length(11), // keyboard (same as tutor)
+            Constraint::Min(0),    // recent results
+        ])
+        .split(area);
+
+    // Title
+    frame.render_widget(
+        Paragraph::new(" rhe bench  [Esc to quit]").style(Style::default().fg(Color::Cyan)),
+        chunks[0],
+    );
+
+    // Progress bar area (where sentence normally goes)
+    let measured = results.len();
+    let progress_text = if current >= total {
+        format!(" Round {} complete! {} total measurements. Release all for next round, Esc to exit.", round - 1, measured)
+    } else {
+        format!(" Round {} — chord {}/{}  ({} total)", round, current + 1, total, measured)
+    };
+    frame.render_widget(
+        Paragraph::new(progress_text)
+            .style(Style::default().fg(Color::Gray))
+            .block(Block::default().borders(Borders::BOTTOM)),
+        chunks[1],
+    );
+
+    // Target detail (where word detail normally goes)
+    if current < total {
+        let (hand, bits) = test_seq[current];
+        let hand_name = if hand == 'R' { "RIGHT" } else { "LEFT" };
+        let label = if hand == 'R' {
+            chord_label_right(bits)
+        } else {
+            chord_label_left(bits)
+        };
+        let phase_str = match phase {
+            BenchPhase::WaitClean => "release all keys",
+            BenchPhase::WaitChord => "press now!",
+            BenchPhase::Timing => "...",
+            BenchPhase::WaitRelease => "release",
+        };
+
+        let lines = vec![
+            Line::from(vec![
+                Span::styled(" ", Style::default()),
+                Span::styled(
+                    format!("{} hand: {}", hand_name, label),
+                    Style::default().fg(Color::White).bold(),
+                ),
+            ]),
+            Line::from(vec![Span::styled(
+                format!(" {}", phase_str),
+                Style::default().fg(Color::Gray),
+            )]),
+        ];
+        frame.render_widget(
+            Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" Target ")),
+            chunks[2],
+        );
+    } else {
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(Span::styled(
+                    " Complete!",
+                    Style::default().fg(Color::White).bold(),
+                )),
+                Line::from(Span::styled(
+                    " Results printed on exit",
+                    Style::default().fg(Color::Gray),
+                )),
+            ])
+            .block(Block::default().borders(Borders::ALL).title(" Target ")),
+            chunks[2],
+        );
+    }
+
+    // Keyboard — same as tutor
+    if current < total {
+        let (hand, bits) = test_seq[current];
+        let (tr, tl) = match hand {
+            'R' => (bits, 0u8),
+            _ => (0u8, bits),
+        };
+        draw_keyboard(
+            frame,
+            chunks[3],
+            tr,
+            tl,
+            false,
+            key_state.right_bits(),
+            key_state.left_bits(),
+            key_state.word,
+        );
+    } else {
+        draw_keyboard(frame, chunks[3], 0, 0, false, 0, 0, false);
+    }
+
+    // Recent results (bottom area)
+    if !results.is_empty() {
+        let recent: Vec<String> = results
+            .iter()
+            .rev()
+            .take(8)
+            .map(|(hand, bits, ms)| {
+                let label = if *hand == 'R' {
+                    format!("R {:<10}", chord_label_right(*bits))
+                } else {
+                    format!("L {:<10}", chord_label_left(*bits))
+                };
+                format!("  {} {}ms", label, ms)
+            })
+            .collect();
+        frame.render_widget(
+            Paragraph::new(recent.join("\n"))
+                .block(Block::default().borders(Borders::TOP).title(" Recent ")),
+            chunks[4],
+        );
+    }
+}
