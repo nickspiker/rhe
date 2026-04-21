@@ -134,15 +134,36 @@ fn finger_effort(bits: u8) -> u32 {
     finger_cost + gap_penalty + weight
 }
 
+/// Measured finger combo effort (from bench data, averaged across hands).
+/// Lower = faster. Returns milliseconds as effort proxy.
+fn finger_combo_effort(bits: u8) -> u32 {
+    match bits {
+        0b0000 => 0,
+        0b0001 => 668,  // index
+        0b0100 => 703,  // ring
+        0b1000 => 721,  // pinky
+        0b0010 => 739,  // middle
+        0b1111 => 784,  // all four
+        0b0110 => 754,  // middle+ring
+        0b0011 => 843,  // index+middle
+        0b0111 => 809,  // index+middle+ring
+        0b1001 => 895,  // index+pinky
+        0b0101 => 913,  // index+ring
+        0b1100 => 950,  // ring+pinky
+        0b1110 => 992,  // middle+ring+pinky
+        0b1010 => 1099, // middle+pinky
+        0b1101 => 1254, // index+ring+pinky
+        0b1011 => 1516, // index+middle+pinky
+        _ => 2000,      // shouldn't happen
+    }
+}
+
 /// Total effort for a chord (right 5-bit, left 4-bit).
-/// Mod (bit4 of right) adds cost since it uses the thumb.
+/// Thumb (bit4) adds ~200ms penalty (measured average overhead).
 fn chord_effort(right: u8, left: u8) -> u32 {
-    let mod_cost = if right & 0b10000 != 0 { 3 } else { 0 };
+    let mod_cost = if right & 0b10000 != 0 { 200 } else { 0 };
     let right_fingers = right & 0xF;
-    // A chord must have at least one side nonzero to be useful
-    let r = finger_effort(right_fingers);
-    let l = finger_effort(left);
-    r + l + mod_cost
+    finger_combo_effort(right_fingers) + finger_combo_effort(left) + mod_cost
 }
 
 /// Return all valid chord slots (right, left) sorted by ergonomic ease.
@@ -324,6 +345,21 @@ fn main() {
         if FRAGMENTS.contains(&word.as_str()) {
             continue;
         }
+        // Skip proper nouns (names from subtitle corpus)
+        const NAMES: &[&str] = &[
+            "jesus", "michael", "david", "frank", "charlie",
+            "jack", "john", "george", "sam", "harry", "joe",
+            "tom", "bob", "henry", "alex", "nick", "max",
+            "ben", "dan", "tony", "tommy", "jimmy", "johnny",
+            "bobby", "danny", "brian", "mary", "sarah", "anna",
+            "elizabeth", "peter", "james", "paul", "richard",
+            "robert", "bill", "mike", "ray", "eddie", "leo",
+            "steve", "chris", "matt", "mark", "scott", "eric",
+            "grace", "emma", "kate", "rachel", "sophie", "lily",
+        ];
+        if NAMES.contains(&word.as_str()) {
+            continue;
+        }
         if let Some(phs) = cmu.get(word) {
             top_words.push((word.clone(), *count, phs.clone()));
         }
@@ -345,12 +381,14 @@ fn main() {
     struct WordInfo {
         word: String,
         #[allow(dead_code)]
-        rank: usize, // 0-based frequency rank
+        rank: usize,
         natural_right: u8,
         natural_left: u8,
         first_consonant: String,
         first_vowel: String,
-        value: f64, // frequency * (phoneme_count - 1)
+        phoneme_count: usize,
+        value_right_only: f64, // frequency * (phonemes - 1)
+        value_two_hand: f64,   // frequency * (phonemes - 2)
     }
 
     let mut words: Vec<WordInfo> = Vec::new();
@@ -371,8 +409,12 @@ fn main() {
             .filter(|p| is_consonant_phoneme(p) || is_vowel_phoneme(p))
             .count();
 
-        // Value = frequency * (phoneme_count - 1): how much time a roll saves
-        let value = *count as f64 * (phoneme_count.saturating_sub(1) as f64);
+        // Value depends on slot type:
+        //   right-only slot: saved = phoneme_count - 1
+        //   two-hand slot:   saved = phoneme_count - 2
+        // We compute both; assignment phase picks the right one.
+        let value_right_only = *count as f64 * (phoneme_count.saturating_sub(1) as f64);
+        let value_two_hand = *count as f64 * (phoneme_count.saturating_sub(2) as f64);
 
         words.push(WordInfo {
             word: word.clone(),
@@ -381,22 +423,20 @@ fn main() {
             natural_left: left,
             first_consonant: first_cons.unwrap_or("-").to_string(),
             first_vowel: first_vow.unwrap_or("-").to_string(),
-            value,
+            phoneme_count,
+            value_right_only,
+            value_two_hand,
         });
     }
 
-    // Sort by value for ergonomic assignment (highest value = most deserving of fast slot)
-    words.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
-
     // 5. Assignment
     //
-    // Phase 0: Pinned overrides (hand-curated, never moved).
-    // Phase A: Top 50 get ergonomic overrides (best slots regardless of phoneme).
-    // Phase B: Remaining words get natural slots; collisions resolved by bumping.
+    // Phase 0: Pinned overrides.
+    // Phase A: Right-only slots (left=0) for words with 2+ phonemes, by value_right_only.
+    // Phase B: Two-hand slots for words with 3+ phonemes, by value_two_hand.
+    // Words with value=0 are skipped (no savings from a brief).
 
     // ─── PINNED OVERRIDES ───
-    // Edit these to lock specific words to specific chords.
-    // Format: (right_5bits, left_4bits, "word")
     let pinned: &[(u8, u8, &str)] = &[
         (0b10000, 0b0000, "the"),   // fastest slot (mod only) for most common word
     ];
@@ -404,7 +444,6 @@ fn main() {
     let all_slots = all_slots_by_effort();
     let mut occupied: HashSet<(u8, u8)> = HashSet::new();
     let mut assigned_words: HashSet<String> = HashSet::new();
-    // (right, left) → (word, comment)
     let mut assignments: Vec<(u8, u8, String, String)> = Vec::new();
 
     // Phase 0: pinned
@@ -414,97 +453,102 @@ fn main() {
         assignments.push((right, left, word.to_string(), "pinned".into()));
     }
 
-    // Phase A: ergonomic top 50 (skip already-pinned words)
-    let top_n = 50;
-    let mut ergo_count = 0;
-    for w in &words {
-        if ergo_count >= top_n {
-            break;
-        }
-        if assigned_words.contains(&w.word) {
-            continue;
-        }
-        // Find easiest unoccupied slot
-        let slot = all_slots
-            .iter()
-            .find(|s| !occupied.contains(s))
-            .copied()
-            .expect("ran out of slots");
-        occupied.insert(slot);
+    // Phase A: right-only slots (left=0) — 2+ phoneme words, sorted by value_right_only
+    let right_only_slots: Vec<(u8, u8)> = all_slots
+        .iter()
+        .filter(|&&(r, l)| r != 0 && l == 0 && !occupied.contains(&(r, l)))
+        .copied()
+        .collect();
+
+    let mut words_for_right: Vec<&WordInfo> = words
+        .iter()
+        .filter(|w| w.value_right_only > 0.0 && !assigned_words.contains(&w.word))
+        .collect();
+    words_for_right.sort_by(|a, b| b.value_right_only.partial_cmp(&a.value_right_only).unwrap());
+
+    for (slot, w) in right_only_slots.iter().zip(words_for_right.iter()) {
+        occupied.insert(*slot);
         assigned_words.insert(w.word.clone());
-        ergo_count += 1;
         let comment = format!(
-            "ergo #{} val={:.0} (natural: {}+{})",
-            ergo_count,
-            w.value,
-            w.first_consonant,
-            w.first_vowel
+            "R-only val={:.0} {}ph ({}+{})",
+            w.value_right_only, w.phoneme_count, w.first_consonant, w.first_vowel
         );
         assignments.push((slot.0, slot.1, w.word.clone(), comment));
     }
 
-    // Phase B: remaining words, natural slot first, then nearest
-    for w in &words {
-        if assigned_words.contains(&w.word) {
-            continue;
-        }
-        let nat = (w.natural_right, w.natural_left);
+    eprintln!("  Phase A: {} right-only briefs", assignments.len() - 1); // minus pinned
 
-        if nat.0 == 0 && nat.1 == 0 {
-            if let Some(slot) = all_slots.iter().find(|s| !occupied.contains(s)).copied() {
-                occupied.insert(slot);
-                assigned_words.insert(w.word.clone());
-                assignments.push((slot.0, slot.1, w.word.clone(), "no phoneme match".into()));
-            }
-            continue;
-        }
+    // Phase B: two-hand slots (left!=0, right!=0) — 3+ phoneme words, sorted by value_two_hand
+    // Then fill remaining slots with 2-phoneme words that didn't get right-only slots
+    let two_hand_slots: Vec<(u8, u8)> = all_slots
+        .iter()
+        .filter(|&&(r, l)| r != 0 && l != 0 && !occupied.contains(&(r, l)))
+        .copied()
+        .collect();
 
-        // Left-only natural slots are reserved for suffixes — bump these words
-        if nat.0 == 0 && nat.1 != 0 {
-            let slot = find_nearest_slot(nat, &occupied, &all_slots);
-            if let Some(slot) = slot {
-                occupied.insert(slot);
-                assigned_words.insert(w.word.clone());
-                let comment = format!(
-                    "bumped from -+{} → {}+{}",
-                    left_label(nat.1),
-                    right_label(slot.0),
-                    left_label(slot.1),
-                );
-                assignments.push((slot.0, slot.1, w.word.clone(), comment));
-            }
-            continue;
-        }
+    let mut words_for_two: Vec<&WordInfo> = words
+        .iter()
+        .filter(|w| !assigned_words.contains(&w.word))
+        .collect();
+    // Sort: 3+ phoneme words by value_two_hand first, then remaining by value_right_only
+    words_for_two.sort_by(|a, b| {
+        let a_val = if a.phoneme_count >= 3 { a.value_two_hand } else { 0.0 };
+        let b_val = if b.phoneme_count >= 3 { b.value_two_hand } else { 0.0 };
+        b_val.partial_cmp(&a_val).unwrap()
+    });
 
-        if !occupied.contains(&nat) {
-            occupied.insert(nat);
-            assigned_words.insert(w.word.clone());
-            let comment = format!("{}+{}", w.first_consonant, w.first_vowel);
-            assignments.push((nat.0, nat.1, w.word.clone(), comment));
-        } else {
-            // Bumped — find nearest unoccupied slot
-            // Priority: same consonant different vowel, then same vowel different consonant,
-            // then anything by effort
-            let slot = find_nearest_slot(nat, &occupied, &all_slots);
-            if let Some(slot) = slot {
-                occupied.insert(slot);
-                let comment = format!(
-                    "bumped from {}+{} → {}+{}",
-                    right_label(nat.0),
-                    left_label(nat.1),
-                    right_label(slot.0),
-                    left_label(slot.1),
-                );
-                assignments.push((slot.0, slot.1, w.word.clone(), comment));
-            }
-            // else: no slot available, word dropped
+    let phase_b_start = assignments.len();
+    for (slot, w) in two_hand_slots.iter().zip(words_for_two.iter()) {
+        if w.phoneme_count < 3 && w.value_two_hand <= 0.0 {
+            break; // no more words worth assigning to two-hand slots
         }
+        occupied.insert(*slot);
+        assigned_words.insert(w.word.clone());
+        let saved = w.phoneme_count.saturating_sub(2);
+        let comment = format!(
+            "val={:.0} {}ph save={} ({}+{})",
+            w.value_two_hand, w.phoneme_count, saved, w.first_consonant, w.first_vowel
+        );
+        assignments.push((slot.0, slot.1, w.word.clone(), comment));
     }
 
-    // Sort assignments by frequency rank (we stored them in order, but let's sort
-    // by the word's position in the original list for nice grouping)
-    // Actually, let's sort by effort for readability
-    assignments.sort_by_key(|(r, l, _, _)| chord_effort(*r, *l));
+    eprintln!("  Phase B: {} two-hand briefs", assignments.len() - phase_b_start);
+
+    // Phase C: fill remaining two-hand slots with leftover words (value > 0)
+    let remaining_slots: Vec<(u8, u8)> = all_slots
+        .iter()
+        .filter(|s| !occupied.contains(s) && s.0 != 0 && s.1 != 0)
+        .copied()
+        .collect();
+
+    let mut leftover_words: Vec<&WordInfo> = words
+        .iter()
+        .filter(|w| !assigned_words.contains(&w.word) && w.phoneme_count >= 2)
+        .collect();
+    leftover_words.sort_by(|a, b| b.value_right_only.partial_cmp(&a.value_right_only).unwrap());
+
+    let phase_c_start = assignments.len();
+    for (slot, w) in remaining_slots.iter().zip(leftover_words.iter()) {
+        occupied.insert(*slot);
+        assigned_words.insert(w.word.clone());
+        let comment = format!(
+            "fill val={:.0} {}ph ({}+{})",
+            w.value_right_only, w.phoneme_count, w.first_consonant, w.first_vowel
+        );
+        assignments.push((slot.0, slot.1, w.word.clone(), comment));
+    }
+
+    eprintln!("  Phase C: {} fill briefs", assignments.len() - phase_c_start);
+
+    // Sort: pinned first, then right-only by effort, then two-hand by effort
+    assignments.sort_by_key(|(r, l, _, comment)| {
+        let is_pinned = comment == "pinned";
+        let is_right_only = *l == 0 && !is_pinned;
+        let effort = chord_effort(*r, *l);
+        // pinned=0, right-only=1, two-hand=2, then by effort within each group
+        let group = if is_pinned { 0u32 } else if is_right_only { 1 } else { 2 };
+        (group, effort)
+    });
 
     // 6. Write output
     let mut out = String::new();

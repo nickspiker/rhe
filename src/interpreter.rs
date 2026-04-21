@@ -124,10 +124,10 @@ mod tests {
     fn phoneme_mode_cat() {
         let mut interp = setup();
 
-        // k = right ring (0100), space held
-        interp.process(&Event::Chord(make_chord(0b0100, 0, false, true)));
-        // æ = left pinky (1000), space held
-        interp.process(&Event::Chord(make_chord(0, 0b1000, false, true)));
+        // k = right index+middle (0011), space held
+        interp.process(&Event::Chord(make_chord(0b0011, 0, false, true)));
+        // æ = left index+middle (0011), space held
+        interp.process(&Event::Chord(make_chord(0, 0b0011, false, true)));
         // t = right index (0001), space held
         interp.process(&Event::Chord(make_chord(0b0001, 0, false, true)));
 

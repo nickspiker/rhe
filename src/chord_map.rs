@@ -177,51 +177,58 @@ impl Phoneme {
     }
 
     /// The ChordKey for this phoneme.
+    ///
+    /// Mapped by frequency × measured chord effort from bench data.
+    /// Each finger combo appears twice: without mod (top 15) and with mod (next 9).
+    /// Easiest combo = most frequent phoneme.
+    ///
+    /// Effort ranking (measured): I < R < P < M < all4 < M+R < I+M < I+M+R
+    ///   < I+P < I+R < R+P < M+R+P < M+P < I+R+P < I+M+P
     pub fn chord_key(self) -> ChordKey {
         use Phoneme::*;
         let (right, left, modkey) = match self {
-            // Consonants: right hand, no mod
-            T => (0b0001, 0, false),
-            S => (0b0010, 0, false),
-            K => (0b0100, 0, false),
-            P => (0b1000, 0, false),
-            N => (0b0011, 0, false),
-            R => (0b0101, 0, false),
-            L => (0b0110, 0, false),
-            H => (0b0111, 0, false),
-            F => (0b1001, 0, false),
-            W => (0b1010, 0, false),
-            Th => (0b1100, 0, false),
-            Sh => (0b1011, 0, false),
-            Ch => (0b1101, 0, false),
-            Ng => (0b1110, 0, false),
-            Y => (0b1111, 0, false),
-            // Consonants: right hand, with mod (voiced pairs)
-            D => (0b0001, 0, true),
-            Z => (0b0010, 0, true),
-            G => (0b0100, 0, true),
-            B => (0b1000, 0, true),
-            M => (0b0011, 0, true),
-            Dh => (0b0101, 0, true),
-            V => (0b1001, 0, true),
-            Zh => (0b1011, 0, true),
-            Jh => (0b1101, 0, true),
-            // Vowels: left hand, no mod
-            Ah => (0, 0b0001, false),
-            Ih => (0, 0b0010, false),
-            Eh => (0, 0b0100, false),
-            Ae => (0, 0b1000, false),
-            Iy => (0, 0b0011, false),
-            Aa => (0, 0b0101, false),
-            Ey => (0, 0b0110, false),
-            Er => (0, 0b0111, false),
-            Ay => (0, 0b1001, false),
-            Ow => (0, 0b1010, false),
-            Ao => (0, 0b1100, false),
-            Uw => (0, 0b1011, false),
-            Aw => (0, 0b1101, false),
-            Uh => (0, 0b1110, false),
-            Oy => (0, 0b1111, false),
+            // Consonants: right hand, no mod (top 15 by frequency)
+            T  => (0b0001, 0, false), // rank 1, 165M, index
+            S  => (0b0100, 0, false), // rank 3, 110M, ring
+            D  => (0b1000, 0, false), // rank 5, 87M, pinky
+            R  => (0b0010, 0, false), // rank 4, 91M, middle (swapped w/ D by freq pair)
+            M  => (0b1111, 0, false), // rank 7 (but paired), all4
+            L  => (0b0110, 0, false), // rank 6 (paired), middle+ring
+            K  => (0b0011, 0, false), // rank 8 (paired), index+middle
+            Dh => (0b0111, 0, false), // rank 9, index+middle+ring
+            W  => (0b1001, 0, false), // rank 10, index+pinky
+            Z  => (0b0101, 0, false), // rank 11, index+ring
+            Y  => (0b1100, 0, false), // rank 12, ring+pinky
+            H  => (0b1110, 0, false), // rank 13, middle+ring+pinky
+            F  => (0b1010, 0, false), // rank 15 (paired), middle+pinky — spare area starts
+            B  => (0b1101, 0, false), // rank 14 (paired), index+ring+pinky
+            P  => (0b1011, 0, false), // rank 16 (paired), index+middle+pinky
+            // Consonants: right hand, with mod (next 9 by frequency)
+            N  => (0b0001, 0, true),  // rank 2, 141M, index+mod
+            V  => (0b0100, 0, true),  // rank 17, ring+mod
+            Ng => (0b1000, 0, true),  // rank 18, pinky+mod
+            G  => (0b0010, 0, true),  // rank 19, middle+mod
+            Sh => (0b1111, 0, true),  // rank 20, all4+mod
+            Th => (0b0110, 0, true),  // rank 21, middle+ring+mod
+            Jh => (0b0011, 0, true),  // rank 22, index+middle+mod
+            Ch => (0b0111, 0, true),  // rank 23, index+middle+ring+mod
+            Zh => (0b1001, 0, true),  // rank 24, index+pinky+mod
+            // Vowels: left hand, no mod (all 15 by frequency)
+            Ah => (0, 0b0001, false), // rank 1, 182M, index
+            Ih => (0, 0b0100, false), // rank 2, 126M, ring
+            Iy => (0, 0b1000, false), // rank 3, 85M, pinky
+            Eh => (0, 0b0010, false), // rank 4, 77M, middle
+            Uw => (0, 0b1111, false), // rank 5, 68M, all4
+            Ay => (0, 0b0110, false), // rank 6, 64M, middle+ring
+            Ae => (0, 0b0011, false), // rank 7, 59M, index+middle
+            Aa => (0, 0b0111, false), // rank 8, 52M, index+middle+ring
+            Er => (0, 0b1001, false), // rank 9, 44M, index+pinky
+            Ow => (0, 0b0101, false), // rank 10, 40M, index+ring
+            Ey => (0, 0b1100, false), // rank 11, 36M, ring+pinky
+            Ao => (0, 0b1110, false), // rank 12, 36M, middle+ring+pinky
+            Aw => (0, 0b1010, false), // rank 13, 17M, middle+pinky
+            Uh => (0, 0b1101, false), // rank 14, 11M, index+ring+pinky
+            Oy => (0, 0b1011, false), // rank 15, 2M, index+middle+pinky
         };
         ChordKey(right as u16 | (left as u16) << 4 | if modkey { 1u16 << 8 } else { 0 })
     }

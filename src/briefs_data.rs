@@ -8,500 +8,500 @@
 /// Note: binary literals read right-to-left (LSB first), so
 /// 0b0110 = middle+ring, NOT ring+middle. Index is always the rightmost bit.
 pub const BRIEFS: &[(u8, u8, &str)] = &[
-    (0b0000, 0b00001, "you"),               // ergo #1 val=28787591 (natural: Y+UW)
-    (0b0000, 0b00010, "and"),               // ergo #2 val=21145876 (natural: N+AH)
-    (0b0000, 0b00100, "that"),              // ergo #3 val=20407484 (natural: DH+AE)
-    (0b0001, 0b00001, "to"),                // ergo #4 val=17099834 (natural: T+UW)
-    (0b0010, 0b00001, "what"),              // ergo #5 val=13800328 (natural: W+AH)
-    (0b0001, 0b00010, "it"),                // ergo #6 val=13631703 (natural: T+IH)
-    (0b0010, 0b00010, "this"),              // ergo #7 val=11479576 (natural: DH+IH)
     (0b0000, 0b10000, "the"),               // pinned
-    (0b0000, 0b01000, "for"),               // ergo #8 val=10348120 (natural: F+AO)
-    (0b0100, 0b00001, "just"),              // ergo #9 val=10003176 (natural: JH+AH)
-    (0b0100, 0b00010, "have"),              // ergo #10 val=9528020 (natural: HH+AE)
-    (0b0000, 0b00011, "your"),              // ergo #11 val=9221890 (natural: Y+AO)
-    (0b0001, 0b00100, "of"),                // ergo #12 val=8915110 (natural: V+AH)
-    (0b0010, 0b00100, "not"),               // ergo #13 val=8524546 (natural: N+AA)
-    (0b1000, 0b00001, "can"),               // ergo #14 val=7652236 (natural: K+AE)
-    (0b1000, 0b00010, "with"),              // ergo #15 val=7613954 (natural: W+IH)
-    (0b0100, 0b00100, "about"),             // ergo #16 val=7462044 (natural: B+AH)
-    (0b0000, 0b00110, "is"),                // ergo #17 val=7400675 (natural: Z+IH)
-    (0b0001, 0b01000, "in"),                // ergo #18 val=7337058 (natural: N+IH)
-    (0b0010, 0b01000, "but"),               // ergo #19 val=7262924 (natural: B+AH)
-    (0b0001, 0b10000, "we"),                // ergo #20 val=6755687 (natural: W+IY)
-    (0b0010, 0b10000, "me"),                // ergo #21 val=6444985 (natural: M+IY)
-    (0b0000, 0b10001, "there"),             // ergo #22 val=6297056 (natural: DH+EH)
-    (0b0000, 0b10010, "here"),              // ergo #23 val=6277182 (natural: HH+IY)
-    (0b0011, 0b00001, "like"),              // ergo #24 val=5966054 (natural: L+AY)
-    (0b0011, 0b00010, "want"),              // ergo #25 val=5852535 (natural: W+AA)
-    (0b0001, 0b00011, "get"),               // ergo #26 val=5766386 (natural: G+EH)
-    (0b0010, 0b00011, "think"),             // ergo #27 val=5518419 (natural: TH+IH)
-    (0b1000, 0b00100, "he"),                // ergo #28 val=5516364 (natural: HH+IY)
-    (0b0000, 0b00101, "something"),         // ergo #29 val=5193190 (natural: S+AH)
-    (0b0100, 0b01000, "right"),             // ergo #30 val=5153642 (natural: R+AY)
-    (0b0100, 0b10000, "from"),              // ergo #31 val=5128746 (natural: F+AH)
-    (0b0000, 0b10100, "my"),                // ergo #32 val=4938948 (natural: M+AY)
-    (0b0110, 0b00001, "him"),               // ergo #33 val=4862118 (natural: HH+IH)
-    (0b0110, 0b00010, "on"),                // ergo #34 val=4821861 (natural: N+AA)
-    (0b0100, 0b00011, "one"),               // ergo #35 val=4527912 (natural: W+AH)
-    (0b0011, 0b00100, "do"),                // ergo #36 val=4419883 (natural: D+UW)
-    (0b0001, 0b00110, "come"),              // ergo #37 val=4407838 (natural: K+AH)
-    (0b0010, 0b00110, "no"),                // ergo #38 val=4374975 (natural: N+OW)
-    (0b0001, 0b10001, "well"),              // ergo #39 val=4319818 (natural: W+EH)
-    (0b0010, 0b10001, "be"),                // ergo #40 val=4210868 (natural: B+IY)
-    (0b0001, 0b10010, "are"),               // ergo #41 val=4203821 (natural: R+AA)
-    (0b0010, 0b10010, "will"),              // ergo #42 val=3939614 (natural: W+IH)
-    (0b1000, 0b01000, "know"),              // ergo #43 val=3892394 (natural: N+OW)
-    (0b0000, 0b01010, "gonna"),             // ergo #44 val=3564570 (natural: G+AA)
-    (0b0000, 0b01100, "all"),               // ergo #45 val=3544700 (natural: L+AO)
-    (0b1000, 0b10000, "people"),            // ergo #46 val=3543660 (natural: P+IY)
-    (0b0000, 0b11000, "because"),           // ergo #47 val=3520448 (natural: B+IH)
-    (0b0101, 0b00001, "good"),              // ergo #48 val=3483460 (natural: G+UH)
-    (0b0101, 0b00010, "little"),            // ergo #49 val=3478088 (natural: L+IH)
-    (0b1000, 0b00011, "so"),                // ergo #50 val=3434152 (natural: S+OW)
-    (0b0100, 0b00110, "let"),               // L+EH
-    (0b0011, 0b00011, "anything"),          // bumped from N+Eh → N+Iy
-    (0b0011, 0b01000, "please"),            // P+IY
-    (0b0010, 0b00101, "remember"),          // R+IH
-    (0b0001, 0b10100, "again"),             // G+AH
-    (0b0000, 0b10011, "maybe"),             // bumped from M+Ey → M+-
-    (0b0110, 0b00100, "actually"),          // bumped from K+Ae → K+Ey
-    (0b0010, 0b10100, "give"),              // G+IH
-    (0b0100, 0b10001, "next"),              // bumped from N+Eh → D+Eh
-    (0b0100, 0b10010, "anyone"),            // bumped from N+Eh → Z+Eh
-    (0b0001, 0b00101, "today"),             // bumped from T+Ah → R+Ah
-    (0b0011, 0b10000, "under"),             // bumped from N+Ah → -+mod+Iy
-    (0b0110, 0b00011, "understand"),        // bumped from N+Ah → N+Ey
-    (0b0001, 0b01010, "where"),             // bumped from W+Eh → W+Ah
-    (0b1010, 0b00001, "take"),              // bumped from T+Ey → T+Ow
-    (0b0110, 0b01000, "up"),                // bumped from P+Ah → P+Ey
-    (0b1010, 0b00010, "sorry"),             // bumped from S+Aa → S+Ow
-    (0b1100, 0b00001, "at"),                // bumped from T+Ae → T+Ao
-    (0b1100, 0b00010, "some"),              // bumped from S+Ah → S+Ao
-    (0b0010, 0b11000, "before"),            // B+IH
-    (0b1000, 0b10010, "as"),                // Z+AE
-    (0b0001, 0b10011, "must"),              // M+AH
-    (0b1000, 0b00110, "love"),              // bumped from L+Ah → L+Ae
-    (0b0001, 0b11000, "believe"),           // bumped from B+Ih → B+Ah
-    (0b0011, 0b00110, "last"),              // bumped from L+Ae → L+Iy
-    (0b0010, 0b10011, "morning"),           // bumped from M+Ao → M+Ih
-    (0b0000, 0b01001, "family"),            // bumped from F+Ae → F+-
-    (0b0100, 0b10100, "exactly"),           // bumped from G+Ih → G+Eh
-    (0b0101, 0b00100, "excuse"),            // bumped from K+Ih → K+Aa
-    (0b0010, 0b01010, "woman"),             // bumped from W+Uh → W+Ih
-    (0b0010, 0b01100, "enough"),            // bumped from N+Ih → Th+Ih
-    (0b1000, 0b10001, "different"),         // bumped from D+Ih → D+Ae
-    (0b0000, 0b00111, "haven"),             // bumped from H+Ey → H+-
-    (0b0001, 0b01100, "somebody"),          // bumped from S+Ah → Th+Ah
-    (0b0100, 0b00101, "second"),            // bumped from S+Eh → R+Eh
-    (0b0110, 0b10000, "name"),              // bumped from N+Ey → -+mod+Ey
-    (0b0011, 0b10001, "dad"),               // bumped from D+Ae → D+Iy
-    (0b0000, 0b10110, "trust"),             // bumped from T+Ah → L+mod+-
-    (0b0011, 0b10010, "seen"),              // bumped from S+Iy → Z+Iy
-    (0b0010, 0b00111, "his"),               // HH+IH
-    (0b0100, 0b01010, "when"),              // W+EH
-    (0b1001, 0b00001, "time"),              // T+AY
-    (0b1010, 0b00100, "okay"),              // K+OW
-    (0b0101, 0b00011, "never"),             // bumped from N+Eh → N+Aa
-    (0b0010, 0b01001, "if"),                // F+IH
-    (0b0000, 0b10101, "then"),              // bumped from Dh+Eh → Dh+-
-    (0b0111, 0b00001, "tell"),              // bumped from T+Eh → T+Er
-    (0b1001, 0b00010, "someone"),           // bumped from S+Ah → S+Ay
-    (0b0111, 0b00010, "still"),             // bumped from S+Ih → S+Er
-    (0b0100, 0b10011, "much"),              // bumped from M+Ah → M+Eh
-    (0b0110, 0b00110, "listen"),            // bumped from L+Ih → L+Ey
-    (0b0101, 0b01000, "probably"),          // P+AA
-    (0b0001, 0b00111, "hello"),             // HH+AH
-    (0b1100, 0b00100, "call"),              // K+AO
-    (0b0100, 0b11000, "brother"),           // bumped from B+Ah → B+Eh
-    (0b0101, 0b10000, "start"),             // bumped from S+Aa → -+mod+Aa
-    (0b0001, 0b01001, "tonight"),           // bumped from T+Ah → F+Ah
-    (0b0001, 0b10110, "until"),             // bumped from N+Ah → L+mod+Ah
-    (0b0100, 0b01100, "question"),          // bumped from K+Eh → Th+Eh
-    (0b1000, 0b10100, "against"),           // bumped from G+Ah → G+Ae
-    (0b1000, 0b00101, "ready"),             // bumped from R+Eh → R+Ae
-    (0b0010, 0b10110, "since"),             // bumped from S+Ih → L+mod+Ih
-    (0b0110, 0b10001, "stay"),              // bumped from S+Ey → D+Ey
-    (0b0110, 0b10010, "crazy"),             // bumped from K+Ey → Z+Ey
-    (0b0011, 0b00101, "wrong"),             // bumped from R+Ao → R+Iy
-    (0b0011, 0b10100, "gotta"),             // bumped from G+Aa → G+Iy
-    (0b1000, 0b11000, "back"),              // B+AE
-    (0b1010, 0b00011, "only"),              // N+OW
-    (0b1100, 0b00011, "nothing"),           // bumped from N+Ah → N+Ao
-    (0b1000, 0b10011, "man"),               // M+AE
-    (0b1000, 0b01100, "thank"),             // TH+AE
-    (0b0100, 0b00111, "help"),              // HH+EH
-    (0b0011, 0b10011, "mean"),              // M+IY
-    (0b0110, 0b10100, "great"),             // G+EY
-    (0b0101, 0b00110, "already"),           // bumped from L+Ao → L+Aa
-    (0b0000, 0b01011, "sure"),              // bumped from Sh+Uh → Sh+-
-    (0b0111, 0b00100, "around"),            // bumped from N+Er → K+Er
-    (0b1010, 0b01000, "problem"),           // bumped from P+Aa → P+Ow
-    (0b1100, 0b01000, "place"),             // bumped from P+Ey → P+Ao
-    (0b0100, 0b01001, "friend"),            // F+EH
-    (0b0001, 0b10101, "their"),             // bumped from Dh+Eh → Dh+Ah
-    (0b1001, 0b00100, "kind"),              // K+AY
-    (0b1000, 0b01010, "without"),           // bumped from W+Ih → W+Ae
-    (0b0010, 0b10101, "other"),             // bumped from Dh+Ah → Dh+Ih
-    (0b0011, 0b01010, "away"),              // bumped from W+Ah → W+Iy
-    (0b0011, 0b11000, "big"),               // bumped from B+Ih → B+Iy
-    (0b1010, 0b10000, "moment"),            // bumped from M+Ow → -+mod+Ow
-    (0b0101, 0b10001, "doctor"),            // D+AA
-    (0b1100, 0b10000, "almost"),            // bumped from L+Ao → -+mod+Ao
-    (0b0100, 0b10110, "anymore"),           // bumped from N+Eh → L+mod+Eh
-    (0b0011, 0b01100, "three"),             // TH+IY
-    (0b0110, 0b00101, "same"),              // bumped from S+Ey → R+Ey
-    (0b0101, 0b10010, "hospital"),          // bumped from H+Aa → Z+Aa
-    (0b0000, 0b01110, "couple"),            // bumped from K+Ah → Ng+-
-    (0b0000, 0b11010, "head"),              // bumped from H+Eh → W+mod+-
-    (0b0000, 0b11100, "such"),              // bumped from S+Ah → Th+mod+-
-    (0b0000, 0b11001, "very"),              // bumped from V+Eh → V+-
-    (0b0100, 0b10101, "them"),              // DH+EH
-    (0b1001, 0b00011, "need"),              // bumped from N+Iy → N+Ay
-    (0b1100, 0b00110, "always"),            // L+AO
-    (0b0111, 0b00011, "into"),              // bumped from N+Ih → N+Er
-    (0b0110, 0b10011, "make"),              // M+EY
-    (0b1011, 0b00010, "see"),               // bumped from S+Iy → S+Uw
-    (0b1110, 0b00010, "stop"),              // bumped from S+Aa → S+Uh
-    (0b1000, 0b01001, "after"),             // F+AE
-    (0b1011, 0b00001, "together"),          // bumped from T+Ah → T+Uw
-    (0b1110, 0b00001, "tomorrow"),          // bumped from T+Ah → T+Uh
-    (0b0101, 0b10100, "god"),               // G+AA
-    (0b0110, 0b01010, "wait"),              // W+EY
-    (0b1001, 0b01000, "night"),             // bumped from N+Ay → P+Ay
-    (0b0111, 0b01000, "pretty"),            // bumped from P+Ih → P+Er
-    (0b1010, 0b00110, "long"),              // bumped from L+Ao → L+Ow
-    (0b1000, 0b00111, "husband"),           // bumped from H+Ah → H+Ae
-    (0b0011, 0b01001, "feel"),              // F+IY
-    (0b0110, 0b11000, "baby"),              // B+EY
-    (0b1001, 0b10000, "nice"),              // bumped from N+Ay → -+mod+Ay
-    (0b0011, 0b00111, "hold"),              // bumped from H+Ow → H+Iy
-    (0b1000, 0b10110, "am"),                // bumped from M+Ae → L+mod+Ae
-    (0b1010, 0b10001, "nobody"),            // bumped from N+Ow → D+Ow
-    (0b1010, 0b10010, "ok"),                // bumped from K+Ow → Z+Ow
-    (0b0001, 0b01011, "sometimes"),         // bumped from S+Ah → Sh+Ah
-    (0b0010, 0b01011, "minute"),            // bumped from M+Ih → Sh+Ih
-    (0b1100, 0b10001, "drink"),             // bumped from D+Ih → D+Ao
-    (0b0001, 0b01110, "alone"),             // bumped from L+Ah → Ng+Ah
-    (0b0001, 0b11010, "trouble"),           // bumped from T+Ah → W+mod+Ah
-    (0b0010, 0b01110, "inside"),            // bumped from N+Ih → Ng+Ih
-    (0b0010, 0b11010, "kill"),              // bumped from K+Ih → W+mod+Ih
-    (0b0101, 0b00101, "party"),             // bumped from P+Aa → R+Aa
-    (0b0010, 0b11100, "himself"),           // bumped from H+Ih → Th+mod+Ih
-    (0b1100, 0b10010, "story"),             // bumped from S+Ao → Z+Ao
-    (0b0001, 0b11100, "number"),            // bumped from N+Ah → Th+mod+Ah
-    (0b0111, 0b10000, "sir"),               // bumped from S+Er → -+mod+Er
-    (0b0000, 0b01101, "become"),            // bumped from B+Ih → Ch+-
-    (0b0110, 0b01100, "explain"),           // bumped from K+Ih → Th+Ey
-    (0b0011, 0b10110, "sleep"),             // bumped from S+Iy → L+mod+Iy
-    (0b0000, 0b10111, "interested"),        // bumped from N+Ih → H+mod+-
-    (0b1010, 0b10100, "go"),                // G+OW
-    (0b1101, 0b00001, "out"),               // T+AW
-    (0b1110, 0b00100, "could"),             // K+UH
-    (0b0001, 0b11001, "everyone"),          // bumped from V+Eh → V+Ah
-    (0b0101, 0b10011, "money"),             // bumped from M+Ah → M+Aa
-    (0b0011, 0b10101, "these"),             // DH+IY
-    (0b1101, 0b00010, "us"),                // bumped from S+Ah → S+Aw
-    (0b0010, 0b11001, "everybody"),         // bumped from V+Eh → V+Ih
-    (0b1100, 0b00101, "or"),                // R+AO
-    (0b1001, 0b00110, "life"),              // L+AY
-    (0b0110, 0b00111, "hey"),               // HH+EY
-    (0b1011, 0b00100, "course"),            // bumped from K+Ao → K+Uw
-    (0b1000, 0b10101, "than"),              // DH+AE
-    (0b0101, 0b01010, "world"),             // bumped from W+Er → W+Aa
-    (0b0111, 0b00110, "leave"),             // bumped from L+Iy → L+Er
-    (0b0110, 0b01001, "fine"),              // bumped from F+Ay → F+Ey
-    (0b1001, 0b10001, "idea"),              // D+AY
-    (0b0101, 0b11000, "between"),           // bumped from B+Ih → B+Aa
-    (0b1001, 0b10010, "might"),             // bumped from M+Ay → Z+Ay
-    (0b0100, 0b01011, "welcome"),           // bumped from W+Eh → Sh+Eh
-    (0b0100, 0b01110, "else"),              // bumped from L+Eh → Ng+Eh
-    (0b0100, 0b11010, "anybody"),           // bumped from N+Eh → W+mod+Eh
-    (0b0100, 0b11100, "anyway"),            // bumped from N+Eh → Th+mod+Eh
-    (0b0101, 0b01100, "car"),               // bumped from K+Aa → Th+Aa
-    (0b0001, 0b01101, "son"),               // bumped from S+Ah → Ch+Ah
-    (0b0001, 0b10111, "company"),           // bumped from K+Ah → H+mod+Ah
-    (0b0111, 0b10001, "dead"),              // bumped from D+Eh → D+Er
-    (0b0010, 0b01101, "mr"),                // bumped from M+Ih → Ch+Ih
-    (0b0010, 0b10111, "sister"),            // bumped from S+Ih → H+mod+Ih
-    (0b1010, 0b00101, "real"),              // bumped from R+Iy → R+Ow
-    (0b1100, 0b10100, "water"),             // bumped from W+Ao → G+Ao
-    (0b0111, 0b10010, "perfect"),           // bumped from P+Er → Z+Er
-    (0b0110, 0b10110, "end"),               // bumped from N+Eh → L+mod+Ey
-    (0b0100, 0b11001, "everything"),        // V+EH
-    (0b0110, 0b10101, "they"),              // DH+EY
-    (0b0011, 0b01011, "she"),               // SH+IY
-    (0b1100, 0b10011, "more"),              // M+AO
-    (0b1011, 0b00011, "any"),               // bumped from N+Eh → N+Uw
-    (0b1110, 0b00011, "another"),           // bumped from N+Ah → N+Uh
-    (0b1010, 0b10011, "important"),         // bumped from M+Ih → M+Ow
-    (0b0101, 0b01001, "father"),            // F+AA
-    (0b1101, 0b00100, "our"),               // bumped from -+Aw → K+Aw
-    (0b1011, 0b01000, "too"),               // bumped from T+Uw → P+Uw
-    (0b1010, 0b01010, "way"),               // bumped from W+Ey → W+Ow
-    (0b1100, 0b01010, "whatever"),          // bumped from W+Ah → W+Ao
-    (0b1110, 0b01000, "police"),            // bumped from P+Ah → P+Uh
-    (0b0111, 0b10100, "girl"),              // G+ER
-    (0b0101, 0b00111, "happy"),             // bumped from H+Ae → H+Aa
-    (0b1011, 0b10000, "two"),               // bumped from T+Uw → -+mod+Uw
-    (0b1000, 0b01011, "matter"),            // bumped from M+Ae → Sh+Ae
-    (0b1010, 0b11000, "behind"),            // bumped from B+Ih → B+Ow
-    (0b1100, 0b11000, "bring"),             // bumped from B+Ih → B+Ao
-    (0b1000, 0b01110, "ask"),               // bumped from S+Ae → Ng+Ae
-    (0b0100, 0b01101, "care"),              // bumped from K+Eh → Ch+Eh
-    (0b0100, 0b10111, "parents"),           // bumped from P+Eh → H+mod+Eh
-    (0b1001, 0b00101, "try"),               // bumped from T+Ay → R+Ay
-    (0b0101, 0b10110, "heart"),             // bumped from H+Aa → L+mod+Aa
-    (0b1000, 0b11010, "captain"),           // bumped from K+Ae → W+mod+Ae
-    (0b1000, 0b11100, "stand"),             // bumped from S+Ae → Th+mod+Ae
-    (0b0111, 0b00101, "reason"),            // bumped from R+Iy → R+Er
-    (0b1001, 0b10100, "live"),              // bumped from L+Ay → G+Ay
-    (0b1100, 0b01100, "door"),              // bumped from D+Ao → Th+Ao
-    (0b1010, 0b01100, "whole"),             // bumped from H+Ow → Th+Ow
-    (0b0011, 0b01110, "meet"),              // bumped from M+Iy → Ng+Iy
-    (0b0011, 0b11010, "least"),             // bumped from L+Iy → W+mod+Iy
-    (0b1110, 0b10000, "million"),           // bumped from M+Ih → -+mod+Uh
-    (0b0000, 0b11011, "situation"),         // bumped from S+Ih → Zh+-
-    (0b0000, 0b11110, "somewhere"),         // bumped from S+Ah → Ng+mod+-
-    (0b0011, 0b11100, "decided"),           // bumped from D+Ih → Th+mod+Iy
-    (0b1110, 0b00110, "look"),              // L+UH
-    (0b1101, 0b00011, "now"),               // N+AW
-    (0b0011, 0b11001, "even"),              // V+IY
-    (0b1001, 0b01010, "why"),               // W+AY
-    (0b0111, 0b01010, "work"),              // W+ER
-    (0b1001, 0b10011, "myself"),            // M+AY
-    (0b1000, 0b11001, "every"),             // bumped from V+Eh → V+Ae
-    (0b0111, 0b10011, "mother"),            // bumped from M+Ah → M+Er
-    (0b1010, 0b00111, "home"),              // HH+OW
-    (0b1001, 0b11000, "by"),                // B+AY
-    (0b1011, 0b00110, "old"),               // bumped from L+Ow → L+Uw
-    (0b1100, 0b01001, "off"),               // F+AO
-    (0b1100, 0b00111, "house"),             // bumped from H+Aw → H+Ao
-    (0b1101, 0b01000, "person"),            // bumped from P+Er → P+Aw
-    (0b1010, 0b01001, "forget"),            // bumped from F+Er → F+Ow
-    (0b0111, 0b11000, "bad"),               // bumped from B+Ae → B+Er
-    (0b1011, 0b10001, "school"),            // bumped from S+Uw → D+Uw
-    (0b1011, 0b10010, "stupid"),            // bumped from S+Uw → Z+Uw
-    (0b0101, 0b10101, "possible"),          // bumped from P+Aa → Dh+Aa
-    (0b0001, 0b11011, "country"),           // bumped from K+Ah → Zh+Ah
-    (0b1000, 0b01101, "hand"),              // bumped from H+Ae → Ch+Ae
-    (0b1110, 0b10001, "day"),               // bumped from D+Ey → D+Uh
-    (0b0001, 0b11110, "control"),           // bumped from K+Ah → Ng+mod+Ah
-    (0b0010, 0b11011, "information"),       // bumped from N+Ih → Zh+Ih
-    (0b0010, 0b11110, "security"),          // bumped from S+Ih → Ng+mod+Ih
-    (0b0110, 0b01011, "shit"),              // bumped from Sh+Ih → Sh+Ey
-    (0b0111, 0b01100, "perhaps"),           // bumped from P+Er → Th+Er
-    (0b0000, 0b01111, "yet"),               // bumped from Y+Eh → Y+-
-    (0b1001, 0b01100, "while"),             // bumped from W+Ay → Th+Ay
-    (0b1101, 0b10000, "outside"),           // bumped from T+Aw → -+mod+Aw
-    (0b0011, 0b01101, "chance"),            // bumped from Ch+Ae → Ch+Iy
-    (0b1010, 0b10110, "close"),             // bumped from K+Ow → L+mod+Ow
-    (0b1100, 0b10110, "daughter"),          // bumped from D+Ao → L+mod+Ao
-    (0b0110, 0b01110, "play"),              // bumped from P+Ey → Ng+Ey
-    (0b0011, 0b10111, "speak"),             // bumped from S+Iy → H+mod+Iy
-    (0b0110, 0b11010, "face"),              // bumped from F+Ey → W+mod+Ey
-    (0b0000, 0b11101, "careful"),           // bumped from K+Eh → Jh+-
-    (0b1110, 0b10010, "blood"),             // bumped from B+Ah → Z+Uh
-    (0b0110, 0b11100, "able"),              // bumped from B+Ey → Th+mod+Ey
-    (0b1000, 0b10111, "american"),          // bumped from M+Ah → H+mod+Ae
-    (0b0111, 0b00111, "her"),               // HH+ER
-    (0b0111, 0b01001, "first"),             // F+ER
-    (0b1101, 0b10001, "down"),              // D+AW
-    (0b1001, 0b01001, "find"),              // F+AY
-    (0b1111, 0b00010, "say"),               // bumped from S+Ey → S+Oy
-    (0b1111, 0b00001, "talk"),              // bumped from T+Ao → T+Oy
-    (0b1010, 0b10101, "those"),             // DH+OW
-    (0b0110, 0b11001, "ever"),              // bumped from V+Eh → V+Ey
-    (0b1101, 0b00110, "lot"),               // bumped from L+Aa → L+Aw
-    (0b1001, 0b00111, "happen"),            // bumped from H+Ae → H+Ay
-    (0b0100, 0b11011, "president"),         // bumped from P+Eh → Zh+Eh
-    (0b0101, 0b01011, "mom"),               // bumped from M+Aa → Sh+Aa
-    (0b0100, 0b11110, "hell"),              // bumped from H+Eh → Ng+mod+Eh
-    (0b0001, 0b01111, "wonderful"),         // bumped from W+Ah → Y+Ah
-    (0b0001, 0b11101, "completely"),        // bumped from K+Ah → Jh+Ah
-    (0b1011, 0b00101, "room"),              // R+UW
-    (0b0101, 0b01110, "promise"),           // bumped from P+Aa → Ng+Aa
-    (0b0101, 0b11010, "part"),              // bumped from P+Aa → W+mod+Aa
-    (0b1011, 0b10100, "move"),              // bumped from M+Uw → G+Uw
-    (0b0010, 0b01111, "miss"),              // bumped from M+Ih → Y+Ih
-    (0b0110, 0b01101, "change"),            // CH+EY
-    (0b0010, 0b11101, "serious"),           // bumped from S+Ih → Jh+Ih
-    (0b0111, 0b10110, "heard"),             // bumped from H+Er → L+mod+Er
-    (0b1001, 0b10110, "wife"),              // bumped from W+Ay → L+mod+Ay
-    (0b0101, 0b11100, "body"),              // bumped from B+Aa → Th+mod+Aa
-    (0b1110, 0b10100, "guess"),             // bumped from G+Eh → G+Uh
-    (0b1110, 0b00101, "relationship"),      // bumped from R+Iy → R+Uh
-    (0b1100, 0b10101, "alright"),           // bumped from L+Ao → Dh+Ao
-    (0b0110, 0b10111, "lady"),              // bumped from L+Ey → H+mod+Ey
-    (0b1101, 0b10010, "scared"),            // bumped from S+Eh → Z+Aw
-    (0b0100, 0b01111, "yes"),               // Y+EH
-    (0b1110, 0b01010, "would"),             // W+UH
-    (0b1011, 0b11000, "beautiful"),         // B+UW
-    (0b1011, 0b10011, "music"),             // M+UW
-    (0b1111, 0b00100, "keep"),              // bumped from K+Iy → K+Oy
-    (0b1110, 0b10011, "many"),              // bumped from M+Eh → M+Uh
-    (0b1011, 0b01010, "which"),             // bumped from W+Ih → W+Uw
-    (0b1011, 0b01100, "through"),           // TH+UW
-    (0b0100, 0b11101, "gentlemen"),         // JH+EH
-    (0b1110, 0b11000, "absolutely"),        // bumped from B+Ae → B+Uh
-    (0b1001, 0b10101, "quite"),             // bumped from K+Ay → Dh+Ay
-    (0b0101, 0b01101, "chuckles"),          // bumped from Ch+Ah → Ch+Aa
-    (0b1101, 0b00101, "run"),               // bumped from R+Ah → R+Aw
-    (0b1010, 0b01011, "phone"),             // bumped from F+Ow → Sh+Ow
-    (0b1101, 0b10100, "ago"),               // bumped from G+Ah → G+Aw
-    (0b1010, 0b01110, "hope"),              // bumped from H+Ow → Ng+Ow
-    (0b0011, 0b11011, "secret"),            // bumped from S+Iy → Zh+Iy
-    (0b0101, 0b11001, "evidence"),          // bumped from V+Eh → V+Aa
-    (0b0111, 0b10101, "turn"),              // bumped from T+Er → Dh+Er
-    (0b1000, 0b11011, "accident"),          // bumped from K+Ae → Zh+Ae
-    (0b1100, 0b01011, "government"),        // bumped from G+Ah → Sh+Ao
-    (0b1100, 0b01110, "uncle"),             // bumped from Ng+Ah → Ng+Ao
-    (0b1110, 0b01100, "impossible"),        // bumped from M+Ih → Th+Uh
-    (0b1010, 0b11010, "city"),              // bumped from S+Ih → W+mod+Ow
-    (0b1100, 0b11010, "detective"),         // bumped from D+Ih → W+mod+Ao
-    (0b1010, 0b11100, "christmas"),         // bumped from K+Ih → Th+mod+Ow
-    (0b1100, 0b11100, "office"),            // bumped from F+Ao → Th+mod+Ao
-    (0b1000, 0b11110, "difficult"),         // bumped from D+Ih → Ng+mod+Ae
-    (0b0101, 0b10111, "apartment"),         // bumped from P+Ah → H+mod+Aa
-    (0b0011, 0b11110, "expect"),            // bumped from K+Ih → Ng+mod+Iy
-    (0b1000, 0b01111, "yeah"),              // Y+AE
-    (0b1010, 0b11001, "over"),              // V+OW
-    (0b1011, 0b00111, "who"),               // HH+UW
-    (0b1111, 0b00011, "an"),                // bumped from N+Ae → N+Oy
-    (0b1101, 0b10011, "mind"),              // bumped from M+Ay → M+Aw
-    (0b1101, 0b01010, "once"),              // bumped from W+Ah → W+Aw
-    (0b1110, 0b00111, "hard"),              // bumped from H+Aa → H+Uh
-    (0b1111, 0b01000, "open"),              // bumped from P+Ow → P+Oy
-    (0b1011, 0b01001, "afraid"),            // bumped from F+Ah → F+Uw
-    (0b1101, 0b11000, "both"),              // bumped from B+Ow → B+Aw
-    (0b1110, 0b01001, "front"),             // bumped from F+Ah → F+Uh
-    (0b1111, 0b10000, "point"),             // bumped from P+Oy → -+mod+Oy
-    (0b1011, 0b10110, "human"),             // bumped from H+Uw → L+mod+Uw
-    (0b0011, 0b01111, "yesterday"),         // bumped from Y+Eh → Y+Iy
-    (0b1001, 0b01011, "finally"),           // bumped from F+Ay → Sh+Ay
-    (0b0110, 0b11011, "case"),              // bumped from K+Ey → Zh+Ey
-    (0b0110, 0b11110, "break"),             // bumped from B+Ey → Ng+mod+Ey
-    (0b0111, 0b01011, "worry"),             // bumped from W+Er → Sh+Er
-    (0b1101, 0b01100, "terrible"),          // bumped from T+Eh → Th+Aw
-    (0b1000, 0b11101, "cannot"),            // bumped from K+Ae → Jh+Ae
-    (0b1010, 0b01101, "honey"),             // bumped from H+Ah → Ch+Ow
-    (0b1100, 0b01101, "amazing"),           // bumped from M+Ah → Ch+Ao
-    (0b1001, 0b01110, "protect"),           // bumped from P+Ah → Ng+Ay
-    (0b1100, 0b11001, "sit"),               // bumped from S+Ih → V+Ao
-    (0b1001, 0b11010, "send"),              // bumped from S+Eh → W+mod+Ay
-    (0b0111, 0b01110, "girlfriend"),        // bumped from G+Er → Ng+Er
-    (0b1001, 0b11100, "attention"),         // bumped from T+Ah → Th+mod+Ay
-    (0b0011, 0b11101, "street"),            // bumped from S+Iy → Jh+Iy
-    (0b0000, 0b11111, "along"),             // bumped from L+Ah → Y+mod+-
-    (0b1110, 0b10110, "late"),              // bumped from L+Ey → L+mod+Uh
-    (0b1010, 0b10111, "master"),            // bumped from M+Ae → H+mod+Ow
-    (0b1100, 0b10111, "present"),           // bumped from P+Eh → H+mod+Ao
-    (0b0111, 0b11010, "death"),             // bumped from D+Eh → W+mod+Er
-    (0b0111, 0b11100, "clear"),             // bumped from K+Ih → Th+mod+Er
-    (0b1101, 0b00111, "how"),               // HH+AW
-    (0b1101, 0b01001, "found"),             // F+AW
-    (0b1111, 0b00110, "also"),              // bumped from L+Ao → L+Oy
-    (0b1111, 0b10001, "definitely"),        // bumped from D+Eh → D+Oy
-    (0b0001, 0b11111, "stuff"),             // bumped from S+Ah → Y+mod+Ah
-    (0b0010, 0b11111, "interesting"),       // bumped from N+Ih → Y+mod+Ih
-    (0b1011, 0b10101, "new"),               // bumped from N+Uw → Dh+Uw
-    (0b1001, 0b01101, "child"),             // CH+AY
-    (0b0110, 0b01111, "year"),              // bumped from Y+Ih → Y+Ey
-    (0b0101, 0b11011, "watch"),             // bumped from W+Aa → Zh+Aa
-    (0b0101, 0b11110, "darling"),           // bumped from D+Aa → Ng+mod+Aa
-    (0b0110, 0b11101, "dangerous"),         // bumped from D+Ey → Jh+Ey
-    (0b1001, 0b11001, "kid"),               // bumped from K+Ih → V+Ay
-    (0b0111, 0b01101, "fact"),              // bumped from F+Ae → Ch+Er
-    (0b1111, 0b10010, "mistake"),           // bumped from M+Ih → Z+Oy
-    (0b1110, 0b10101, "may"),               // bumped from M+Ey → Dh+Uh
-    (0b1101, 0b10110, "building"),          // bumped from B+Ih → L+mod+Aw
-    (0b1001, 0b10111, "six"),               // bumped from S+Ih → H+mod+Ay
-    (0b0111, 0b11001, "funny"),             // bumped from F+Ah → V+Er
-    (0b0111, 0b10111, "black"),             // bumped from B+Ae → H+mod+Er
-    (0b1110, 0b01011, "should"),            // SH+UH
-    (0b0101, 0b11101, "job"),               // JH+AA
-    (0b0100, 0b11111, "special"),           // bumped from S+Eh → Y+mod+Eh
-    (0b1111, 0b00101, "rest"),              // bumped from R+Eh → R+Oy
-    (0b1011, 0b01011, "few"),               // bumped from F+Uw → Sh+Uw
-    (0b1011, 0b01110, "truth"),             // bumped from T+Uw → Ng+Uw
-    (0b1111, 0b10100, "guy"),               // bumped from G+Ay → G+Oy
-    (0b1011, 0b11010, "true"),              // bumped from T+Uw → W+mod+Uw
-    (0b1011, 0b11100, "soon"),              // bumped from S+Uw → Th+mod+Uw
-    (0b0101, 0b01111, "young"),             // bumped from Y+Ah → Y+Aa
-    (0b1100, 0b11011, "order"),             // bumped from R+Ao → Zh+Ao
-    (0b1100, 0b11110, "lord"),              // bumped from L+Ao → Ng+mod+Ao
-    (0b1110, 0b01110, "alive"),             // bumped from L+Ah → Ng+Uh
-    (0b1101, 0b10101, "damn"),              // bumped from D+Ae → Dh+Aw
-    (0b1110, 0b11010, "system"),            // bumped from S+Ih → W+mod+Uh
-    (0b1010, 0b11011, "far"),               // bumped from F+Aa → Zh+Ow
-    (0b1010, 0b11110, "totally"),           // bumped from T+Ow → Ng+mod+Ow
-    (0b1110, 0b11100, "its"),               // bumped from T+Ih → Th+mod+Uh
-    (0b1111, 0b10011, "most"),              // bumped from M+Ow → M+Oy
-    (0b1111, 0b01010, "wanna"),             // bumped from W+Aa → W+Oy
-    (0b1111, 0b11000, "bit"),               // bumped from B+Ih → B+Oy
-    (0b1000, 0b11111, "answer"),            // bumped from N+Ae → Y+mod+Ae
-    (0b0011, 0b11111, "report"),            // bumped from R+Iy → Y+mod+Iy
-    (0b1010, 0b11101, "general"),           // bumped from Jh+Eh → Jh+Ow
-    (0b1011, 0b01101, "lieutenant"),        // bumped from L+Uw → Ch+Uw
-    (0b1001, 0b11011, "five"),              // bumped from F+Ay → Zh+Ay
-    (0b1100, 0b11101, "jesus"),             // bumped from Jh+Iy → Jh+Ao
-    (0b0111, 0b11011, "personal"),          // bumped from P+Er → Zh+Er
-    (0b1001, 0b11110, "quiet"),             // bumped from K+Ay → Ng+mod+Ay
-    (0b1101, 0b01011, "ahead"),             // bumped from H+Ah → Sh+Aw
-    (0b1111, 0b01100, "imagine"),           // bumped from M+Ih → Th+Oy
-    (0b1110, 0b01101, "america"),           // bumped from M+Ah → Ch+Uh
-    (0b1101, 0b01110, "instead"),           // bumped from N+Ih → Ng+Aw
-    (0b1010, 0b01111, "return"),            // bumped from R+Ih → Y+Ow
-    (0b1100, 0b01111, "afternoon"),         // bumped from F+Ae → Y+Ao
-    (0b1011, 0b11001, "hit"),               // bumped from H+Ih → V+Uw
-    (0b1110, 0b11001, "screaming"),         // bumped from S+Iy → V+Uh
-    (0b1101, 0b11010, "easy"),              // bumped from Z+Iy → W+mod+Aw
-    (0b1101, 0b11100, "plan"),              // bumped from P+Ae → Th+mod+Aw
-    (0b1011, 0b10111, "dinner"),            // bumped from D+Ih → H+mod+Uw
-    (0b1110, 0b10111, "deal"),              // bumped from D+Iy → H+mod+Uh
-    (0b0111, 0b11110, "straight"),          // bumped from S+Ey → Ng+mod+Er
-    (0b0111, 0b01111, "yourself"),          // Y+ER
-    (0b1111, 0b00111, "hear"),              // bumped from H+Iy → H+Oy
-    (0b1111, 0b01001, "fuck"),              // bumped from F+Ah → F+Oy
-    (0b0110, 0b11111, "strange"),           // bumped from S+Ey → Y+mod+Ey
-    (0b1101, 0b01101, "check"),             // bumped from Ch+Eh → Ch+Aw
-    (0b1001, 0b01111, "show"),              // bumped from Sh+Ow → Y+Ay
-    (0b1101, 0b11001, "respect"),           // bumped from R+Ih → V+Aw
-    (0b1001, 0b11101, "history"),           // bumped from H+Ih → Jh+Ay
-    (0b1111, 0b10110, "except"),            // bumped from K+Ih → L+mod+Oy
-    (0b1101, 0b10111, "sent"),              // bumped from S+Eh → H+mod+Aw
-    (0b0111, 0b11101, "small"),             // bumped from S+Ao → Jh+Er
-    (0b0101, 0b11111, "obviously"),         // bumped from B+Aa → Y+mod+Aa
-    (0b1011, 0b11011, "future"),            // bumped from F+Uw → Zh+Uw
-    (0b1111, 0b10101, "handle"),            // bumped from H+Ae → Dh+Oy
-    (0b1110, 0b11011, "dear"),              // bumped from D+Ih → Zh+Uh
-    (0b1011, 0b11110, "four"),              // bumped from F+Ao → Ng+mod+Uw
-    (0b1110, 0b11110, "picture"),           // bumped from P+Ih → Ng+mod+Uh
-    (0b1011, 0b01111, "use"),               // Y+UW
-    (0b1111, 0b01011, "shut"),              // bumped from Sh+Ah → Sh+Oy
-    (0b1010, 0b11111, "own"),               // bumped from N+Ow → Y+mod+Ow
-    (0b1100, 0b11111, "sort"),              // bumped from S+Ao → Y+mod+Ao
-    (0b1111, 0b01110, "wonder"),            // bumped from W+Ah → Ng+Oy
-    (0b1110, 0b01111, "fun"),               // bumped from F+Ah → Y+Uh
-    (0b1111, 0b11010, "anywhere"),          // bumped from N+Eh → W+mod+Oy
-    (0b1101, 0b11011, "set"),               // bumped from S+Eh → Zh+Aw
-    (0b1111, 0b11100, "shall"),             // bumped from Sh+Ae → Th+mod+Oy
-    (0b1011, 0b11101, "position"),          // bumped from P+Ah → Jh+Uw
-    (0b1110, 0b11101, "simple"),            // bumped from S+Ih → Jh+Uh
-    (0b1101, 0b11110, "especially"),        // bumped from S+Ah → Ng+mod+Aw
-    (0b1001, 0b11111, "mine"),              // bumped from M+Ay → Y+mod+Ay
-    (0b0111, 0b11111, "word"),              // bumped from W+Er → Y+mod+Er
-    (0b1111, 0b01101, "figure"),            // bumped from F+Ih → Ch+Oy
-    (0b1101, 0b01111, "single"),            // bumped from S+Ih → Y+Aw
-    (0b1111, 0b11001, "hurt"),              // bumped from H+Er → V+Oy
-    (0b1101, 0b11101, "involved"),          // bumped from N+Ih → Jh+Aw
-    (0b1111, 0b10111, "strong"),            // bumped from S+Ao → H+mod+Oy
-    (0b1111, 0b11011, "wish"),              // bumped from W+Ih → Zh+Oy
-    (0b1111, 0b11110, "hi"),                // bumped from H+Ay → Ng+mod+Oy
-    (0b1011, 0b11111, "fight"),             // bumped from F+Ay → Y+mod+Uw
-    (0b1110, 0b11111, "past"),              // bumped from P+Ae → Y+mod+Uh
-    (0b1111, 0b01111, "week"),              // bumped from W+Iy → Y+Oy
-    (0b1111, 0b11101, "boyfriend"),         // bumped from B+Oy → Jh+Oy
-    (0b1101, 0b11111, "normal"),            // bumped from N+Ao → Y+mod+Aw
-    (0b1111, 0b11111, "sound"),             // bumped from S+Aw → Y+mod+Oy
+    (0b0000, 0b00001, "you"),               // R-only val=28787591 2ph (Y+UW)
+    (0b0000, 0b00100, "and"),               // R-only val=21145876 3ph (N+AH)
+    (0b0000, 0b01000, "that"),              // R-only val=20407484 3ph (DH+AE)
+    (0b0000, 0b00010, "to"),                // R-only val=17099834 2ph (T+UW)
+    (0b0000, 0b00110, "what"),              // R-only val=13800328 3ph (W+AH)
+    (0b0000, 0b01111, "it"),                // R-only val=13631703 2ph (T+IH)
+    (0b0000, 0b00111, "this"),              // R-only val=11479576 3ph (DH+IH)
+    (0b0000, 0b00011, "for"),               // R-only val=10348120 3ph (F+AO)
+    (0b0000, 0b10001, "just"),              // R-only val=10003176 4ph (JH+AH)
+    (0b0000, 0b01001, "have"),              // R-only val=9528020 3ph (HH+AE)
+    (0b0000, 0b10100, "your"),              // R-only val=9221890 3ph (Y+AO)
+    (0b0000, 0b00101, "of"),                // R-only val=8915110 2ph (V+AH)
+    (0b0000, 0b11000, "not"),               // R-only val=8524546 3ph (N+AA)
+    (0b0000, 0b10010, "can"),               // R-only val=7652236 3ph (K+AE)
+    (0b0000, 0b01100, "with"),              // R-only val=7613954 3ph (W+IH)
+    (0b0000, 0b10110, "about"),             // R-only val=7462044 4ph (B+AH)
+    (0b0000, 0b11111, "is"),                // R-only val=7400675 2ph (Z+IH)
+    (0b0000, 0b01110, "in"),                // R-only val=7337058 2ph (N+IH)
+    (0b0000, 0b10111, "but"),               // R-only val=7262924 3ph (B+AH)
+    (0b0000, 0b10011, "we"),                // R-only val=6755687 2ph (W+IY)
+    (0b0000, 0b11001, "me"),                // R-only val=6444985 2ph (M+IY)
+    (0b0000, 0b01010, "there"),             // R-only val=6297056 3ph (DH+EH)
+    (0b0000, 0b10101, "here"),              // R-only val=6277182 3ph (HH+IY)
+    (0b0000, 0b11100, "like"),              // R-only val=5966054 3ph (L+AY)
+    (0b0000, 0b11110, "want"),              // R-only val=5852535 4ph (W+AA)
+    (0b0000, 0b01101, "get"),               // R-only val=5766386 3ph (G+EH)
+    (0b0000, 0b11010, "think"),             // R-only val=5518419 4ph (TH+IH)
+    (0b0000, 0b11101, "he"),                // R-only val=5516364 2ph (HH+IY)
+    (0b0000, 0b01011, "something"),         // R-only val=5193190 6ph (S+AH)
+    (0b0000, 0b11011, "right"),             // R-only val=5153642 3ph (R+AY)
+    (0b0001, 0b10000, "from"),              // val=3419164 4ph save=2 (F+AH)
+    (0b0100, 0b10000, "people"),            // val=2657745 5ph save=3 (P+IY)
+    (0b1000, 0b10000, "because"),           // val=2640336 5ph save=3 (B+IH)
+    (0b0010, 0b10000, "little"),            // val=2608566 5ph save=3 (L+IH)
+    (0b0110, 0b10000, "everything"),        // val=2598975 7ph save=5 (V+EH)
+    (0b1111, 0b10000, "anything"),          // val=2560824 6ph save=4 (N+EH)
+    (0b0111, 0b10000, "understand"),        // val=2556470 9ph save=7 (N+AH)
+    (0b0011, 0b10000, "him"),               // val=2431059 3ph save=1 (HH+IH)
+    (0b1001, 0b10000, "gonna"),             // val=2376380 4ph save=2 (G+AA)
+    (0b0101, 0b10000, "one"),               // val=2263956 3ph save=1 (W+AH)
+    (0b1100, 0b10000, "come"),              // val=2203919 3ph save=1 (K+AH)
+    (0b1110, 0b10000, "well"),              // val=2159909 3ph save=1 (W+EH)
+    (0b1010, 0b10000, "will"),              // val=1969807 3ph save=1 (W+IH)
+    (0b0001, 0b00001, "very"),              // val=1891306 4ph save=2 (V+EH)
+    (0b0100, 0b00001, "nothing"),           // val=1867245 5ph save=3 (N+AH)
+    (0b0001, 0b00100, "never"),             // val=1861662 4ph save=2 (N+EH)
+    (0b1000, 0b00001, "remember"),          // val=1791455 7ph save=5 (R+IH)
+    (0b0001, 0b01000, "only"),              // val=1774726 4ph save=2 (N+OW)
+    (0b0100, 0b00100, "good"),              // val=1741730 3ph save=1 (G+UH)
+    (0b0010, 0b00001, "before"),            // val=1735818 5ph save=3 (B+IH)
+    (0b0001, 0b00010, "let"),               // val=1705262 3ph save=1 (L+EH)
+    (0b0110, 0b00001, "please"),            // val=1684240 4ph save=2 (P+IY)
+    (0b0001, 0b00110, "his"),               // val=1666361 3ph save=1 (HH+IH)
+    (0b1000, 0b00100, "sorry"),             // val=1636038 4ph save=2 (S+AA)
+    (0b0100, 0b01000, "yes"),               // val=1634050 3ph save=1 (Y+EH)
+    (0b0100, 0b00010, "someone"),           // val=1604648 6ph save=4 (S+AH)
+    (0b0010, 0b00100, "thank"),             // val=1547154 4ph save=2 (TH+AE)
+    (0b1000, 0b01000, "when"),              // val=1531731 3ph save=1 (W+EH)
+    (0b1111, 0b00001, "always"),            // val=1510251 5ph save=3 (L+AO)
+    (0b0001, 0b01111, "even"),              // val=1489088 4ph save=2 (V+IY)
+    (0b1101, 0b10000, "time"),              // val=1453708 3ph save=1 (T+AY)
+    (0b0110, 0b00100, "okay"),              // val=1428884 3ph save=1 (K+OW)
+    (0b0100, 0b00110, "back"),              // val=1405024 3ph save=1 (B+AE)
+    (0b1000, 0b00010, "actually"),          // val=1397975 7ph save=5 (K+AE)
+    (0b0010, 0b01000, "look"),              // val=1348467 3ph save=1 (L+UH)
+    (0b1000, 0b00110, "would"),             // val=1340070 3ph save=1 (W+UH)
+    (0b0110, 0b01000, "help"),              // val=1332572 4ph save=2 (HH+EH)
+    (0b0111, 0b00001, "them"),              // val=1327509 3ph save=1 (DH+EH)
+    (0b0001, 0b00111, "where"),             // val=1322226 3ph save=1 (W+EH)
+    (0b0010, 0b00010, "first"),             // val=1312774 4ph save=2 (F+ER)
+    (0b1111, 0b00100, "take"),              // val=1312232 3ph save=1 (T+EY)
+    (0b0100, 0b01111, "into"),              // val=1311494 4ph save=2 (N+IH)
+    (0b0110, 0b00010, "still"),             // val=1279080 4ph save=2 (S+IH)
+    (0b0010, 0b00110, "then"),              // val=1275502 3ph save=1 (DH+EH)
+    (0b1111, 0b01000, "find"),              // val=1253040 4ph save=2 (F+AY)
+    (0b1000, 0b01111, "everyone"),          // val=1230160 7ph save=5 (V+EH)
+    (0b0110, 0b00110, "probably"),          // val=1216416 8ph save=6 (P+AA)
+    (0b0011, 0b00001, "morning"),           // val=1214200 6ph save=4 (M+AO)
+    (0b0001, 0b00011, "believe"),           // val=1211622 5ph save=3 (B+IH)
+    (0b0111, 0b00100, "together"),          // val=1209616 6ph save=4 (T+AH)
+    (0b0100, 0b00111, "yourself"),          // val=1208052 6ph save=4 (Y+ER)
+    (0b1111, 0b00010, "beautiful"),         // val=1204866 8ph save=6 (B+UW)
+    (0b0010, 0b01111, "again"),             // val=1180038 4ph save=2 (G+AH)
+    (0b1000, 0b00111, "family"),            // val=1178172 6ph save=4 (F+AE)
+    (0b0111, 0b01000, "tell"),              // val=1176290 3ph save=1 (T+EH)
+    (0b0001, 0b10001, "man"),               // val=1173588 3ph save=1 (M+AE)
+    (0b1111, 0b00110, "some"),              // val=1166914 3ph save=1 (S+AH)
+    (0b0110, 0b01111, "maybe"),             // val=1162174 4ph save=2 (M+EY)
+    (0b0100, 0b00011, "must"),              // val=1161862 4ph save=2 (M+AH)
+    (0b0011, 0b00100, "problem"),           // val=1161625 7ph save=5 (P+AA)
+    (0b0111, 0b00010, "already"),           // val=1151348 6ph save=4 (L+AO)
+    (0b0010, 0b00111, "important"),         // val=1150702 9ph save=7 (M+IH)
+    (0b1001, 0b00001, "stop"),              // val=1148032 4ph save=2 (S+AA)
+    (0b0001, 0b01001, "after"),             // val=1145522 4ph save=2 (F+AE)
+    (0b0111, 0b00110, "exactly"),           // val=1137078 8ph save=6 (G+IH)
+    (0b0110, 0b00111, "everybody"),         // val=1131192 8ph save=6 (V+EH)
+    (0b1000, 0b00011, "could"),             // val=1111837 3ph save=1 (K+UH)
+    (0b0011, 0b01000, "excuse"),            // val=1099275 7ph save=5 (K+IH)
+    (0b1111, 0b01111, "listen"),            // val=1097373 5ph save=3 (L+IH)
+    (0b0100, 0b10001, "another"),           // val=1096263 5ph save=3 (N+AH)
+    (0b0001, 0b10100, "great"),             // val=1091536 4ph save=2 (G+EY)
+    (0b0101, 0b00001, "last"),              // val=1054790 4ph save=2 (L+AE)
+    (0b0001, 0b00101, "need"),              // val=1040131 3ph save=1 (N+IY)
+    (0b0011, 0b00010, "more"),              // val=1010390 3ph save=1 (M+AO)
+    (0b0010, 0b00011, "next"),              // val=1006719 5ph save=3 (N+EH)
+    (0b1000, 0b10001, "tomorrow"),          // val=994916 6ph save=4 (T+AH)
+    (0b0001, 0b11000, "down"),              // val=978966 3ph save=1 (D+AW)
+    (0b1111, 0b00111, "woman"),             // val=974019 5ph save=3 (W+UH)
+    (0b0111, 0b01111, "make"),              // val=963885 3ph save=1 (M+EY)
+    (0b0110, 0b00011, "myself"),            // val=961840 6ph save=4 (M+AY)
+    (0b0011, 0b00110, "money"),             // val=943286 4ph save=2 (M+AH)
+    (0b1001, 0b00100, "around"),            // val=942926 4ph save=2 (N+ER)
+    (0b0100, 0b01001, "friend"),            // val=924612 5ph save=3 (F+EH)
+    (0b0100, 0b10100, "anyone"),            // val=913328 6ph save=4 (N+EH)
+    (0b0010, 0b10001, "place"),             // val=889726 4ph save=2 (P+EY)
+    (0b0001, 0b10010, "over"),              // val=880841 3ph save=1 (V+OW)
+    (0b0101, 0b00100, "father"),            // val=875074 4ph save=2 (F+AA)
+    (0b0100, 0b00101, "different"),         // val=873285 7ph save=5 (D+IH)
+    (0b1001, 0b01000, "without"),           // val=871527 5ph save=3 (W+IH)
+    (0b1000, 0b01001, "somebody"),          // val=857980 7ph save=5 (S+AH)
+    (0b1100, 0b00001, "love"),              // val=830324 3ph save=1 (L+AH)
+    (0b0001, 0b01100, "music"),             // val=828820 6ph save=4 (M+UW)
+    (0b0111, 0b00111, "should"),            // val=823711 3ph save=1 (SH+UH)
+    (0b0110, 0b10001, "mean"),              // val=821275 3ph save=1 (M+IY)
+    (0b0001, 0b10110, "give"),              // val=811919 3ph save=1 (G+IH)
+    (0b1000, 0b10100, "hello"),             // val=811068 4ph save=2 (HH+AH)
+    (0b0100, 0b11000, "husband"),           // val=796970 7ph save=5 (HH+AH)
+    (0b1111, 0b00011, "kind"),              // val=784484 4ph save=2 (K+AY)
+    (0b0011, 0b01111, "brother"),           // val=779631 5ph save=3 (B+AH)
+    (0b1001, 0b00010, "pretty"),            // val=778500 5ph save=3 (P+IH)
+    (0b1000, 0b00101, "every"),             // val=777040 4ph save=2 (V+EH)
+    (0b0101, 0b01000, "haven"),             // val=775389 5ph save=3 (HH+EY)
+    (0b0010, 0b01001, "second"),            // val=774748 6ph save=4 (S+EH)
+    (0b0100, 0b10010, "start"),             // val=769251 5ph save=3 (S+AA)
+    (0b0010, 0b10100, "any"),               // val=767968 3ph save=1 (N+EH)
+    (0b1000, 0b11000, "course"),            // val=763632 4ph save=2 (K+AO)
+    (0b1001, 0b00110, "enough"),            // val=753946 4ph save=2 (N+IH)
+    (0b0110, 0b01001, "mother"),            // val=745692 4ph save=2 (M+AH)
+    (0b0101, 0b00010, "world"),             // val=741240 4ph save=2 (W+ER)
+    (0b0010, 0b00101, "tonight"),           // val=739542 5ph save=3 (T+AH)
+    (0b0111, 0b00011, "much"),              // val=738599 3ph save=1 (M+AH)
+    (0b0011, 0b00111, "today"),             // val=732790 4ph save=2 (T+AH)
+    (0b1111, 0b10001, "whatever"),          // val=720328 6ph save=4 (W+AH)
+    (0b0001, 0b11111, "sure"),              // val=709390 3ph save=1 (SH+UH)
+    (0b1100, 0b00100, "question"),          // val=704850 7ph save=5 (K+EH)
+    (0b0100, 0b01100, "these"),             // val=683128 3ph save=1 (DH+IY)
+    (0b0110, 0b10100, "until"),             // val=675513 5ph save=3 (N+AH)
+    (0b0100, 0b10110, "found"),             // val=674764 4ph save=2 (F+AW)
+    (0b1000, 0b10010, "police"),            // val=664140 5ph save=3 (P+AH)
+    (0b0010, 0b11000, "against"),           // val=660132 6ph save=4 (G+AH)
+    (0b1110, 0b00001, "sometimes"),         // val=643895 7ph save=5 (S+AH)
+    (0b0001, 0b01110, "moment"),            // val=639980 6ph save=4 (M+OW)
+    (0b0110, 0b00101, "many"),              // val=629700 4ph save=2 (M+EH)
+    (0b0101, 0b00110, "nobody"),            // val=628056 6ph save=4 (N+OW)
+    (0b1100, 0b01000, "mind"),              // val=625854 4ph save=2 (M+AY)
+    (0b1000, 0b01100, "life"),              // val=624596 3ph save=1 (L+AY)
+    (0b1000, 0b10110, "god"),               // val=611924 3ph save=1 (G+AA)
+    (0b0110, 0b11000, "work"),              // val=611677 3ph save=1 (W+ER)
+    (0b0111, 0b10001, "congratulations"),   // val=610164 14ph save=12 (K+AH)
+    (0b0001, 0b10111, "between"),           // val=610080 6ph save=4 (B+IH)
+    (0b0010, 0b10010, "gentlemen"),         // val=606620 9ph save=7 (JH+EH)
+    (0b1111, 0b01001, "their"),             // val=601171 3ph save=1 (DH+EH)
+    (0b1001, 0b01111, "doctor"),            // val=595272 5ph save=3 (D+AA)
+    (0b0011, 0b00011, "absolutely"),        // val=593992 9ph save=7 (B+AE)
+    (0b1111, 0b10100, "behind"),            // val=593876 6ph save=4 (B+IH)
+    (0b0100, 0b11111, "almost"),            // val=593620 6ph save=4 (L+AO)
+    (0b1100, 0b00010, "hospital"),          // val=588456 8ph save=6 (HH+AA)
+    (0b0010, 0b01100, "anymore"),           // val=587612 6ph save=4 (N+EH)
+    (0b0110, 0b10010, "baby"),              // val=580992 4ph save=2 (B+EY)
+    (0b0010, 0b10110, "person"),            // val=577956 5ph save=3 (P+ER)
+    (0b1110, 0b00100, "other"),             // val=577197 3ph save=1 (DH+AH)
+    (0b0100, 0b01110, "wait"),              // val=574752 3ph save=1 (W+EY)
+    (0b1111, 0b00101, "president"),         // val=573860 9ph save=7 (P+EH)
+    (0b0101, 0b01111, "call"),              // val=572997 3ph save=1 (K+AO)
+    (0b1100, 0b00110, "trouble"),           // val=572940 6ph save=4 (T+AH)
+    (0b0110, 0b01100, "talk"),              // val=567036 3ph save=1 (T+AO)
+    (0b1001, 0b00111, "minute"),            // val=566874 5ph save=3 (M+IH)
+    (0b0111, 0b01001, "crazy"),             // val=566301 5ph save=3 (K+EY)
+    (0b1111, 0b11000, "most"),              // val=566012 4ph save=2 (M+OW)
+    (0b1000, 0b11111, "forget"),            // val=565884 5ph save=3 (F+ER)
+    (0b0110, 0b10110, "away"),              // val=564268 3ph save=1 (W+AH)
+    (0b0011, 0b10001, "anybody"),           // val=562910 7ph save=5 (N+EH)
+    (0b0001, 0b10011, "welcome"),           // val=561308 6ph save=4 (W+EH)
+    (0b0111, 0b10100, "than"),              // val=561014 3ph save=1 (DH+AE)
+    (0b0100, 0b10111, "happen"),            // val=558123 5ph save=3 (HH+AE)
+    (0b1110, 0b01000, "home"),              // val=556894 3ph save=1 (HH+OW)
+    (0b1000, 0b01110, "night"),             // val=556318 3ph save=1 (N+AY)
+    (0b1011, 0b10000, "parents"),           // val=551030 7ph save=5 (P+EH)
+    (0b0111, 0b00101, "himself"),           // val=548740 7ph save=5 (HH+IH)
+    (0b0101, 0b00111, "drink"),             // val=547740 5ph save=3 (D+IH)
+    (0b1111, 0b10010, "company"),           // val=540365 7ph save=5 (K+AH)
+    (0b0010, 0b11111, "once"),              // val=539408 4ph save=2 (W+AH)
+    (0b1000, 0b10111, "ready"),             // val=534536 4ph save=2 (R+EH)
+    (0b0111, 0b11000, "possible"),          // val=530400 7ph save=5 (P+AA)
+    (0b1110, 0b00010, "those"),             // val=528404 3ph save=1 (DH+OW)
+    (0b0010, 0b01110, "idea"),              // val=526194 4ph save=2 (D+AY)
+    (0b1111, 0b01100, "stupid"),            // val=525988 6ph save=4 (S+UW)
+    (0b1100, 0b01111, "hold"),              // val=524734 4ph save=2 (HH+OW)
+    (0b1001, 0b00011, "happy"),             // val=524282 4ph save=2 (HH+AE)
+    (0b0011, 0b01001, "inside"),            // val=522243 5ph save=3 (N+IH)
+    (0b1111, 0b10110, "also"),              // val=519606 4ph save=2 (L+AO)
+    (0b0110, 0b11111, "control"),           // val=513910 7ph save=5 (K+AH)
+    (0b0100, 0b10011, "wonderful"),         // val=513702 8ph save=6 (W+AH)
+    (0b0011, 0b10100, "completely"),        // val=509439 9ph save=7 (K+AH)
+    (0b1110, 0b00110, "since"),             // val=508854 4ph save=2 (S+IH)
+    (0b0110, 0b01110, "afraid"),            // val=506322 5ph save=3 (F+AH)
+    (0b0111, 0b10010, "country"),           // val=502924 6ph save=4 (K+AH)
+    (0b0010, 0b10111, "information"),       // val=502880 9ph save=7 (N+IH)
+    (0b0101, 0b00011, "definitely"),        // val=500668 9ph save=7 (D+EH)
+    (0b0011, 0b00101, "security"),          // val=500521 9ph save=7 (S+IH)
+    (0b1100, 0b00111, "anyway"),            // val=500106 5ph save=3 (N+EH)
+    (0b0111, 0b01100, "captain"),           // val=499496 6ph save=4 (K+AE)
+    (0b1001, 0b10001, "party"),             // val=498411 5ph save=3 (P+AA)
+    (0b0001, 0b11001, "keep"),              // val=498392 3ph save=1 (K+IY)
+    (0b0111, 0b10110, "long"),              // val=496267 3ph save=1 (L+AO)
+    (0b0110, 0b10111, "matter"),            // val=495624 4ph save=2 (M+AE)
+    (0b1000, 0b10011, "bring"),             // val=494686 4ph save=2 (B+IH)
+    (0b0011, 0b11000, "story"),             // val=492120 5ph save=3 (S+AO)
+    (0b1010, 0b00001, "number"),            // val=489777 5ph save=3 (N+AH)
+    (0b0001, 0b01010, "wanna"),             // val=486218 4ph save=2 (W+AA)
+    (0b1111, 0b11111, "hard"),              // val=485742 4ph save=2 (HH+AA)
+    (0b1111, 0b01110, "alone"),             // val=480950 4ph save=2 (L+AH)
+    (0b1110, 0b01111, "school"),            // val=480352 4ph save=2 (S+UW)
+    (0b0101, 0b10001, "leave"),             // val=478282 3ph save=1 (L+IY)
+    (0b0001, 0b10101, "mr"),                // val=469923 5ph save=3 (M+IH)
+    (0b0011, 0b10010, "stand"),             // val=466173 5ph save=3 (S+AE)
+    (0b0010, 0b10011, "promise"),           // val=463632 6ph save=4 (P+AA)
+    (0b1001, 0b01001, "sister"),            // val=462285 5ph save=3 (S+IH)
+    (0b1100, 0b00011, "gotta"),             // val=460702 4ph save=2 (G+AA)
+    (0b0011, 0b01100, "open"),              // val=459338 4ph save=2 (P+OW)
+    (0b1111, 0b10111, "interesting"),       // val=455574 9ph save=7 (N+IH)
+    (0b0111, 0b11111, "name"),              // val=455543 3ph save=1 (N+EY)
+    (0b0110, 0b10011, "perfect"),           // val=448916 6ph save=4 (P+ER)
+    (0b0011, 0b10110, "ever"),              // val=444088 3ph save=1 (V+EH)
+    (0b1001, 0b10100, "feel"),              // val=444014 3ph save=1 (F+IY)
+    (0b0100, 0b11001, "special"),           // val=441376 6ph save=4 (S+EH)
+    (0b1110, 0b00111, "relationship"),      // val=441024 10ph save=8 (R+IY)
+    (0b0111, 0b01110, "perhaps"),           // val=436960 6ph save=4 (P+ER)
+    (0b1010, 0b00100, "serious"),           // val=435096 6ph save=4 (S+IH)
+    (0b0100, 0b01010, "reason"),            // val=433197 5ph save=3 (R+IY)
+    (0b1001, 0b00101, "old"),               // val=431911 3ph save=1 (L+OW)
+    (0b0101, 0b01001, "heart"),             // val=427828 4ph save=2 (HH+AA)
+    (0b0101, 0b10100, "interested"),        // val=427203 9ph save=7 (N+IH)
+    (0b0100, 0b10101, "trust"),             // val=423981 5ph save=3 (T+AH)
+    (0b1001, 0b11000, "which"),             // val=422483 3ph save=1 (W+IH)
+    (0b1000, 0b11001, "explain"),           // val=421840 7ph save=5 (K+IH)
+    (0b1100, 0b10001, "yesterday"),         // val=419115 7ph save=5 (Y+EH)
+    (0b0001, 0b11100, "big"),               // val=417218 3ph save=1 (B+IH)
+    (0b0111, 0b10111, "couple"),            // val=416988 5ph save=3 (K+AH)
+    (0b1010, 0b01000, "hand"),              // val=412494 4ph save=2 (HH+AE)
+    (0b1000, 0b01010, "lot"),               // val=411660 3ph save=1 (L+AA)
+    (0b0101, 0b00101, "human"),             // val=410380 6ph save=4 (HH+UW)
+    (0b1111, 0b10011, "front"),             // val=406023 5ph save=3 (F+AH)
+    (0b0011, 0b11111, "nice"),              // val=405497 3ph save=1 (N+AY)
+    (0b1001, 0b10010, "girl"),              // val=402557 3ph save=1 (G+ER)
+    (0b1000, 0b10101, "fine"),              // val=400530 3ph save=1 (F+AY)
+    (0b0101, 0b11000, "finally"),           // val=399616 6ph save=4 (F+AY)
+    (0b0010, 0b11001, "chuckles"),          // val=398428 6ph save=4 (CH+AH)
+    (0b1110, 0b00011, "situation"),         // val=396174 8ph save=6 (S+IH)
+    (0b0011, 0b01110, "house"),             // val=388585 3ph save=1 (HH+AW)
+    (0b1010, 0b00010, "ok"),                // val=388338 3ph save=1 (K+OW)
+    (0b0010, 0b01010, "through"),           // val=388127 3ph save=1 (TH+UW)
+    (0b1100, 0b01001, "become"),            // val=386148 5ph save=3 (B+IH)
+    (0b1001, 0b01100, "water"),             // val=386028 4ph save=2 (W+AO)
+    (0b1001, 0b10110, "part"),              // val=384496 4ph save=2 (P+AA)
+    (0b0110, 0b11001, "decided"),           // val=383415 7ph save=5 (D+IH)
+    (0b0101, 0b10010, "outside"),           // val=381753 5ph save=3 (T+AW)
+    (0b0010, 0b10101, "stuff"),             // val=381258 4ph save=2 (S+AH)
+    (0b0111, 0b10011, "stay"),              // val=378726 3ph save=1 (S+EY)
+    (0b0011, 0b10111, "under"),             // val=378694 4ph save=2 (N+AH)
+    (0b1010, 0b00110, "dad"),               // val=378540 3ph save=1 (D+AE)
+    (0b0110, 0b01010, "million"),           // val=378056 6ph save=4 (M+IH)
+    (0b1100, 0b10100, "american"),          // val=377010 8ph save=6 (M+AH)
+    (0b0100, 0b11100, "impossible"),        // val=374689 9ph save=7 (M+IH)
+    (0b1110, 0b10001, "change"),            // val=373924 4ph save=2 (CH+EY)
+    (0b0001, 0b11110, "wrong"),             // val=370949 3ph save=1 (R+AO)
+    (0b1100, 0b00101, "accident"),          // val=370026 8ph save=6 (K+AE)
+    (0b0101, 0b01100, "bad"),               // val=369996 3ph save=1 (B+AE)
+    (0b0110, 0b10101, "government"),        // val=369876 8ph save=6 (G+AH)
+    (0b0101, 0b10110, "somewhere"),         // val=369060 6ph save=4 (S+AH)
+    (0b1100, 0b11000, "apartment"),         // val=368998 9ph save=7 (P+AH)
+    (0b1000, 0b11100, "might"),             // val=367145 3ph save=1 (M+AY)
+    (0b1111, 0b11001, "three"),             // val=366626 3ph save=1 (TH+IY)
+    (0b1001, 0b11111, "evidence"),          // val=365565 7ph save=5 (V+EH)
+    (0b1111, 0b01010, "detective"),         // val=363798 8ph save=6 (D+IH)
+    (0b1010, 0b01111, "difficult"),         // val=362424 8ph save=6 (D+IH)
+    (0b0011, 0b10011, "hear"),              // val=360665 3ph save=1 (HH+IY)
+    (0b1110, 0b01001, "careful"),           // val=358668 6ph save=4 (K+EH)
+    (0b1001, 0b01110, "secret"),            // val=356944 6ph save=4 (S+IY)
+    (0b1100, 0b10010, "ask"),               // val=354323 3ph save=1 (S+AE)
+    (0b0010, 0b11100, "christmas"),         // val=353120 7ph save=5 (K+IH)
+    (0b1110, 0b10100, "alright"),           // val=349887 5ph save=3 (L+AO)
+    (0b0100, 0b11110, "point"),             // val=348410 4ph save=2 (P+OY)
+    (0b1111, 0b10101, "same"),              // val=348167 3ph save=1 (S+EY)
+    (0b0101, 0b11111, "expect"),            // val=348070 7ph save=5 (K+IH)
+    (0b1100, 0b01100, "terrible"),          // val=347495 7ph save=5 (T+EH)
+    (0b1100, 0b10110, "else"),              // val=340756 3ph save=1 (L+EH)
+    (0b0110, 0b11100, "kill"),              // val=339509 3ph save=1 (K+IH)
+    (0b1001, 0b10111, "girlfriend"),        // val=338850 8ph save=6 (G+ER)
+    (0b0111, 0b11001, "body"),              // val=337596 4ph save=2 (B+AA)
+    (0b1110, 0b00101, "sleep"),             // val=336206 4ph save=2 (S+IY)
+    (0b0101, 0b01110, "chance"),            // val=335962 4ph save=2 (CH+AE)
+    (0b1010, 0b00111, "quite"),             // val=333960 4ph save=2 (K+AY)
+    (0b0111, 0b01010, "close"),             // val=333354 4ph save=2 (K+OW)
+    (0b1110, 0b11000, "protect"),           // val=332540 7ph save=5 (P+AH)
+    (0b1000, 0b11110, "care"),              // val=330956 3ph save=1 (K+EH)
+    (0b1101, 0b00001, "car"),               // val=330261 3ph save=1 (K+AA)
+    (0b0001, 0b01101, "dangerous"),         // val=329870 7ph save=5 (D+EY)
+    (0b0111, 0b10101, "darling"),           // val=328960 6ph save=4 (D+AA)
+    (0b0101, 0b10111, "attention"),         // val=327105 7ph save=5 (T+AH)
+    (0b1110, 0b10010, "daughter"),          // val=326142 4ph save=2 (D+AO)
+    (0b0010, 0b11110, "son"),               // val=325997 3ph save=1 (S+AH)
+    (0b1111, 0b11100, "lieutenant"),        // val=325926 8ph save=6 (L+UW)
+    (0b1100, 0b11111, "least"),             // val=325810 4ph save=2 (L+IY)
+    (0b1001, 0b10011, "try"),               // val=325748 3ph save=1 (T+AY)
+    (0b0011, 0b11001, "scared"),            // val=323718 5ph save=3 (S+EH)
+    (0b1010, 0b00011, "uncle"),             // val=323478 5ph save=3 (NG+AH)
+    (0b0011, 0b01010, "obviously"),         // val=321162 8ph save=6 (B+AA)
+    (0b1110, 0b01100, "amazing"),           // val=321068 6ph save=4 (M+AH)
+    (0b1100, 0b01110, "rest"),              // val=317952 4ph save=2 (R+EH)
+    (0b1110, 0b10110, "dead"),              // val=317589 3ph save=1 (D+EH)
+    (0b0110, 0b11110, "present"),           // val=316535 7ph save=5 (P+EH)
+    (0b0101, 0b10011, "cannot"),            // val=311739 5ph save=3 (K+AE)
+    (0b0011, 0b10101, "report"),            // val=311296 6ph save=4 (R+IY)
+    (0b1101, 0b00100, "continue"),          // val=307674 8ph save=6 (K+AH)
+    (0b0100, 0b01101, "appreciate"),        // val=307548 8ph save=6 (P+AH)
+    (0b1100, 0b10111, "strange"),           // val=307452 6ph save=4 (S+EY)
+    (0b0111, 0b11100, "general"),           // val=307264 6ph save=4 (JH+EH)
+    (0b1010, 0b10001, "mom"),               // val=305139 3ph save=1 (M+AA)
+    (0b0001, 0b11010, "hell"),              // val=304275 3ph save=1 (HH+EH)
+    (0b1101, 0b01000, "child"),             // val=303728 4ph save=2 (CH+AY)
+    (0b1000, 0b01101, "personal"),          // val=301905 7ph save=5 (P+ER)
+    (0b1111, 0b11110, "speak"),             // val=301854 4ph save=2 (S+IY)
+    (0b1110, 0b11111, "mistake"),           // val=299828 6ph save=4 (M+IH)
+    (0b1110, 0b01110, "job"),               // val=298911 3ph save=1 (JH+AA)
+    (0b1001, 0b11001, "america"),           // val=298515 7ph save=5 (M+AH)
+    (0b1101, 0b00010, "building"),          // val=297968 6ph save=4 (B+IH)
+    (0b0010, 0b01101, "afternoon"),         // val=297330 7ph save=5 (F+AE)
+    (0b1100, 0b10011, "truth"),             // val=296778 4ph save=2 (T+UW)
+    (0b0011, 0b11100, "blood"),             // val=295826 4ph save=2 (B+AH)
+    (0b1010, 0b01001, "screaming"),         // val=295755 7ph save=5 (S+IY)
+    (0b1001, 0b01010, "system"),            // val=294712 6ph save=4 (S+IH)
+    (0b1110, 0b10111, "real"),              // val=294536 3ph save=1 (R+IY)
+    (0b0111, 0b11110, "able"),              // val=294410 4ph save=2 (B+EY)
+    (0b1010, 0b10100, "lady"),              // val=294242 4ph save=2 (L+EY)
+    (0b0100, 0b11010, "street"),            // val=294021 5ph save=3 (S+IY)
+    (0b1101, 0b00110, "room"),              // val=290206 3ph save=1 (R+UW)
+    (0b0110, 0b01101, "totally"),           // val=289912 6ph save=4 (T+OW)
+    (0b1001, 0b10101, "respect"),           // val=288235 7ph save=5 (R+IH)
+    (0b0101, 0b11001, "imagine"),           // val=287492 6ph save=4 (M+IH)
+    (0b1010, 0b00101, "instead"),           // val=286284 6ph save=4 (N+IH)
+    (0b0101, 0b01010, "break"),             // val=286214 4ph save=2 (B+EY)
+    (0b1010, 0b11000, "master"),            // val=285393 5ph save=3 (M+AE)
+    (0b1000, 0b11010, "city"),              // val=285146 4ph save=2 (S+IH)
+    (0b0101, 0b10101, "move"),              // val=283807 3ph save=1 (M+UW)
+    (0b1110, 0b10011, "seen"),              // val=282420 3ph save=1 (S+IY)
+    (0b0011, 0b11110, "office"),            // val=282280 4ph save=2 (F+AO)
+    (0b1010, 0b10010, "live"),              // val=281046 3ph save=1 (L+AY)
+    (0b0010, 0b11010, "miss"),              // val=280930 3ph save=1 (M+IH)
+    (0b1111, 0b01101, "history"),           // val=276476 6ph save=4 (HH+IH)
+    (0b1101, 0b01111, "except"),            // val=273760 6ph save=4 (K+IH)
+    (0b1100, 0b11001, "shit"),              // val=273312 3ph save=1 (SH+IH)
+    (0b1001, 0b11100, "position"),          // val=272245 7ph save=5 (P+AH)
+    (0b1100, 0b01010, "quiet"),             // val=271656 5ph save=3 (K+AY)
+    (0b1010, 0b01100, "honey"),             // val=271262 4ph save=2 (HH+AH)
+    (0b1010, 0b10110, "especially"),        // val=270740 7ph save=5 (S+AH)
+    (0b0110, 0b11010, "both"),              // val=270720 3ph save=1 (B+OW)
+    (0b1100, 0b10101, "heard"),             // val=269851 3ph save=1 (HH+ER)
+    (0b0101, 0b11100, "involved"),          // val=268590 7ph save=5 (N+IH)
+    (0b1101, 0b00111, "handle"),            // val=268356 6ph save=4 (HH+AE)
+    (0b0111, 0b01101, "return"),            // val=268353 5ph save=3 (R+IH)
+    (0b1111, 0b11010, "answer"),            // val=268176 4ph save=2 (N+AE)
+    (0b1010, 0b11111, "head"),              // val=266844 3ph save=1 (HH+EH)
+    (0b1110, 0b11001, "boyfriend"),         // val=265620 7ph save=5 (B+OY)
+    (0b1001, 0b11110, "send"),              // val=263998 4ph save=2 (S+EH)
+    (0b1110, 0b01010, "anywhere"),          // val=263924 6ph save=4 (N+EH)
+    (0b1010, 0b01110, "straight"),          // val=262134 5ph save=3 (S+EY)
+    (0b1101, 0b00011, "door"),              // val=261118 3ph save=1 (D+AO)
+    (0b0011, 0b01101, "such"),              // val=261104 3ph save=1 (S+AH)
+    (0b1100, 0b11100, "future"),            // val=260496 5ph save=3 (F+UW)
+    (0b1110, 0b10101, "simple"),            // val=260360 6ph save=4 (S+IH)
+    (0b0101, 0b11110, "professor"),         // val=260130 7ph save=5 (P+AH)
+    (0b1010, 0b10111, "fuck"),              // val=260121 3ph save=1 (F+AH)
+    (0b0111, 0b11010, "bit"),               // val=258929 3ph save=1 (B+IH)
+    (0b1101, 0b10001, "contact"),           // val=258750 7ph save=5 (K+AA)
+    (0b0001, 0b11101, "single"),            // val=258456 6ph save=4 (S+IH)
+    (0b1010, 0b10011, "yet"),               // val=257947 3ph save=1 (Y+EH)
+    (0b0011, 0b11010, "whole"),             // val=257109 3ph save=1 (HH+OW)
+    (0b1110, 0b11100, "along"),             // val=256440 4ph save=2 (L+AH)
+    (0b1100, 0b11110, "use"),               // val=256079 3ph save=1 (Y+UW)
+    (0b1101, 0b01001, "while"),             // val=255970 3ph save=1 (W+AY)
+    (0b1001, 0b01101, "normal"),            // val=254704 6ph save=4 (N+AO)
+    (0b1101, 0b10100, "wife"),              // val=254038 3ph save=1 (W+AY)
+    (0b0100, 0b11101, "clear"),             // val=251460 4ph save=2 (K+IH)
+    (0b1101, 0b00101, "order"),             // val=250892 4ph save=2 (R+AO)
+    (0b0101, 0b01101, "picture"),           // val=250383 5ph save=3 (P+IH)
+    (0b1101, 0b11000, "guess"),             // val=250320 3ph save=1 (G+EH)
+    (0b1000, 0b11101, "fact"),              // val=249990 4ph save=2 (F+AE)
+    (0b1011, 0b00001, "lord"),              // val=249760 4ph save=2 (L+AO)
+    (0b0001, 0b01011, "wonder"),            // val=248709 5ph save=3 (W+AH)
+    (0b1110, 0b11110, "surprise"),          // val=248680 6ph save=4 (S+ER)
+    (0b1101, 0b10010, "six"),               // val=248174 4ph save=2 (S+IH)
+    (0b0010, 0b11101, "funny"),             // val=247848 4ph save=2 (F+AH)
+    (0b1010, 0b11001, "meet"),              // val=247466 3ph save=1 (M+IY)
+    (0b1001, 0b11010, "black"),             // val=247436 4ph save=2 (B+AE)
+    (0b1010, 0b01010, "alive"),             // val=245666 4ph save=2 (L+AH)
+    (0b1101, 0b01100, "run"),               // val=244200 3ph save=1 (R+AH)
+    (0b1100, 0b01101, "figure"),            // val=243144 5ph save=3 (F+IH)
+    (0b1101, 0b10110, "prison"),            // val=242324 6ph save=4 (P+IH)
+    (0b0110, 0b11101, "strong"),            // val=241503 5ph save=3 (S+AO)
+    (0b1010, 0b10101, "record"),            // val=241440 6ph save=4 (R+AH)
+    (0b0101, 0b11010, "ahead"),             // val=240590 4ph save=2 (HH+AH)
+    (0b1011, 0b00100, "relax"),             // val=238860 6ph save=4 (R+IH)
+    (0b0100, 0b01011, "public"),            // val=238748 6ph save=4 (P+AH)
+    (0b1011, 0b01000, "end"),               // val=237387 3ph save=1 (N+EH)
+    (0b1000, 0b01011, "bastard"),           // val=237328 6ph save=4 (B+AE)
+    (0b1111, 0b11101, "plan"),              // val=236258 4ph save=2 (P+AE)
+    (0b1101, 0b11111, "forward"),           // val=236256 6ph save=4 (F+AO)
+    (0b1110, 0b01101, "dinner"),            // val=235940 4ph save=2 (D+IH)
+    (0b1101, 0b01110, "phone"),             // val=235246 3ph save=1 (F+OW)
+    (0b1100, 0b11010, "sort"),              // val=234534 4ph save=2 (S+AO)
+    (0b1010, 0b11100, "play"),              // val=233865 3ph save=1 (P+EY)
+    (0b1011, 0b00010, "goodbye"),           // val=232542 5ph save=3 (G+UH)
+    (0b0010, 0b01011, "few"),               // val=231375 3ph save=1 (F+UW)
+    (0b1101, 0b10111, "wedding"),           // val=230820 5ph save=3 (W+EH)
+    (0b0111, 0b11101, "ago"),               // val=229751 3ph save=1 (G+AH)
+    (0b1011, 0b00110, "sent"),              // val=227918 4ph save=2 (S+EH)
+    (0b0110, 0b01011, "hope"),              // val=226993 3ph save=1 (HH+OW)
+    (0b1110, 0b11010, "broken"),            // val=225564 6ph save=4 (B+OW)
+    (0b1010, 0b11110, "face"),              // val=225482 3ph save=1 (F+EY)
+    (0b1101, 0b10011, "small"),             // val=224632 4ph save=2 (S+AO)
+    (0b0011, 0b11101, "finish"),            // val=222897 5ph save=3 (F+IH)
+    (0b1111, 0b01011, "during"),            // val=222894 5ph save=3 (D+UH)
+    (0b1011, 0b01111, "english"),           // val=222708 6ph save=4 (NG+IH)
+    (0b1011, 0b00111, "hungry"),            // val=221036 6ph save=4 (HH+AH)
+    (0b0111, 0b01011, "suppose"),           // val=220395 5ph save=3 (S+AH)
+    (0b1101, 0b11001, "private"),           // val=219912 6ph save=4 (P+AY)
+    (0b1001, 0b11101, "turn"),              // val=218563 3ph save=1 (T+ER)
+    (0b1101, 0b01010, "realize"),           // val=217224 6ph save=4 (R+IY)
+    (0b1010, 0b01101, "birthday"),          // val=216420 5ph save=3 (B+ER)
+    (0b1011, 0b00011, "forgive"),           // val=215745 5ph save=3 (F+ER)
+    (0b0011, 0b01011, "case"),              // val=215274 3ph save=1 (K+EY)
+    (0b1101, 0b10101, "true"),              // val=214773 3ph save=1 (T+UW)
+    (0b0101, 0b11101, "soon"),              // val=213279 3ph save=1 (S+UW)
+    (0b1011, 0b10001, "accept"),            // val=213164 6ph save=4 (K+AE)
+    (0b0001, 0b11011, "unless"),            // val=212937 5ph save=3 (N+AH)
+    (0b1010, 0b11010, "seven"),             // val=212904 5ph save=3 (S+EH)
+    (0b1101, 0b11100, "past"),              // val=212878 4ph save=2 (P+AE)
+    (0b1100, 0b11101, "clothes"),           // val=212787 5ph save=3 (K+OW)
+    (0b1011, 0b01001, "besides"),           // val=212440 6ph save=4 (B+IH)
+    (0b1001, 0b01011, "hotel"),             // val=211977 5ph save=3 (HH+OW)
+    (0b1011, 0b10100, "worry"),             // val=211329 3ph save=1 (W+ER)
+    (0b0100, 0b11011, "sound"),             // val=210596 4ph save=2 (S+AW)
+    (0b1011, 0b00101, "year"),              // val=208705 3ph save=1 (Y+IH)
+    (0b0101, 0b01011, "watch"),             // val=207949 3ph save=1 (W+AA)
+    (0b1011, 0b11000, "glad"),              // val=205696 4ph save=2 (G+AE)
+    (0b1000, 0b11011, "forever"),           // val=205530 5ph save=3 (F+ER)
+    (0b1110, 0b11101, "message"),           // val=204915 5ph save=3 (M+EH)
+    (0b1101, 0b11110, "drive"),             // val=204872 4ph save=2 (D+AY)
+    (0b1011, 0b10010, "entire"),            // val=204846 5ph save=3 (N+IH)
+    (0b0010, 0b11011, "table"),             // val=203106 5ph save=3 (T+EY)
+    (0b1100, 0b01011, "across"),            // val=202785 5ph save=3 (K+AH)
+    (0b1011, 0b01100, "murder"),            // val=202266 4ph save=2 (M+ER)
+    (0b1011, 0b10110, "middle"),            // val=200202 5ph save=3 (M+IH)
+    (0b0110, 0b11011, "daddy"),             // val=200010 4ph save=2 (D+AE)
+    (0b1111, 0b11011, "spend"),             // val=198357 5ph save=3 (S+EH)
+    (0b1011, 0b11111, "fast"),              // val=198168 4ph save=2 (F+AE)
+    (0b1110, 0b01011, "sit"),               // val=198149 3ph save=1 (S+IH)
+    (0b1101, 0b01101, "cold"),              // val=198064 4ph save=2 (K+OW)
+    (0b1011, 0b01110, "young"),             // val=194810 3ph save=1 (Y+AH)
+    (0b1011, 0b10111, "dance"),             // val=194678 4ph save=2 (D+AE)
+    (0b0111, 0b11011, "marriage"),          // val=193395 5ph save=3 (M+EH)
+    (0b1101, 0b11010, "follow"),            // val=193058 4ph save=2 (F+AA)
+    (0b1010, 0b11101, "sense"),             // val=192884 4ph save=2 (S+EH)
+    (0b1011, 0b10011, "sex"),               // val=192862 4ph save=2 (S+EH)
+    (0b0011, 0b11011, "forgot"),            // val=192507 5ph save=3 (F+ER)
+    (0b1011, 0b11001, "late"),              // val=191989 3ph save=1 (L+EY)
+    (0b1001, 0b11011, "dream"),             // val=190178 4ph save=2 (D+IY)
+    (0b1011, 0b01010, "death"),             // val=189000 3ph save=1 (D+EH)
+    (0b1010, 0b01011, "ground"),            // val=188580 5ph save=3 (G+AW)
+    (0b1011, 0b10101, "sweet"),             // val=188114 4ph save=2 (S+IY)
+    (0b0101, 0b11011, "rather"),            // val=188114 4ph save=2 (R+AE)
+    (0b1100, 0b11011, "kid"),               // val=187858 3ph save=1 (K+IH)
+    (0b1011, 0b11100, "radio"),             // val=187506 5ph save=3 (R+EY)
+    (0b1110, 0b11011, "idiot"),             // val=187071 5ph save=3 (D+IH)
+    (0b1101, 0b11101, "lucky"),             // val=184754 4ph save=2 (L+AH)
+    (0b1011, 0b11110, "damn"),              // val=184228 3ph save=1 (D+AE)
+    (0b1101, 0b01011, "five"),              // val=183626 3ph save=1 (F+AY)
+    (0b1011, 0b01101, "certain"),           // val=183150 5ph save=3 (S+ER)
+    (0b1011, 0b11010, "far"),               // val=182287 3ph save=1 (F+AA)
+    (0b1010, 0b11011, "smart"),             // val=181191 5ph save=3 (S+AA)
+    (0b1101, 0b11011, "its"),               // val=180594 3ph save=1 (T+IH)
+    (0b1011, 0b11101, "coffee"),            // val=179300 4ph save=2 (K+AA)
+    (0b1011, 0b01011, "shut"),              // val=178378 3ph save=1 (SH+AH)
+    (0b1011, 0b11011, "service"),           // val=177831 5ph save=3 (S+ER)
 ];

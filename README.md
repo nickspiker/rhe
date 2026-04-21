@@ -248,6 +248,11 @@ Short-term:
 - **Operators and symbols** — extended chord set for math, punctuation,
   and common programmer symbols, accessible via mode-switch chords.
 
+- **Auto chord mapping** — `rhe bench` measures your actual chord speed
+  per finger combo. `gen_map` reads the timings + phoneme frequency
+  data and generates an optimal phoneme-to-chord mapping for YOUR
+  hands. Outputs `src/chord_map_data.rs`, rebuild to bake it in.
+
 Longer-term:
 
 - **256-bit keymask** — generalize the chord representation from
