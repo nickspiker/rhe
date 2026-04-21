@@ -9,6 +9,8 @@ pub enum Action {
     Emit(String),
     /// Delete N characters (undo last emitted word).
     Backspace(usize),
+    /// Suffix: backspace 1 (trailing space), then emit suffix + space.
+    Suffix(String),
 }
 
 /// Converts state machine events into output actions.
@@ -46,9 +48,16 @@ impl Interpreter {
                     None
                 } else {
                     self.briefs.lookup(key).map(|s| {
-                        let text = s.to_string();
-                        self.last_emit_len = text.len();
-                        Action::Emit(text)
+                        if s.starts_with('\x01') {
+                            // Suffix: backspace trailing space, then emit suffix
+                            let suffix = &s[1..];
+                            self.last_emit_len = suffix.len();
+                            Action::Suffix(suffix.to_string())
+                        } else {
+                            let text = s.to_string();
+                            self.last_emit_len = text.len();
+                            Action::Emit(text)
+                        }
                     })
                 }
             }

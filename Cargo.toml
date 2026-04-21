@@ -1,6 +1,6 @@
 [package]
 name = "rhe"
-version = "0.0.0"
+version = "0.0.1"
 edition = "2024"
 default-run = "rhe"
 description = "Rhe — from Greek ῥέω (to flow). A first-principles stenography engine using temporal hand ordering."

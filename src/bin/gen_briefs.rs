@@ -147,11 +147,16 @@ fn chord_effort(right: u8, left: u8) -> u32 {
 
 /// Return all valid chord slots (right, left) sorted by ergonomic ease.
 /// Excludes (0, 0) since that's no chord.
+/// Excludes left-only slots (right=0, left!=0) since those are reserved for suffixes.
 fn all_slots_by_effort() -> Vec<(u8, u8)> {
     let mut slots: Vec<(u8, u8, u32)> = Vec::new();
     for right in 0u8..32 {
         for left in 0u8..16 {
             if right == 0 && left == 0 {
+                continue;
+            }
+            // Left-only slots are reserved for suffixes
+            if right == 0 && left != 0 {
                 continue;
             }
             let e = chord_effort(right, left);
@@ -301,16 +306,40 @@ fn main() {
     eprintln!("Loaded {} frequency entries", freq_words.len());
 
     // 3. Take top 1000 words that exist in CMU
+    //    Skip apostrophe words and contraction fragments.
     let mut top_words: Vec<(String, u64, Vec<String>)> = Vec::new();
     for (word, count) in &freq_words {
         if top_words.len() >= 1000 {
             break;
+        }
+        if word.contains('\'') {
+            continue;
+        }
+        // Skip contraction fragments (high-freq only because of "don't", "won't", etc.)
+        const FRAGMENTS: &[&str] = &[
+            "don", "doesn", "didn", "wasn", "weren", "isn",
+            "won", "wouldn", "couldn", "shouldn", "hasn",
+            "hadn", "ain", "aren", "mustn",
+        ];
+        if FRAGMENTS.contains(&word.as_str()) {
+            continue;
         }
         if let Some(phs) = cmu.get(word) {
             top_words.push((word.clone(), *count, phs.clone()));
         }
     }
     eprintln!("Selected {} words for brief assignment", top_words.len());
+
+    // 3b. Filter out inflected forms whose base word is already in the list.
+    // If "look" is in the list, "looking" is redundant (use "look" + suffix brief).
+    let base_words: HashSet<String> = top_words.iter().map(|(w, _, _)| w.clone()).collect();
+    let before_filter = top_words.len();
+    top_words.retain(|(word, _, _)| !is_inflected_of_base(word, &base_words));
+    eprintln!(
+        "Filtered {} inflected forms (keeping {} base words)",
+        before_filter - top_words.len(),
+        top_words.len()
+    );
 
     // 4. Compute natural brief for each word
     struct WordInfo {
@@ -415,6 +444,23 @@ fn main() {
             continue;
         }
 
+        // Left-only natural slots are reserved for suffixes — bump these words
+        if nat.0 == 0 && nat.1 != 0 {
+            let slot = find_nearest_slot(nat, &occupied, &all_slots);
+            if let Some(slot) = slot {
+                occupied.insert(slot);
+                assigned_words.insert(w.word.clone());
+                let comment = format!(
+                    "bumped from -+{} → {}+{}",
+                    left_label(nat.1),
+                    right_label(slot.0),
+                    left_label(slot.1),
+                );
+                assignments.push((slot.0, slot.1, w.word.clone(), comment));
+            }
+            continue;
+        }
+
         if !occupied.contains(&nat) {
             occupied.insert(nat);
             assigned_words.insert(w.word.clone());
@@ -449,17 +495,22 @@ fn main() {
     let mut out = String::new();
     out.push_str(
         "/// Auto-generated brief assignments. Edit and recompile to customize.\n\
-         /// Format: (right_5bits, left_4bits, \"word\")\n\
-         /// Right bits: I=0001 M=0010 R=0100 P=1000 T(mod)=10000\n\
-         /// Left bits:  I=0001 M=0010 R=0100 P=1000\n\
+         /// Format: (left_4bits, right_5bits, \"word\")\n\
+         ///\n\
+         /// Bit encoding (both hands): index=bit0 (LSB), outward from center.\n\
+         /// Left:  I=0001 M=0010 R=0100 P=1000\n\
+         /// Right: I=0001 M=0010 R=0100 P=1000 T(thumb/mod)=10000\n\
+         ///\n\
+         /// Note: binary literals read right-to-left (LSB first), so\n\
+         /// 0b0110 = middle+ring, NOT ring+middle. Index is always the rightmost bit.\n\
          pub const BRIEFS: &[(u8, u8, &str)] = &[\n",
     );
 
     for (right, left, word, comment) in &assignments {
         out.push_str(&format!(
-            "    (0b{:05b}, 0b{:04b}, {:w$}  // {}\n",
-            right,
+            "    (0b{:04b}, 0b{:05b}, {:w$}  // {}\n",
             left,
+            right,
             format!("\"{}\"),", word),
             comment,
             w = 20,
@@ -474,6 +525,246 @@ fn main() {
         assignments.len(),
         out_path.display()
     );
+}
+
+/// Check if `word` is an inflected form of another word in `base_words`.
+/// Returns true if we should SKIP this word (it's redundant with base + suffix).
+fn is_inflected_of_base(word: &str, base_words: &HashSet<String>) -> bool {
+    // Irregular forms — hardcoded map for common ones in top 1000
+    static IRREGULARS: &[(&str, &str)] = &[
+        ("went", "go"),
+        ("gone", "go"),
+        ("going", "go"),
+        ("goes", "go"),
+        ("was", "be"),
+        ("were", "be"),
+        ("been", "be"),
+        ("being", "be"),
+        ("had", "have"),
+        ("has", "have"),
+        ("having", "have"),
+        ("did", "do"),
+        ("does", "do"),
+        ("doing", "do"),
+        ("done", "do"),
+        ("said", "say"),
+        ("saying", "say"),
+        ("says", "say"),
+        ("told", "tell"),
+        ("telling", "tell"),
+        ("took", "take"),
+        ("taken", "take"),
+        ("taking", "take"),
+        ("got", "get"),
+        ("getting", "get"),
+        ("gotten", "get"),
+        ("came", "come"),
+        ("coming", "come"),
+        ("comes", "come"),
+        ("made", "make"),
+        ("making", "make"),
+        ("makes", "make"),
+        ("gave", "give"),
+        ("given", "give"),
+        ("giving", "give"),
+        ("gives", "give"),
+        ("knew", "know"),
+        ("known", "know"),
+        ("knowing", "know"),
+        ("knows", "know"),
+        ("thought", "think"),
+        ("thinking", "think"),
+        ("thinks", "think"),
+        ("felt", "feel"),
+        ("feeling", "feel"),
+        ("feels", "feel"),
+        ("left", "leave"),
+        ("leaving", "leave"),
+        ("leaves", "leave"),
+        ("kept", "keep"),
+        ("keeping", "keep"),
+        ("keeps", "keep"),
+        ("meant", "mean"),
+        ("meaning", "mean"),
+        ("means", "mean"),
+        ("put", "put"),
+        ("putting", "put"),
+        ("ran", "run"),
+        ("running", "run"),
+        ("runs", "run"),
+        ("sat", "sit"),
+        ("sitting", "sit"),
+        ("stood", "stand"),
+        ("standing", "stand"),
+        ("lost", "lose"),
+        ("losing", "lose"),
+        ("brought", "bring"),
+        ("bringing", "bring"),
+        ("began", "begin"),
+        ("begun", "begin"),
+        ("beginning", "begin"),
+        ("wrote", "write"),
+        ("written", "write"),
+        ("writing", "write"),
+        ("spoke", "speak"),
+        ("spoken", "speak"),
+        ("speaking", "speak"),
+        ("better", "good"),
+        ("best", "good"),
+        ("worse", "bad"),
+        ("worst", "bad"),
+        ("children", "child"),
+        ("men", "man"),
+        ("women", "woman"),
+    ];
+
+    // Check irregulars first
+    for &(inflected, base) in IRREGULARS {
+        if word == inflected && base_words.contains(base) {
+            return true;
+        }
+    }
+
+    // Don't filter very short words (3 chars or less) — too risky
+    if word.len() <= 3 {
+        return false;
+    }
+
+    // Regular suffix stripping with spelling rules
+    let candidates = stem_candidates(word);
+    for stem in candidates {
+        if stem != word && base_words.contains(&stem) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Generate possible base forms by stripping common suffixes.
+/// Handles English spelling rules (doubled consonants, dropped e, y→i).
+fn stem_candidates(word: &str) -> Vec<String> {
+    let mut stems = Vec::new();
+
+    // -ing: running→run (doubled), making→make (dropped e), going→go
+    if let Some(base) = word.strip_suffix("ing") {
+        if !base.is_empty() {
+            stems.push(base.to_string()); // go+ing = going
+            stems.push(format!("{}e", base)); // mak+ing = making → make
+            // Doubled consonant: runn → run
+            let bytes = base.as_bytes();
+            if bytes.len() >= 2 && bytes[bytes.len() - 1] == bytes[bytes.len() - 2] {
+                stems.push(base[..base.len() - 1].to_string());
+            }
+        }
+    }
+
+    // -ed: wanted→want, tried→try, stopped→stop
+    if let Some(base) = word.strip_suffix("ed") {
+        if !base.is_empty() {
+            stems.push(base.to_string()); // want+ed
+            stems.push(format!("{}e", base)); // lik+ed → like
+            // Doubled: stopp → stop
+            let bytes = base.as_bytes();
+            if bytes.len() >= 2 && bytes[bytes.len() - 1] == bytes[bytes.len() - 2] {
+                stems.push(base[..base.len() - 1].to_string());
+            }
+        }
+    }
+    // -ied → y: tried → try
+    if let Some(base) = word.strip_suffix("ied") {
+        if !base.is_empty() {
+            stems.push(format!("{}y", base));
+        }
+    }
+
+    // -es: goes→go, watches→watch, tries→try
+    if let Some(base) = word.strip_suffix("es") {
+        if !base.is_empty() {
+            stems.push(base.to_string());
+            stems.push(format!("{}e", base));
+        }
+    }
+    // -ies → y: tries → try
+    if let Some(base) = word.strip_suffix("ies") {
+        if !base.is_empty() {
+            stems.push(format!("{}y", base));
+        }
+    }
+
+    // -s (simple plural/3rd person): looks→look, tells→tell
+    if let Some(base) = word.strip_suffix('s') {
+        if base.len() >= 3 && !base.ends_with('s') {
+            stems.push(base.to_string());
+        }
+    }
+
+    // -ly: really→real, exactly→exact
+    if let Some(base) = word.strip_suffix("ly") {
+        if base.len() >= 3 {
+            stems.push(base.to_string());
+            // happily → happy (ily → y)
+        }
+    }
+    if let Some(base) = word.strip_suffix("ily") {
+        if !base.is_empty() {
+            stems.push(format!("{}y", base));
+        }
+    }
+
+    // -er: bigger→big, later→late, player→play
+    if let Some(base) = word.strip_suffix("er") {
+        if base.len() >= 2 {
+            stems.push(base.to_string());
+            stems.push(format!("{}e", base)); // lat+er → late
+            let bytes = base.as_bytes();
+            if bytes.len() >= 2 && bytes[bytes.len() - 1] == bytes[bytes.len() - 2] {
+                stems.push(base[..base.len() - 1].to_string()); // bigg → big
+            }
+        }
+    }
+
+    // -est: biggest→big, latest→late
+    if let Some(base) = word.strip_suffix("est") {
+        if base.len() >= 2 {
+            stems.push(base.to_string());
+            stems.push(format!("{}e", base));
+            let bytes = base.as_bytes();
+            if bytes.len() >= 2 && bytes[bytes.len() - 1] == bytes[bytes.len() - 2] {
+                stems.push(base[..base.len() - 1].to_string());
+            }
+        }
+    }
+
+    // -tion: action→act (less common in top 1000 but handle it)
+    if let Some(base) = word.strip_suffix("tion") {
+        if base.len() >= 2 {
+            stems.push(base.to_string());
+            stems.push(format!("{}t", base)); // ac+tion → act
+            stems.push(format!("{}te", base)); // crea+tion → create
+        }
+    }
+
+    // -ment: movement→move, agreement→agree
+    if let Some(base) = word.strip_suffix("ment") {
+        if base.len() >= 3 {
+            stems.push(base.to_string());
+        }
+    }
+
+    // -ness: happiness→happy, kindness→kind
+    if let Some(base) = word.strip_suffix("ness") {
+        if base.len() >= 3 {
+            stems.push(base.to_string());
+        }
+    }
+    if let Some(base) = word.strip_suffix("iness") {
+        if !base.is_empty() {
+            stems.push(format!("{}y", base)); // happ+iness → happy
+        }
+    }
+
+    stems
 }
 
 /// Find the nearest unoccupied slot to `target`.

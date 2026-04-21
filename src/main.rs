@@ -1,5 +1,6 @@
 mod briefs;
 mod briefs_data;
+mod suffixes_data;
 mod chord_map;
 mod chord_state;
 mod data;
@@ -280,6 +281,11 @@ fn run() {
                         interpreter::Action::Backspace(n) => {
                             eprintln!("  emit: backspace x{}", n);
                             out.backspace(n);
+                        }
+                        interpreter::Action::Suffix(ref text) => {
+                            eprintln!("  emit: suffix {}", text);
+                            out.backspace(1);
+                            out.emit(text);
                         }
                     }
                 }

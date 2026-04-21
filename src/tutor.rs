@@ -241,6 +241,10 @@ pub fn run_tutor() {
                 match action {
                     crate::interpreter::Action::Emit(text) => output.emit(&text),
                     crate::interpreter::Action::Backspace(n) => output.backspace(n),
+                    crate::interpreter::Action::Suffix(text) => {
+                        output.backspace(1); // remove trailing space
+                        output.emit(&text);  // emit suffix + space
+                    }
                 }
             }
         }
@@ -413,19 +417,49 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
                 };
 
                 // Build phoneme steps (word held)
+                // Insert release steps when the same hand is reused after a gap.
                 let mut phoneme_steps: Vec<Step> = Vec::new();
+                let mut last_right_used = false;
+                let mut last_left_used = false;
+
                 for &phoneme in phonemes {
                     let key = phoneme.chord_key();
                     let right = key.right_bits() | if key.has_mod() { 1 << 4 } else { 0 };
+                    let left = key.left_bits();
+                    let is_right = right != 0;
+                    let is_left = left != 0;
+
+                    // If this step uses the right hand and the right hand was used
+                    // before (with left-hand steps in between), insert a release step
+                    if is_right && last_right_used && !last_left_used {
+                        // Consecutive right — no release needed (hand_abandoned handles it)
+                    } else if is_right && last_right_used {
+                        // Right reused after left steps — insert right=0 release
+                        phoneme_steps.push(Step {
+                            target: Target { right: 0, left: 0, word: true },
+                            phoneme: None,
+                            space_only: false,
+                        });
+                    }
+                    if is_left && last_left_used && !last_right_used {
+                        // Consecutive left — same
+                    } else if is_left && last_left_used {
+                        // Left reused after right steps — insert left=0 release
+                        phoneme_steps.push(Step {
+                            target: Target { right: 0, left: 0, word: true },
+                            phoneme: None,
+                            space_only: false,
+                        });
+                    }
+
                     phoneme_steps.push(Step {
-                        target: Target {
-                            right,
-                            left: key.left_bits(),
-                            word: true,
-                        },
+                        target: Target { right, left, word: true },
                         phoneme: Some(phoneme),
                         space_only: false,
                     });
+
+                    last_right_used = is_right;
+                    last_left_used = is_left;
                 }
                 phoneme_steps.push(Step {
                     target: Target {
@@ -621,12 +655,12 @@ fn draw_keyboard(
     let right_labels = ["I", "M", "R", "P"];
 
     let target_style = Style::default().fg(Color::Black).bg(Color::White);
-    let held_style = Style::default().fg(Color::Black).bg(Color::Green);
     let dim_style = Style::default().fg(Color::DarkGray);
+    let held_style = Style::default().fg(Color::Rgb(8, 8, 8));
 
     let mut lines: Vec<Line> = Vec::new();
 
-    // Fingers target row
+    // Target row (with borders)
     lines.push(Line::from(
         "  ┌─────┬─────┬─────┬─────┐  ┌─────┬─────┬─────┬─────┐",
     ));
@@ -649,34 +683,31 @@ fn draw_keyboard(
     row.push(Span::raw("│"));
     lines.push(Line::from(row));
 
-    // Fingers held row
-    lines.push(Line::from(
-        "  ├─────┼─────┼─────┼─────┤  ├─────┼─────┼─────┼─────┤",
-    ));
-
-    let mut row2: Vec<Span> = vec![Span::raw("  ")];
-    for i in 0..4 {
-        let bit = 3 - i;
-        let held = held_left & (1 << bit) != 0;
-        let style = if held { held_style } else { dim_style };
-        row2.push(Span::raw("│"));
-        row2.push(Span::styled(if held { "  ●  " } else { "     " }, style));
-    }
-    row2.push(Span::raw("│  "));
-    for i in 0..4 {
-        let held = held_right & (1 << i) != 0;
-        let style = if held { held_style } else { dim_style };
-        row2.push(Span::raw("│"));
-        row2.push(Span::styled(if held { "  ●  " } else { "     " }, style));
-    }
-    row2.push(Span::raw("│"));
-    lines.push(Line::from(row2));
-
     lines.push(Line::from(
         "  └─────┴─────┴─────┴─────┘  └─────┴─────┴─────┴─────┘",
     ));
 
-    // Thumbs row: word (left ⌘) and mod (right spacebar)
+    // Held row (no borders, subtle)
+    let mut row2: Vec<Span> = vec![Span::raw("   ")];
+    for i in 0..4 {
+        let bit = 3 - i;
+        let held = held_left & (1 << bit) != 0;
+        row2.push(Span::styled(
+            if held { "  ●   " } else { "      " },
+            held_style,
+        ));
+    }
+    row2.push(Span::raw("   "));
+    for i in 0..4 {
+        let held = held_right & (1 << i) != 0;
+        row2.push(Span::styled(
+            if held { "  ●   " } else { "      " },
+            held_style,
+        ));
+    }
+    lines.push(Line::from(row2));
+
+    // Thumbs target (with labels)
     let word_t = if target_word { target_style } else { dim_style };
     let mod_t = if target_right & (1 << 4) != 0 {
         target_style
@@ -690,24 +721,17 @@ fn draw_keyboard(
         Span::styled("[mod]", mod_t),
     ]));
 
-    // Thumbs held row
-    let word_h = if held_word { held_style } else { dim_style };
-    let mod_h = if held_right & (1 << 4) != 0 {
-        held_style
-    } else {
-        dim_style
-    };
+    // Thumbs held (subtle, no borders)
     lines.push(Line::from(vec![
         Span::raw("         "),
-        Span::styled(if held_word { "  ●   " } else { "      " }, word_h),
+        Span::styled(
+            if held_word { "  ●   " } else { "      " },
+            held_style,
+        ),
         Span::raw("                    "),
         Span::styled(
-            if held_right & (1 << 4) != 0 {
-                "  ●  "
-            } else {
-                "     "
-            },
-            mod_h,
+            if held_right & (1 << 4) != 0 { "  ●  " } else { "     " },
+            held_style,
         ),
     ]));
 

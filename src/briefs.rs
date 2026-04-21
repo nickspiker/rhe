@@ -1,17 +1,28 @@
 use crate::briefs_data::BRIEFS;
+use crate::suffixes_data::SUFFIXES;
 use crate::chord_map::{BriefTable, ChordKey};
 
-/// Build the brief table from the compile-time BRIEFS array.
+/// Build the brief table from the compile-time BRIEFS and SUFFIXES arrays.
+///
+/// Regular briefs store "word " (with trailing space).
+/// Suffixes store "\x01suffix " — the \x01 prefix signals the interpreter
+/// to backspace the previous trailing space before appending.
 pub fn load_briefs() -> BriefTable {
     let mut table = BriefTable::new();
 
-    for &(right, left, word) in BRIEFS {
+    for &(left, right, word) in BRIEFS {
         let has_mod = right & (1 << 4) != 0;
         let fingers = right & 0xF;
         let key = fingers as u16 | (left as u16) << 4 | if has_mod { 1u16 << 8 } else { 0 };
         table.insert(ChordKey(key), format!("{} ", word));
     }
 
-    eprintln!("rhe: loaded {} briefs", BRIEFS.len());
+    // Suffixes: left-hand only (right=0), marked with \x01 prefix
+    for &(left, suffix) in SUFFIXES {
+        let key = (left as u16) << 4; // right=0, no mod
+        table.insert(ChordKey(key), format!("\x01{} ", suffix));
+    }
+
+    eprintln!("rhe: loaded {} briefs + {} suffixes", BRIEFS.len(), SUFFIXES.len());
     table
 }

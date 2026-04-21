@@ -117,39 +117,68 @@ impl StateMachine {
         }
     }
 
-    /// If the given hand is now fully released and had accumulated bits, fire its chord.
+    /// Fire logic depends on mode:
+    /// - Word held (phoneme mode): fire per-hand when that hand goes to zero.
+    /// - Word not held (brief mode): fire when ALL keys go to zero.
     fn try_fire(&mut self, hand: Hand) -> Vec<Event> {
-        match hand {
-            Hand::Left => {
-                if self.left.is_empty() && !self.left_accum.is_empty() {
-                    let chord = Chord {
-                        left: self.left_accum,
-                        right: FingerChord::NONE,
-                        modkey: false,
-                        space_held: self.word_held,
-                    };
-                    self.left_accum = FingerChord::NONE;
-                    vec![Event::Chord(chord)]
-                } else {
-                    vec![]
+        if self.word_held {
+            // Per-hand firing: each hand fires independently
+            match hand {
+                Hand::Left => {
+                    if self.left.is_empty() && !self.left_accum.is_empty() {
+                        let chord = Chord {
+                            left: self.left_accum,
+                            right: FingerChord::NONE,
+                            modkey: false,
+                            space_held: true,
+                        };
+                        self.left_accum = FingerChord::NONE;
+                        return vec![Event::Chord(chord)];
+                    }
+                }
+                Hand::Right => {
+                    if self.right.is_empty() && !self.right_thumb && self.right_accum != 0 {
+                        let has_mod = self.right_accum & (1 << 4) != 0;
+                        let fingers = self.right_accum & 0xF;
+                        let chord = Chord {
+                            left: FingerChord::NONE,
+                            right: FingerChord(fingers),
+                            modkey: has_mod,
+                            space_held: true,
+                        };
+                        self.right_accum = 0;
+                        return vec![Event::Chord(chord)];
+                    }
                 }
             }
-            Hand::Right => {
-                if self.right.is_empty() && !self.right_thumb && self.right_accum != 0 {
-                    let has_mod = self.right_accum & (1 << 4) != 0;
-                    let fingers = self.right_accum & 0xF;
-                    let chord = Chord {
-                        left: FingerChord::NONE,
-                        right: FingerChord(fingers),
-                        modkey: has_mod,
-                        space_held: self.word_held,
-                    };
-                    self.right_accum = 0;
-                    vec![Event::Chord(chord)]
-                } else {
-                    vec![]
-                }
+            vec![]
+        } else {
+            // All-zero firing: both hands accumulate, fire when everything released
+            if !self.left.is_empty() || !self.right.is_empty() || self.right_thumb {
+                return vec![];
             }
+
+            let has_left = !self.left_accum.is_empty();
+            let has_right = self.right_accum != 0;
+
+            if !has_left && !has_right {
+                return vec![];
+            }
+
+            let has_mod = self.right_accum & (1 << 4) != 0;
+            let right_fingers = self.right_accum & 0xF;
+
+            let chord = Chord {
+                left: self.left_accum,
+                right: FingerChord(right_fingers),
+                modkey: has_mod,
+                space_held: false,
+            };
+
+            self.left_accum = FingerChord::NONE;
+            self.right_accum = 0;
+
+            vec![Event::Chord(chord)]
         }
     }
 
@@ -237,8 +266,9 @@ mod tests {
     }
 
     #[test]
-    fn interleaved_hands_fire_separately() {
+    fn rolled_hands_fire_as_one_chord() {
         let mut sm = StateMachine::new();
+        // Left down, right down, left up, right up — fires ONE combined chord
         let events = feed_all(
             &mut sm,
             &[
@@ -248,25 +278,22 @@ mod tests {
                 finger(Hand::Right, Finger::Index, KeyDirection::Up),
             ],
         );
-        assert_eq!(events.len(), 2);
-        let Event::Chord(c1) = &events[0] else {
+        assert_eq!(events.len(), 1);
+        let Event::Chord(chord) = &events[0] else {
             panic!()
         };
-        let Event::Chord(c2) = &events[1] else {
-            panic!()
-        };
-        assert_eq!(c1.left.0, 0b1000);
-        assert_eq!(c2.right.0, 0b0001);
+        assert_eq!(chord.left.0, 0b1000);
+        assert_eq!(chord.right.0, 0b0001);
     }
 
     #[test]
-    fn mod_only_on_right() {
+    fn mod_in_combined_chord() {
         let mut sm = StateMachine::new();
-        // Thumb held during both hands
-        sm.feed(finger(Hand::Right, Finger::Thumb, KeyDirection::Down));
+        // Thumb + both hands → one chord with mod
         let events = feed_all(
             &mut sm,
             &[
+                finger(Hand::Right, Finger::Thumb, KeyDirection::Down),
                 finger(Hand::Left, Finger::Pinky, KeyDirection::Down),
                 finger(Hand::Right, Finger::Index, KeyDirection::Down),
                 finger(Hand::Left, Finger::Pinky, KeyDirection::Up),
@@ -274,20 +301,13 @@ mod tests {
                 finger(Hand::Right, Finger::Thumb, KeyDirection::Up),
             ],
         );
-        // Left fires first (no mod), right fires second (with mod)
-        let chords: Vec<_> = events
-            .iter()
-            .filter_map(|e| {
-                if let Event::Chord(c) = e {
-                    Some(c)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        assert_eq!(chords.len(), 2);
-        assert!(!chords[0].modkey); // left never gets mod
-        assert!(chords[1].modkey); // right gets mod (thumb was held)
+        assert_eq!(events.len(), 1);
+        let Event::Chord(chord) = &events[0] else {
+            panic!()
+        };
+        assert_eq!(chord.left.0, 0b1000);
+        assert_eq!(chord.right.0, 0b0001);
+        assert!(chord.modkey);
     }
 
     #[test]

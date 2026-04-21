@@ -4,187 +4,209 @@
   <img src="https://raw.githubusercontent.com/nickspiker/rhe/main/logo.png" width="300" alt="Rhe">
 </p>
 
-From Greek *rheo* — to flow. A first-principles phonetic chord engine.
+From Greek *rheo* (ῥέω) — to flow.
 
-10 keys. No finger movement. Phoneme-level input at the speed of thought.
+A phonetic chord engine. You type sounds, not letters. No finger
+movement, no spelling, no memorization of key positions. Just hold
+the chord that makes the sound and let go.
 
-## How it works
+## The idea
 
-Your fingers rest on home row. They never leave. Rhe reads physical
-key positions, not characters — it works with any OS keyboard layout.
+English has 39 sounds. This keyboard uses 9 keys to represent all of
+them. Right hand handles consonants (5 bits), left hand handles
+vowels (4 bits). You press the sound you want, release, and the
+engine converts your phoneme sequence into the correct English word —
+spelling, silent letters, and all.
 
-```
-Left hand (vowels)             Right hand (consonants)
-pinky  ring  middle  index     index  middle  ring  pinky
+Forget how to spell "subtle"? Doesn't matter. Chord S-AH-T-AH-L and
+the engine figures out the rest.
 
-              [mod]  [space]
-              left    right
-              thumb   thumb
-```
-
-Each phoneme is a chord: press fingers simultaneously, release. Right
-hand = consonants (4 bits + mod = 5 bits). Left hand = vowels (4 bits).
-Hands alternate and interleave for speed.
-
-## The 9-bit key
+## Layout
 
 ```
-Bits 0-3:  right hand fingers  (4 bits, 16 states)
-Bits 4-7:  left hand fingers   (4 bits, 16 states)
-Bit 8:     mod                 (right hand only)
+Left hand (vowels)             Right hand (consonants + mod)
+pinky  ring  middle  index     index  middle  ring  pinky  [thumb]
 
-Total:     512 chord keys
+         [word]
+         left ⌘
 ```
 
-Space is not part of the chord key — it's the word boundary. Space
-held = building a word. Space up = commit the word.
+- **Left hand**: 4 fingers = 15 vowel chords
+- **Right hand**: 4 fingers + thumb (spacebar) = 24 consonant chords
+- **Word key** (left ⌘): held during phoneme input, release commits the word
 
-## Consonants (right hand)
+The thumb (spacebar) is the 5th bit for the right hand — it
+distinguishes voiced from unvoiced consonants. Same finger position,
+add thumb = voiced pair: T/D, S/Z, K/G, P/B, F/V, etc.
 
-24 consonants mapped to right hand. Mod = voiced pair (same mouth
-position, same fingers, add mod).
+## Two modes
+
+### Phoneme mode (word key held)
+
+Hold the word key. Chord each sound in sequence. Release word key to
+commit.
 
 ```
-Fingers     Plain         +Mod (voiced)
-────────────────────────────────────────
+"cat" = [word + K] → [word + AE] → [word + T] → [release word]
+```
+
+The engine looks up the phoneme sequence in a 135,000-word
+pronunciation dictionary and emits the correctly spelled word.
+
+### Roll mode (word key not held)
+
+Common words get shortcut "rolls" — press keys across both hands,
+release everything. One gesture = one word. No word key needed.
+
+496 words have rolls assigned. The top 50 get the fastest key
+combinations (single finger, two-finger pairs). The rest map
+phonetically: first consonant + first vowel of the word.
+
+Rolls can be typed on 6-key-rollover keyboards by rolling hands
+sequentially: left hand down → right hand down → left up → right up.
+Keys never all hit zero until the roll is complete.
+
+### Suffixes (left hand only, no word key)
+
+15 suffix rolls for common endings:
+
+```
+Index           -s          Middle          -ing
+Ring            -ed         Pinky           -'s
+I+M             -ly         I+R             -er
+M+R             -tion       M+P             -ment
+R+P             -ness       I+M+R           -able
+I+P             -ity        I+M+P           -ous
+I+R+P           -ive        M+R+P           -al
+I+M+R+P         -ful
+```
+
+Type "look" (roll) then middle finger alone = "looking". The suffix
+backspaces the trailing space, appends itself, adds a new space.
+Inflected forms ("looking", "wanted", "tries") are excluded from
+rolls — use base word + suffix instead.
+
+## Consonants
+
+```
+Fingers     Plain         +Thumb (voiced)
+──────────────────────────────────────────
 I           t             d
 M           s             z
 R           k             g
 P           p             b
 I+M         n             m
 I+R         r             dh (the)
-M+R         l             [spare]
-I+M+R       h             [spare]
+M+R         l             —
+I+M+R       h             —
 I+P         f             v
-M+P         w             [spare]
-R+P         th (think)    [spare]
+M+P         w             —
+R+P         th (think)    —
 I+M+P       sh            zh (measure)
 I+R+P       ch (church)   jh (judge)
-M+R+P       ng            [spare]
-I+M+R+P     y             [spare]
+M+R+P       ng            —
+I+M+R+P     y             —
 ```
 
-15 unvoiced + 9 voiced = 24 consonants. 6 mod slots spare.
+15 unvoiced + 9 voiced = 24 consonants. 6 voiced slots spare.
 
-## Vowels (left hand)
-
-15 vowels mapped to left hand. No mod needed — 15 fits exactly.
+## Vowels
 
 ```
-Fingers     Sound
-──────────────────────────
-I           ah (but/sofa)
-M           ih (sit)
-R           eh (bed)
-P           ae (cat)
-I+M         ee (see)
-I+R         aa (father)
-M+R         ay (say)
-I+M+R       er (her)
-I+P         eye (my)
-M+P         oh (go)
-R+P         aw (law)
-I+M+P       oo (too)
-I+R+P       ow (how)
-M+R+P       uh (book)
-I+M+R+P     oy (boy)
+Fingers     Sound           Example
+─────────────────────────────────────
+I           ʌ  (uh)         but, sofa
+M           ɪ  (ih)         sit, kit
+R           ɛ  (eh)         bed, dress
+P           æ  (ae)         cat, trap
+I+M         iː (ee)        see, fleece
+I+R         ɑ  (ah)        father, lot
+M+R         eɪ (ay)        say, face
+I+M+R       ɝ  (er)        her, bird
+I+P         aɪ (eye)       my, price
+M+P         oʊ (oh)        go, goat
+R+P         ɔ  (aw)        law, thought
+I+M+P       uː (oo)       too, goose
+I+R+P       aʊ (ow)       how, mouth
+M+R+P       ʊ  (uh)        book, foot
+I+M+R+P     ɔɪ (oy)        boy, choice
 ```
 
-4 bits = 15 non-zero states = 15 vowels. Complete General American coverage.
+4 bits = 15 states = 15 vowels. Complete General American English
+coverage.
 
-## Interleaved cadence
+## Speed
 
-Hands alternate: left down, right down, left up, right up. One hand
-loads the next chord while the other fires. Like a piano trill.
-
-For "cat" (K + AE + T):
+The alternating hand cadence enables continuous flow:
 
 ```
-space  ===============================
-right      ==K==          ==T==
-left            ==AE==
-fires           ^K   ^AE       ^T
+word ═══════════════════════════════════════
+right    ══K══            ══T══
+left           ══AE══
+chord          ^K    ^AE        ^T
 ```
 
-Each hand fires on release. By the time one fires, the other is
-already loaded. Effective speed per phoneme is the overlap window,
-not the full press-release cycle.
-
-Theoretical ceiling: ~325 WPM with perfect alternation, ~195 WPM
-at 60% efficiency. Court reporter territory with briefs.
-
-## Word input
-
-**Space held = phoneme mode.** Chord phonemes in sequence while holding
-space. Release space to commit the word. The engine looks up the
-phoneme sequence in the dictionary and emits the word.
+Each hand loads while the other fires. Phonemes overlap. Rolls
+provide single-chord output for the 500 most common words.
 
 ```
-[space + K] [space + AE] [space + T] [release space] -> "cat "
+Theoretical maximum:  ~325 WPM (perfect alternation)
+Practical estimate:   ~195 WPM (60% efficiency)
+With rolls:           ~300 WPM (60% of text is single-chord)
 ```
 
-**Space not held = brief mode.** Single chord, no space, instant output.
-Both hands can press simultaneously. 511 possible briefs — enough for
-the top 200 words (covering ~60% of all English text).
+For comparison: average typist ~40 WPM, professional ~80 WPM,
+court reporter steno ~225 WPM.
 
 ## Controls
 
 ```
-Solo space tap        backspace (deletes last emitted word)
-Mod tap + space held  undo last phoneme (before commit)
-Mod alone             (reserved)
+Solo word tap (no fingers)     backspace last word
+Word + mod tap (no fingers)    undo last phoneme (before commit)
 ```
 
 ## The math
 
 ```
-Phoneme slots:   39 used / 512 possible (with space held)
-Brief slots:     511 possible (without space held)
-Total gestures:  1,023
+Phonemes:    39 / 512 slots used (word held)
+Rolls:       496 / 496 slots used (word not held)
+Suffixes:    15 / 15 left-hand slots
+Total:       550 gestures mapped
 
-Coverage:
-  39 phonemes = complete English phoneme inventory
-  24 consonants (15 plain + 9 voiced via mod)
-  15 vowels
-
-Speed advantage:
-  Zero finger travel (home row only)
-  Chord parallelism (multiple fingers = one phoneme)
-  Hand interleaving (load next while current fires)
-  Brief shortcuts (common words = single chord)
+9 keys. 39 sounds. 500+ words instant. Complete English phoneme
+coverage. Zero finger movement.
 ```
 
 ## Architecture
 
 ```
-IOHIDManager (macOS)    raw HID events, one per press/release, no repeats
-    |
-State machine           per-hand chord firing, interleaved
-    |
-Interpreter             phoneme buffer -> dictionary lookup -> word output
-    |
-CGEvent injection       text appears in focused application
+IOHIDManager / evdev     raw key events (1 per state change, no repeats)
+        │
+  State machine          word held → per-hand firing
+        │                word not held → all-zero firing (rolls)
+        │
+   Interpreter           phoneme buffer → dictionary → word
+        │                roll lookup → instant emit
+        │                suffix → backspace + append
+        │
+ CGEvent / uinput        inject text into focused application
 ```
 
-The input driver seizes the keyboard at the HID level. One event per
-physical key state change. Zero OS key repeat noise. Purely event-driven
-— no polling, no timing loops.
+Purely event-driven. No polling, no timers, no key repeat. One
+physical key change = one event = one state machine transition.
 
-## Status
-
-Early development. Core engine, IOHIDManager driver, interactive tutor,
-and phoneme-level output are functional. Dictionary lookup and brief
-assignments in progress.
+## Running
 
 ```
-cargo run --release tutor    interactive typing tutor
-cargo run --release run      full engine (menu bar)
-cargo test                   run all tests
+cargo run --release -- tutor     learn the chords
+cargo run --release -- run       full engine (macOS menu bar)
+cargo run --bin gen_briefs       regenerate roll assignments
+cargo test                       verify everything
 ```
 
-Requires macOS Accessibility / Input Monitoring permissions for keyboard
-capture. Run with `sudo` or add terminal to Input Monitoring in
-System Settings.
+Requires Input Monitoring permission on macOS (keyboard seizure via
+IOHIDManager). Run with `sudo` or add your terminal to System
+Settings → Privacy & Security → Input Monitoring.
 
 ## Building
 
