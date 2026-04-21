@@ -25,7 +25,7 @@ pub struct Interpreter {
     briefs: BriefTable,
     dictionary: PhonemeDictionary,
     buffer: Vec<Phoneme>,
-    last_emit_len: usize,
+    emit_history: Vec<usize>, // stack of emitted char counts for multi-backspace
 }
 
 impl Interpreter {
@@ -35,7 +35,7 @@ impl Interpreter {
             briefs,
             dictionary,
             buffer: Vec::new(),
-            last_emit_len: 0,
+            emit_history: Vec::new(),
         }
     }
 
@@ -53,11 +53,11 @@ impl Interpreter {
                         if s.starts_with('\x01') {
                             // Suffix: backspace trailing space, then emit suffix
                             let suffix = &s[1..];
-                            self.last_emit_len = suffix.chars().count();
+                            self.emit_history.push(suffix.chars().count());
                             Action::Suffix(suffix.to_string())
                         } else {
                             let text = s.to_string();
-                            self.last_emit_len = text.chars().count();
+                            self.emit_history.push(text.chars().count());
                             Action::Emit(text)
                         }
                     })
@@ -74,14 +74,12 @@ impl Interpreter {
                         let ipa: String = phonemes.iter().map(|p| p.to_ipa()).collect();
                         format!("{} ", ipa)
                     };
-                    self.last_emit_len = text.chars().count();
+                    self.emit_history.push(text.chars().count());
                     Some(Action::Emit(text))
                 }
             }
             Event::Backspace => {
-                let n = self.last_emit_len;
-                self.last_emit_len = 0;
-                if n > 0 {
+                if let Some(n) = self.emit_history.pop() {
                     Some(Action::Backspace(n))
                 } else {
                     Some(Action::Backspace(1))

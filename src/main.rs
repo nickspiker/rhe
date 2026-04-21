@@ -252,13 +252,15 @@ fn run() {
 
         let out = output::macos::MacOSOutput::new();
 
-        let mut input = input::rdev_backend::RdevInput::start_grab(enabled_engine)
+        let input = input::iohid_backend::IoHidInput::start_grab(enabled_engine)
             .expect("failed to start key capture");
         let mut sm = state_machine::StateMachine::new();
 
         loop {
-            let Some(event) = input.next_event() else {
-                break;
+            let event = match input.rx.recv() {
+                Ok(input::HidEvent::Key(ev)) => ev,
+                Ok(input::HidEvent::Quit) => break,
+                Err(_) => break,
             };
 
             for sm_event in sm.feed(event) {

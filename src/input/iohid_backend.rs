@@ -52,12 +52,20 @@ mod ffi {
     pub const kHIDUsage_KeyboardSpacebar: u32 = 0x2C;
     pub const kHIDUsage_KeyboardLeftGUI: u32 = 0xE3;
     pub const kHIDUsage_KeyboardEscape: u32 = 0x29;
+    pub const kHIDUsage_KeyboardCapsLock: u32 = 0x39;
 
     // CGEvent for key passthrough
     pub type CGEventRef = *mut c_void;
     pub type CGEventSourceRef = *mut c_void;
+    pub type CGEventFlags = u64;
     pub const kCGEventSourceStateHIDSystemState: i32 = 1;
     pub const kCGSessionEventTap: i32 = 1;
+
+    // Modifier flags for CGEvent
+    pub const kCGEventFlagMaskShift: CGEventFlags = 0x00020000;
+    pub const kCGEventFlagMaskControl: CGEventFlags = 0x00040000;
+    pub const kCGEventFlagMaskAlternate: CGEventFlags = 0x00080000;
+    pub const kCGEventFlagMaskCommand: CGEventFlags = 0x00100000;
 
     pub type IOHIDValueCallback = extern "C" fn(
         context: *mut c_void,
@@ -85,13 +93,36 @@ mod ffi {
             mode: CFStringRef,
         );
 
+        // IOHIDDevice — for LED control
+        pub fn IOHIDManagerCopyDevices(manager: IOHIDManagerRef) -> *const c_void; // CFSetRef
+        pub fn CFSetGetCount(set: *const c_void) -> CFIndex;
+        pub fn CFSetGetValues(set: *const c_void, values: *mut *const c_void);
+        pub fn IOHIDDeviceSetValue(
+            device: IOHIDDeviceRef,
+            element: IOHIDElementRef,
+            value: IOHIDValueRef,
+        ) -> IOReturn;
+        pub fn IOHIDDeviceCopyMatchingElements(
+            device: IOHIDDeviceRef,
+            matching: CFDictionaryRef,
+            options: IOOptionBits,
+        ) -> *const c_void; // CFArrayRef
+        pub fn CFArrayGetCount(array: *const c_void) -> CFIndex;
+        pub fn CFArrayGetValueAtIndex(array: *const c_void, idx: CFIndex) -> *const c_void;
+        pub fn IOHIDValueCreateWithIntegerValue(
+            allocator: CFAllocatorRef,
+            element: IOHIDElementRef,
+            timestamp: u64,
+            value: CFIndex,
+        ) -> IOHIDValueRef;
+
+        // HID element info
+        pub fn IOHIDElementGetUsagePage(element: IOHIDElementRef) -> u32;
+        pub fn IOHIDElementGetUsage(element: IOHIDElementRef) -> u32;
+
         // IOHIDValue
         pub fn IOHIDValueGetElement(value: IOHIDValueRef) -> IOHIDElementRef;
         pub fn IOHIDValueGetIntegerValue(value: IOHIDValueRef) -> CFIndex;
-
-        // IOHIDElement
-        pub fn IOHIDElementGetUsagePage(element: IOHIDElementRef) -> u32;
-        pub fn IOHIDElementGetUsage(element: IOHIDElementRef) -> u32;
 
         // CoreFoundation
         pub fn CFRunLoopGetCurrent() -> CFRunLoopRef;
@@ -135,6 +166,8 @@ mod ffi {
             key_down: bool,
         ) -> CGEventRef;
         pub fn CGEventPost(tap: i32, event: CGEventRef);
+        pub fn CGEventSetFlags(event: CGEventRef, flags: CGEventFlags);
+        pub fn CGEventGetFlags(event: CGEventRef) -> CGEventFlags;
         pub fn CFRelease(cf: *const c_void);
     }
 
@@ -144,7 +177,10 @@ mod ffi {
 /// Context passed to the HID callback.
 struct CallbackContext {
     tx: mpsc::Sender<HidEvent>,
-    enabled: Arc<AtomicBool>,
+    enabled: Arc<AtomicBool>, // shared with tray — caps lock toggles this
+    manager: ffi::IOHIDManagerRef,
+    /// Tracked modifier state for passthrough re-injection
+    modifier_flags: std::sync::Mutex<u64>,
 }
 
 pub struct IoHidInput {
@@ -167,7 +203,10 @@ impl IoHidInput {
                 ffi::IOHIDManagerSetDeviceMatching(manager, matching as ffi::CFDictionaryRef);
 
                 // Register callback
-                let ctx = Box::into_raw(Box::new(CallbackContext { tx, enabled }));
+                let ctx = Box::into_raw(Box::new(CallbackContext {
+                    tx, enabled, manager,
+                    modifier_flags: std::sync::Mutex::new(0),
+                }));
                 ffi::IOHIDManagerRegisterInputValueCallback(
                     manager,
                     hid_callback,
@@ -222,10 +261,6 @@ extern "C" fn hid_callback(
         let usage = ffi::IOHIDElementGetUsage(element);
         let pressed = ffi::IOHIDValueGetIntegerValue(value);
 
-        if !ctx.enabled.load(Ordering::Relaxed) {
-            return;
-        }
-
         // Only real keyboard keys (skip rollover/sentinel elements)
         if usage_page != ffi::kHIDPage_KeyboardOrKeypad || usage <= 0x03 || usage == 0xffffffff {
             return;
@@ -237,9 +272,27 @@ extern "C" fn hid_callback(
             KeyDirection::Up
         };
 
-        // Escape → quit
+        // Caps lock toggle: flip the shared enabled flag (same one tray uses)
+        if usage == ffi::kHIDUsage_KeyboardCapsLock && pressed != 0 {
+            let was_enabled = ctx.enabled.load(Ordering::Relaxed);
+            let now_enabled = !was_enabled;
+            ctx.enabled.store(now_enabled, Ordering::Relaxed);
+            // Toggle caps lock LED: ON when rhe is OFF (normal keyboard mode)
+            set_caps_lock_led(ctx.manager, !now_enabled);
+            return;
+        }
+
+        // Escape → quit (always works regardless of mode)
         if usage == ffi::kHIDUsage_KeyboardEscape && pressed != 0 {
             let _ = ctx.tx.send(HidEvent::Quit);
+            return;
+        }
+
+        // If rhe is disabled (caps lock toggled off), pass everything through
+        if !ctx.enabled.load(Ordering::Relaxed) {
+            if let Some(vk) = hid_usage_to_virtual_keycode(usage) {
+                reinject_key(vk, usage, pressed != 0, &ctx.modifier_flags);
+            }
             return;
         }
 
@@ -251,26 +304,97 @@ extern "C" fn hid_callback(
         } else {
             // Not our key — re-inject to OS so other apps see it
             if let Some(vk) = hid_usage_to_virtual_keycode(usage) {
-                let source =
-                    ffi::CGEventSourceCreate(ffi::kCGEventSourceStateHIDSystemState);
-                if !source.is_null() {
-                    let event = ffi::CGEventCreateKeyboardEvent(
-                        source,
-                        vk,
-                        pressed != 0,
-                    );
-                    if !event.is_null() {
-                        ffi::CGEventPost(ffi::kCGSessionEventTap, event);
-                        ffi::CFRelease(event as *const std::ffi::c_void);
-                    }
-                    ffi::CFRelease(source as *const std::ffi::c_void);
-                }
+                reinject_key(vk, usage, pressed != 0, &ctx.modifier_flags);
             }
         }
     }
 }
 
 /// Map HID usage to macOS virtual keycode for passthrough re-injection.
+/// Re-inject a key event to the OS with proper modifier flags.
+/// Tracks modifier state so all events carry the correct flags.
+unsafe fn reinject_key(vk: u16, usage: u32, key_down: bool, modifier_flags: &std::sync::Mutex<u64>) {
+    let source = ffi::CGEventSourceCreate(ffi::kCGEventSourceStateHIDSystemState);
+    if source.is_null() { return; }
+
+    // Update tracked modifier state
+    let modifier_flag = match usage {
+        0xE0 | 0xE4 => Some(ffi::kCGEventFlagMaskControl),
+        0xE1 | 0xE5 => Some(ffi::kCGEventFlagMaskShift),
+        0xE2 | 0xE6 => Some(ffi::kCGEventFlagMaskAlternate),
+        0xE3 | 0xE7 => Some(ffi::kCGEventFlagMaskCommand),
+        _ => None,
+    };
+
+    if let Some(flag) = modifier_flag {
+        let mut flags = modifier_flags.lock().unwrap();
+        if key_down {
+            *flags |= flag;
+        } else {
+            *flags &= !flag;
+        }
+    }
+
+    let event = ffi::CGEventCreateKeyboardEvent(source, vk, key_down);
+    if !event.is_null() {
+        // Apply current modifier state to ALL events
+        let flags = *modifier_flags.lock().unwrap();
+        ffi::CGEventSetFlags(event, flags);
+
+        ffi::CGEventPost(ffi::kCGSessionEventTap, event);
+        ffi::CFRelease(event as *const std::ffi::c_void);
+    }
+    ffi::CFRelease(source as *const std::ffi::c_void);
+}
+
+/// Toggle the caps lock LED on all keyboard devices.
+/// LED page = 0x08, usage = 0x02 (Caps Lock).
+unsafe fn set_caps_lock_led(manager: ffi::IOHIDManagerRef, on: bool) {
+    let devices = ffi::IOHIDManagerCopyDevices(manager);
+    if devices.is_null() { return; }
+
+    let count = ffi::CFSetGetCount(devices);
+    if count == 0 {
+        ffi::CFRelease(devices);
+        return;
+    }
+
+    let mut device_ptrs: Vec<*const std::ffi::c_void> = vec![std::ptr::null(); count as usize];
+    ffi::CFSetGetValues(devices, device_ptrs.as_mut_ptr());
+
+    for &dev_ptr in &device_ptrs {
+        let device = dev_ptr as ffi::IOHIDDeviceRef;
+        // Find LED elements on this device
+        let elements = ffi::IOHIDDeviceCopyMatchingElements(
+            device, std::ptr::null(), 0
+        );
+        if elements.is_null() { continue; }
+
+        let el_count = ffi::CFArrayGetCount(elements);
+        for i in 0..el_count {
+            let element = ffi::CFArrayGetValueAtIndex(elements, i) as ffi::IOHIDElementRef;
+            let page = ffi::IOHIDElementGetUsagePage(element);
+            let el_usage = ffi::IOHIDElementGetUsage(element);
+
+            // LED page = 0x08, Caps Lock LED = usage 0x02
+            if page == 0x08 && el_usage == 0x02 {
+                let value = ffi::IOHIDValueCreateWithIntegerValue(
+                    ffi::kCFAllocatorDefault,
+                    element,
+                    0,
+                    if on { 1 } else { 0 },
+                );
+                if !value.is_null() {
+                    ffi::IOHIDDeviceSetValue(device, element, value);
+                    ffi::CFRelease(value as *const std::ffi::c_void);
+                }
+            }
+        }
+        ffi::CFRelease(elements);
+    }
+    ffi::CFRelease(devices);
+}
+
 fn hid_usage_to_virtual_keycode(usage: u32) -> Option<u16> {
     // Common keys — HID usage page 0x07 → macOS virtual keycodes
     match usage {

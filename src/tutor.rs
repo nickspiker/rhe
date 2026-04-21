@@ -91,12 +91,15 @@ struct PracticeWord {
     word: String,
     phoneme_steps: Vec<Step>,       // word held + phoneme sequence + commit
     brief_steps: Option<Vec<Step>>, // single chord without word + all-off (if brief exists)
+    suffix_steps: Option<Vec<Step>>, // roll(base) + suffix chord + all-off (if shorter)
+    suffix_label: Option<String>,   // e.g. "~ing" for display
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum WordMode {
     Brief,
     Phoneme,
+    Suffix,
 }
 
 #[derive(Default, Clone)]
@@ -149,7 +152,10 @@ impl Practice {
     fn current_steps(&self) -> Option<&[Step]> {
         let word = self.current_word()?;
         match self.mode {
-            WordMode::Brief => word.brief_steps.as_deref().or(Some(&word.phoneme_steps)),
+            WordMode::Brief => word.brief_steps.as_deref()
+                .or(word.suffix_steps.as_deref())
+                .or(Some(&word.phoneme_steps)),
+            WordMode::Suffix => word.suffix_steps.as_deref().or(Some(&word.phoneme_steps)),
             WordMode::Phoneme => Some(&word.phoneme_steps),
         }
     }
@@ -205,8 +211,14 @@ impl Practice {
     }
 
     fn default_mode(&self) -> WordMode {
-        if self.current_word().map_or(false, |w| w.brief_steps.is_some()) {
-            WordMode::Brief
+        if let Some(w) = self.current_word() {
+            if w.brief_steps.is_some() {
+                WordMode::Brief
+            } else if w.suffix_steps.is_some() {
+                WordMode::Suffix
+            } else {
+                WordMode::Phoneme
+            }
         } else {
             WordMode::Phoneme
         }
@@ -253,6 +265,7 @@ pub fn run_tutor() {
     let mut touched_right: u8 = 0;
     let mut touched_left: u8 = 0;
     let mut fingers_during_word = false;
+    let mut last_was_botch = false; // true if last word output was IPA fallback
 
     // Initial draw
     terminal
@@ -313,7 +326,7 @@ pub fn run_tutor() {
 
         // Log every key change
         let current_word_name = practice.current_word().map(|w| w.word.as_str()).unwrap_or("?");
-        let mode_str = match practice.mode { WordMode::Brief => "brief", WordMode::Phoneme => "phon" };
+        let mode_str = match practice.mode { WordMode::Brief => "brief", WordMode::Suffix => "suf", WordMode::Phoneme => "phon" };
         log.push(format!(
             "state L:{:04b} R:{:05b} word={} | \"{}\" [{}] step={} err={}",
             key_state.left_bits(),
@@ -346,8 +359,14 @@ pub fn run_tutor() {
                 && practice.step_idx == 0
             {
                 if !fingers_during_word {
-                    // Solo word tap = go back one word
-                    practice.prev_word();
+                    // Solo word tap = backspace
+                    if last_was_botch {
+                        // Last output was IPA garbage — just delete it, stay on current word
+                        last_was_botch = false;
+                    } else {
+                        // Last output was correct — go back one word in tutor
+                        practice.prev_word();
+                    }
                 }
                 practice.mode = practice.default_mode();
                 practice.step_idx = 0;
@@ -369,6 +388,7 @@ pub fn run_tutor() {
                         errored = true;
                     } else if !key_state.word {
                         log.push("  → MATCH (commit)".to_string());
+                        last_was_botch = false;
                         practice.advance_step();
                     }
                 } else if target.right == 0 && target.left == 0 && !target.word {
@@ -379,6 +399,7 @@ pub fn run_tutor() {
                         errored = true;
                     } else if all_off {
                         log.push("  → MATCH (commit)".to_string());
+                        last_was_botch = false;
                         practice.advance_step();
                     }
                 } else {
@@ -432,6 +453,7 @@ pub fn run_tutor() {
                     if space_dropped {
                         log.push("  → RESET (space released mid-word)".to_string());
                         practice.reset_word();
+                        last_was_botch = true;
                         if !all_off {
                             errored = true;
                         }
@@ -632,10 +654,82 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
                     found
                 };
 
+                // Build suffix steps: roll(base) + suffix chord + all-off
+                let (suffix_steps, suffix_label) = {
+                    use crate::suffixes_data::SUFFIXES;
+                    use crate::chord_map::ChordKey;
+                    let phoneme_count = phoneme_steps.iter().filter(|s| s.phoneme.is_some()).count();
+                    let mut found = (None, None);
+
+                    // Only worth it if phoneme path is 3+ movements
+                    if phoneme_count > 2 {
+                        // Try suffixes longest first
+                        let mut sorted_suffixes: Vec<(u8, &str)> = SUFFIXES.to_vec();
+                        sorted_suffixes.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+
+                        for &(suffix_bits, suffix_str) in &sorted_suffixes {
+                            if !clean.ends_with(suffix_str) { continue; }
+                            if clean.len() <= suffix_str.len() { continue; }
+
+                            // Try base and base+"e"
+                            let bases = vec![
+                                clean[..clean.len() - suffix_str.len()].to_string(),
+                                format!("{}e", &clean[..clean.len() - suffix_str.len()]),
+                            ];
+
+                            for base in &bases {
+                                // Find roll for base
+                                for k in 0..ChordKey::MAX {
+                                    if let Some(brief_word) = brief_table.lookup(ChordKey(k)) {
+                                        if brief_word.trim() == base {
+                                            let r = (k & 0xF) as u8
+                                                | if k & (1 << 8) != 0 { 1u8 << 4 } else { 0 };
+                                            let l = ((k >> 4) & 0xF) as u8;
+                                            let steps = vec![
+                                                // Roll for base (no word key)
+                                                Step {
+                                                    target: Target { right: r, left: l, word: false },
+                                                    phoneme: None,
+                                                    space_only: false,
+                                                },
+                                                // All off between roll and suffix
+                                                Step {
+                                                    target: Target::default(),
+                                                    phoneme: None,
+                                                    space_only: false,
+                                                },
+                                                // Suffix chord (left hand only, no word key)
+                                                Step {
+                                                    target: Target { right: 0, left: suffix_bits, word: false },
+                                                    phoneme: None,
+                                                    space_only: false,
+                                                },
+                                                // All off
+                                                Step {
+                                                    target: Target::default(),
+                                                    phoneme: None,
+                                                    space_only: false,
+                                                },
+                                            ];
+                                            found = (Some(steps), Some(format!("~{}", suffix_str)));
+                                            break;
+                                        }
+                                    }
+                                }
+                                if found.0.is_some() { break; }
+                            }
+                            if found.0.is_some() { break; }
+                        }
+                    }
+                    found
+                };
+
                 sentence.push(PracticeWord {
                     word: clean,
                     phoneme_steps,
                     brief_steps,
+                    suffix_steps,
+                    suffix_label,
                 });
             }
 
@@ -665,6 +759,8 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
 
 // ─── Key state update ───
 
+/// Check if a word can be typed as base_roll + suffix, and if so return the suffix.
+/// Only suggests if the suffix path is shorter than the phoneme path.
 fn update_key_state(state: &mut KeyState, event: &RheKeyEvent) {
     let pressed = event.direction == KeyDirection::Down;
     match event.key {
@@ -724,7 +820,7 @@ fn draw(frame: &mut Frame, practice: &Practice, errored: bool, key_state: &KeySt
         );
     }
 
-    // Word detail + phoneme hint
+    // Word detail + phoneme hint + suffix suggestion
     if let Some(pw) = practice.current_word() {
         let phoneme_label = practice
             .current_step()
@@ -732,11 +828,19 @@ fn draw(frame: &mut Frame, practice: &Practice, errored: bool, key_state: &KeySt
             .map(|p| format!(" {}", p.to_ipa()))
             .unwrap_or_default();
 
+        let mut word_spans = vec![
+            Span::styled(" ", Style::default()),
+            Span::styled(&pw.word, Style::default().fg(Color::White).bold()),
+        ];
+        if let Some(label) = &pw.suffix_label {
+            word_spans.push(Span::styled(
+                format!("  {}", label),
+                Style::default().fg(Color::Rgb(100, 100, 100)),
+            ));
+        }
+
         let lines = vec![
-            Line::from(vec![
-                Span::styled(" ", Style::default()),
-                Span::styled(&pw.word, Style::default().fg(Color::White).bold()),
-            ]),
+            Line::from(word_spans),
             Line::from(vec![Span::styled(
                 phoneme_label,
                 Style::default().fg(Color::Gray),
