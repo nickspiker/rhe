@@ -53,6 +53,12 @@ mod ffi {
     pub const kHIDUsage_KeyboardLeftGUI: u32 = 0xE3;
     pub const kHIDUsage_KeyboardEscape: u32 = 0x29;
 
+    // CGEvent for key passthrough
+    pub type CGEventRef = *mut c_void;
+    pub type CGEventSourceRef = *mut c_void;
+    pub const kCGEventSourceStateHIDSystemState: i32 = 1;
+    pub const kCGSessionEventTap: i32 = 1;
+
     pub type IOHIDValueCallback = extern "C" fn(
         context: *mut c_void,
         result: IOReturn,
@@ -120,6 +126,16 @@ mod ffi {
             c_str: *const u8,
             encoding: u32,
         ) -> CFStringRef;
+
+        // CGEvent — for re-injecting non-rhe keys to OS
+        pub fn CGEventSourceCreate(state_id: i32) -> CGEventSourceRef;
+        pub fn CGEventCreateKeyboardEvent(
+            source: CGEventSourceRef,
+            virtual_key: u16,
+            key_down: bool,
+        ) -> CGEventRef;
+        pub fn CGEventPost(tap: i32, event: CGEventRef);
+        pub fn CFRelease(cf: *const c_void);
     }
 
     pub const kCFStringEncodingUTF8: u32 = 0x08000100;
@@ -232,7 +248,110 @@ extern "C" fn hid_callback(
                 key: physical,
                 direction,
             }));
+        } else {
+            // Not our key — re-inject to OS so other apps see it
+            if let Some(vk) = hid_usage_to_virtual_keycode(usage) {
+                let source =
+                    ffi::CGEventSourceCreate(ffi::kCGEventSourceStateHIDSystemState);
+                if !source.is_null() {
+                    let event = ffi::CGEventCreateKeyboardEvent(
+                        source,
+                        vk,
+                        pressed != 0,
+                    );
+                    if !event.is_null() {
+                        ffi::CGEventPost(ffi::kCGSessionEventTap, event);
+                        ffi::CFRelease(event as *const std::ffi::c_void);
+                    }
+                    ffi::CFRelease(source as *const std::ffi::c_void);
+                }
+            }
         }
+    }
+}
+
+/// Map HID usage to macOS virtual keycode for passthrough re-injection.
+fn hid_usage_to_virtual_keycode(usage: u32) -> Option<u16> {
+    // Common keys — HID usage page 0x07 → macOS virtual keycodes
+    match usage {
+        0x04 => Some(0x00), // A
+        0x05 => Some(0x0B), // B
+        0x06 => Some(0x08), // C
+        0x07 => Some(0x02), // D
+        0x08 => Some(0x0E), // E
+        0x09 => Some(0x03), // F
+        0x0A => Some(0x05), // G
+        0x0B => Some(0x04), // H
+        0x0C => Some(0x22), // I
+        0x0D => Some(0x26), // J
+        0x0E => Some(0x28), // K
+        0x0F => Some(0x25), // L
+        0x10 => Some(0x2E), // M
+        0x11 => Some(0x2D), // N
+        0x12 => Some(0x1F), // O
+        0x13 => Some(0x23), // P
+        0x14 => Some(0x0C), // Q
+        0x15 => Some(0x0F), // R
+        0x16 => Some(0x01), // S
+        0x17 => Some(0x11), // T
+        0x18 => Some(0x20), // U
+        0x19 => Some(0x09), // V
+        0x1A => Some(0x0D), // W
+        0x1B => Some(0x07), // X
+        0x1C => Some(0x10), // Y
+        0x1D => Some(0x06), // Z
+        0x1E => Some(0x12), // 1
+        0x1F => Some(0x13), // 2
+        0x20 => Some(0x14), // 3
+        0x21 => Some(0x15), // 4
+        0x22 => Some(0x17), // 5
+        0x23 => Some(0x16), // 6
+        0x24 => Some(0x1A), // 7
+        0x25 => Some(0x1C), // 8
+        0x26 => Some(0x19), // 9
+        0x27 => Some(0x1D), // 0
+        0x28 => Some(0x24), // Return
+        0x29 => Some(0x35), // Escape
+        0x2A => Some(0x33), // Backspace
+        0x2B => Some(0x30), // Tab
+        0x2C => Some(0x31), // Space
+        0x2D => Some(0x1B), // -
+        0x2E => Some(0x18), // =
+        0x2F => Some(0x21), // [
+        0x30 => Some(0x1E), // ]
+        0x31 => Some(0x2A), // backslash
+        0x33 => Some(0x29), // ;
+        0x34 => Some(0x27), // '
+        0x35 => Some(0x32), // `
+        0x36 => Some(0x2B), // ,
+        0x37 => Some(0x2F), // .
+        0x38 => Some(0x2C), // /
+        0x39 => Some(0x39), // Caps Lock
+        0x3A => Some(0x7A), // F1
+        0x3B => Some(0x78), // F2
+        0x3C => Some(0x63), // F3
+        0x3D => Some(0x76), // F4
+        0x3E => Some(0x60), // F5
+        0x3F => Some(0x61), // F6
+        0x40 => Some(0x62), // F7
+        0x41 => Some(0x64), // F8
+        0x42 => Some(0x65), // F9
+        0x43 => Some(0x6D), // F10
+        0x44 => Some(0x67), // F11
+        0x45 => Some(0x6F), // F12
+        0x4F => Some(0x7C), // Right Arrow
+        0x50 => Some(0x7B), // Left Arrow
+        0x51 => Some(0x7D), // Down Arrow
+        0x52 => Some(0x7E), // Up Arrow
+        0xE0 => Some(0x3B), // Left Control
+        0xE1 => Some(0x38), // Left Shift
+        0xE2 => Some(0x3A), // Left Alt/Option
+        0xE3 => Some(0x37), // Left GUI/Command
+        0xE4 => Some(0x3E), // Right Control
+        0xE5 => Some(0x3C), // Right Shift
+        0xE6 => Some(0x3D), // Right Alt/Option
+        0xE7 => Some(0x36), // Right GUI/Command
+        _ => None,
     }
 }
 

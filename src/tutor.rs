@@ -713,10 +713,12 @@ fn draw_keyboard(
     }
     lines.push(Line::from(row2));
 
-    // Thumbs target (with labels)
-    let word_t = if target_word { target_style } else { dim_style };
+    // Thumbs target — word=magenta text, mod=cyan filled block
+    let word_active = Style::default().fg(Color::Rgb(255, 0, 255)).bold();
+    let mod_active = Style::default().fg(Color::Black).bg(Color::Rgb(0, 255, 255)).bold();
+    let word_t = if target_word { word_active } else { dim_style };
     let mod_t = if target_right & (1 << 4) != 0 {
-        target_style
+        mod_active
     } else {
         dim_style
     };
@@ -724,7 +726,7 @@ fn draw_keyboard(
         Span::raw("         "),
         Span::styled("[word]", word_t),
         Span::raw("                    "),
-        Span::styled("[mod]", mod_t),
+        Span::styled(" mod ", mod_t),
     ]));
 
     // Thumbs held (subtle, no borders)
