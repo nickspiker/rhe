@@ -1,3 +1,5 @@
+//! Platform-agnostic input trait and `HidEvent` type.
+
 use crate::hand::KeyEvent;
 
 /// Platform-agnostic input trait.

@@ -1,3 +1,5 @@
+//! macOS menu bar tray icon for enable/disable toggle.
+
 use tao::event_loop::{ControlFlow, EventLoop};
 use tray_icon::{Icon, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 

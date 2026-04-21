@@ -1,3 +1,5 @@
+//! Interactive typing tutor and bench mode.
+
 use std::io;
 
 use crossterm::ExecutableCommand;
@@ -189,6 +191,19 @@ impl Practice {
         self.mode = self.default_mode();
     }
 
+    fn prev_word(&mut self) {
+        self.step_idx = 0;
+        if self.word_idx > 0 {
+            self.word_idx -= 1;
+        } else if self.sentence_idx > 0 {
+            self.sentence_idx -= 1;
+            if let Some(sentence) = self.sentences.get(self.sentence_idx) {
+                self.word_idx = sentence.len().saturating_sub(1);
+            }
+        }
+        self.mode = self.default_mode();
+    }
+
     fn default_mode(&self) -> WordMode {
         if self.current_word().map_or(false, |w| w.brief_steps.is_some()) {
             WordMode::Brief
@@ -237,6 +252,7 @@ pub fn run_tutor() {
     // actually attempted the chord (rather than just releasing old fingers).
     let mut touched_right: u8 = 0;
     let mut touched_left: u8 = 0;
+    let mut fingers_during_word = false;
 
     // Initial draw
     terminal
@@ -317,21 +333,28 @@ pub fn run_tutor() {
         } else {
             let is_key_down = rhe_event.direction == KeyDirection::Down;
 
-            // Word key down → switch to phoneme mode. Accumulators and
-            // hand_touched are derived from live key state, so fingers
-            // pressed before word are still valid.
+            // Word key down → switch to phoneme mode
             if rhe_event.key == PhysicalKey::Word && rhe_event.direction == KeyDirection::Down {
                 practice.mode = WordMode::Phoneme;
                 practice.step_idx = 0;
+                fingers_during_word = false;
             }
-            // Word key up at step 0 (no progress) → back to default mode
+            // Word key up at step 0 (no progress)
             else if rhe_event.key == PhysicalKey::Word
                 && rhe_event.direction == KeyDirection::Up
                 && practice.mode == WordMode::Phoneme
                 && practice.step_idx == 0
             {
+                if !fingers_during_word {
+                    // Solo word tap = go back one word
+                    practice.prev_word();
+                }
                 practice.mode = practice.default_mode();
                 practice.step_idx = 0;
+            }
+            // Track if any finger pressed during word hold
+            if key_state.word && is_key_down && rhe_event.key != PhysicalKey::Word {
+                fingers_during_word = true;
             }
 
             if let Some(target) = practice.current_target() {

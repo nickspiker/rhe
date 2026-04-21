@@ -1,3 +1,5 @@
+//! rdev-based keyboard input backend (legacy, macOS/Linux).
+
 use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

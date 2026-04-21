@@ -1,3 +1,5 @@
+//! Phoneme-to-chord mapping, `ChordKey` encoding, `PhonemeTable` and `BriefTable`.
+
 use crate::chord_state::Chord;
 
 /// A chord key: unique index into phoneme/brief tables.

@@ -1,3 +1,5 @@
+//! CLI entry point and subcommand dispatch.
+
 mod briefs;
 mod briefs_data;
 mod suffixes_data;

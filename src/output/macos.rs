@@ -1,3 +1,5 @@
+//! CGEvent-based text injection for macOS.
+
 use core_graphics::event::{CGEvent, CGEventTapLocation};
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use foreign_types::ForeignType;

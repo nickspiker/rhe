@@ -1,3 +1,5 @@
+//! Auto-generated brief (roll) assignments. Edit and recompile to customize.
+
 /// Auto-generated brief assignments. Edit and recompile to customize.
 /// Format: (left_4bits, right_5bits, "word")
 ///

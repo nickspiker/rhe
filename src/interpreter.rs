@@ -1,3 +1,5 @@
+//! Converts state machine events into output actions (emit text, backspace, suffix).
+
 use crate::chord_map::{BriefTable, ChordKey, Phoneme, PhonemeTable};
 use crate::state_machine::Event;
 use crate::table_gen::PhonemeDictionary;
@@ -51,11 +53,11 @@ impl Interpreter {
                         if s.starts_with('\x01') {
                             // Suffix: backspace trailing space, then emit suffix
                             let suffix = &s[1..];
-                            self.last_emit_len = suffix.len();
+                            self.last_emit_len = suffix.chars().count();
                             Action::Suffix(suffix.to_string())
                         } else {
                             let text = s.to_string();
-                            self.last_emit_len = text.len();
+                            self.last_emit_len = text.chars().count();
                             Action::Emit(text)
                         }
                     })
@@ -72,7 +74,7 @@ impl Interpreter {
                         let ipa: String = phonemes.iter().map(|p| p.to_ipa()).collect();
                         format!("{} ", ipa)
                     };
-                    self.last_emit_len = text.len();
+                    self.last_emit_len = text.chars().count();
                     Some(Action::Emit(text))
                 }
             }

@@ -1,3 +1,5 @@
+//! Platform-agnostic text output trait.
+
 /// Trait for injecting text into the focused application.
 pub trait TextOutput {
     fn emit(&self, text: &str);

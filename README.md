@@ -58,9 +58,10 @@ pronunciation dictionary and emits the correctly spelled word.
 Common words get shortcut "rolls" — press keys across both hands,
 release everything. One gesture = one word. No word key needed.
 
-496 words have rolls assigned. The top 50 get the fastest key
-combinations (single finger, two-finger pairs). The rest map
-phonetically: first consonant + first vowel of the word.
+496 words have rolls assigned, ranked by `frequency × phonemes_saved`.
+Right-hand-only slots (31) go to 2+ phoneme words. Two-hand slots
+(465) go to 3+ phoneme words. Effort ordering measured on real hands
+via `rhe bench`.
 
 Rolls can be typed on 6-key-rollover keyboards by rolling hands
 sequentially: left hand down → right hand down → left up → right up.
@@ -68,68 +69,75 @@ Keys never all hit zero until the roll is complete.
 
 ### Suffixes (left hand only, no word key)
 
-15 suffix rolls for common endings:
+15 suffix rolls, ordered by measured finger speed:
 
 ```
-Index           -s          Middle          -ing
-Ring            -ed         Pinky           -'s
-I+M             -ly         I+R             -er
-M+R             -tion       M+P             -ment
-R+P             -ness       I+M+R           -able
-I+P             -ity        I+M+P           -ous
-I+R+P           -ive        M+R+P           -al
-I+M+R+P         -ful
+Index           -s          Ring            -ed
+Pinky           -ing        Middle          -ly
+All four        -'s         Middle+Ring     -er
+Index+Middle    -tion       I+M+R           -al
+Index+Pinky     -ment       Index+Ring      -ness
+Ring+Pinky      -able       M+R+P           -ive
+Middle+Pinky    -ful        I+R+P           -ous
+I+M+P           -ity
 ```
 
-Type "look" (roll) then middle finger alone = "looking". The suffix
+Type "look" (roll) then index alone = "looks". The suffix
 backspaces the trailing space, appends itself, adds a new space.
 Inflected forms ("looking", "wanted", "tries") are excluded from
 rolls — use base word + suffix instead.
 
 ## Consonants
 
+Mapped by frequency × measured chord effort. No voicing pairs —
+pure speed optimization. The most common consonant (T) gets the
+fastest chord (index). Assignments measured on real hands via
+`rhe bench`.
+
 ```
-Fingers     Plain         +Thumb (voiced)
+Fingers     No thumb        +Thumb
 ──────────────────────────────────────────
-I           t             d
-M           s             z
-R           k             g
-P           p             b
-I+M         n             m
-I+R         r             dh (the)
-M+R         l             —
-I+M+R       h             —
-I+P         f             v
-M+P         w             —
-R+P         th (think)    —
-I+M+P       sh            zh (measure)
-I+R+P       ch (church)   jh (judge)
-M+R+P       ng            —
-I+M+R+P     y             —
+I           t               n
+R           s               v
+P           d               ng
+M           r               g
+All four    m               sh
+M+R         l               th (think)
+I+M         k               jh (judge)
+I+M+R       dh (the)        ch (church)
+I+P         w               zh (measure)
+I+R         z               — spare
+R+P         y               — spare
+M+R+P       h               — spare
+M+P         f               — spare
+I+R+P       b               — spare
+I+M+P       p               — spare
 ```
 
-15 unvoiced + 9 voiced = 24 consonants. 6 voiced slots spare.
+15 without thumb + 9 with thumb = 24 consonants. 6 thumb slots spare.
 
 ## Vowels
+
+Mapped by frequency onto left hand, same effort ranking:
 
 ```
 Fingers     Sound           Example
 ─────────────────────────────────────
 I           ʌ  (uh)         but, sofa
-M           ɪ  (ih)         sit, kit
-R           ɛ  (eh)         bed, dress
-P           æ  (ae)         cat, trap
-I+M         iː (ee)        see, fleece
-I+R         ɑ  (ah)        father, lot
-M+R         eɪ (ay)        say, face
-I+M+R       ɝ  (er)        her, bird
-I+P         aɪ (eye)       my, price
-M+P         oʊ (oh)        go, goat
-R+P         ɔ  (aw)        law, thought
-I+M+P       uː (oo)       too, goose
-I+R+P       aʊ (ow)       how, mouth
-M+R+P       ʊ  (uh)        book, foot
-I+M+R+P     ɔɪ (oy)        boy, choice
+R           ɪ  (ih)         sit, kit
+P           iː (ee)        see, fleece
+M           ɛ  (eh)         bed, dress
+All four    uː (oo)        too, goose
+M+R         aɪ (eye)       my, price
+I+M         æ  (ae)         cat, trap
+I+M+R       ɑ  (ah)        father, lot
+I+P         ɝ  (er)        her, bird
+I+R         oʊ (oh)        go, goat
+R+P         eɪ (ay)        say, face
+M+R+P       ɔ  (aw)        law, thought
+M+P         aʊ (ow)        how, mouth
+I+R+P       ʊ  (uh)        book, foot
+I+M+P       ɔɪ (oy)        boy, choice
 ```
 
 4 bits = 15 states = 15 vowels. Complete General American English
@@ -233,6 +241,23 @@ into apps) is on the roadmap.
 
 ## Roadmap
 
+Done:
+
+- **IOHIDManager driver** (macOS) — raw HID, one event per key change
+- **evdev driver** (Linux) — pre-xkb scancode grab + uinput passthrough
+- **Interactive tutor** — step-by-step chord teaching with real-time
+  key display, error recovery, brief/phoneme mode switching
+- **Bench mode** (`rhe bench`) — measures chord speed per finger combo,
+  averages across rounds, outputs ranking for mapping optimization
+- **Frequency-optimized phoneme mapping** — 24 consonants + 15 vowels
+  assigned by measured effort × phoneme frequency. No voicing pairs.
+- **Roll system** — 496 word rolls ranked by `frequency × phonemes_saved`,
+  right-only and two-hand slots ordered by measured effort
+- **Suffix system** — 15 left-hand suffixes (-s, -ed, -ing, -ly, etc.)
+  ordered by measured effort, inflected forms auto-excluded from rolls
+- **Brief generator** — `gen_briefs` with pinned overrides, stemming,
+  proper noun exclusion, value-based ranking
+
 Short-term:
 
 - **Linux text output** — libxkbcommon reverse-map + uinput injection
@@ -240,6 +265,9 @@ Short-term:
   with `Ctrl+Shift+U <hex> Enter` fallback for IPA and other unicode
   not representable in the current keymap. Unlocks `rhe run` on
   Linux.
+- **Auto chord mapping** — `gen_map` reads bench timings + phoneme
+  frequencies and generates `src/chord_map_data.rs` automatically.
+  Users run bench, rebuild, mapping is personalized to their hands.
 - **Number mode** — `word + mod` tap to enter. Ten physical finger
   positions (home row extended to include the inner-index stretch
   keys, QWERTY G + H) map 1-to-1 to digits 0–9. Mirrored 2-finger
@@ -247,11 +275,6 @@ Short-term:
   for `%`, `°`, `e`, `π`, etc.
 - **Operators and symbols** — extended chord set for math, punctuation,
   and common programmer symbols, accessible via mode-switch chords.
-
-- **Auto chord mapping** — `rhe bench` measures your actual chord speed
-  per finger combo. `gen_map` reads the timings + phoneme frequency
-  data and generates an optimal phoneme-to-chord mapping for YOUR
-  hands. Outputs `src/chord_map_data.rs`, rebuild to bake it in.
 
 Longer-term:
 

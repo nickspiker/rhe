@@ -1,3 +1,5 @@
+//! Finger chord bitmask and resolved chord types.
+
 use crate::hand::Finger;
 
 /// Bitmask of which fingers are pressed on a single hand.

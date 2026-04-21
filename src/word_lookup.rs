@@ -1,3 +1,5 @@
+//! Word-to-phoneme lookup from CMU dict.
+
 use crate::chord_map::Phoneme;
 use crate::table_gen;
 

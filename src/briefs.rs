@@ -1,3 +1,5 @@
+//! Loads brief and suffix tables from compile-time const arrays.
+
 use crate::briefs_data::BRIEFS;
 use crate::suffixes_data::SUFFIXES;
 use crate::chord_map::{BriefTable, ChordKey};

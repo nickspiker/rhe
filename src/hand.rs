@@ -1,3 +1,5 @@
+//! Physical key model: fingers, hands, word key, key events.
+
 /// Which hand a physical key belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Hand {

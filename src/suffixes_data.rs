@@ -1,3 +1,5 @@
+//! Auto-generated suffix assignments. Edit and recompile to customize.
+
 /// Suffix briefs — left-hand-only chords (right=0, no word key).
 /// Backspaces trailing space from previous word, appends suffix, re-adds space.
 ///

@@ -1,3 +1,6 @@
+//! Chord detection: accumulates keys, fires on all-zero.
+//! Dual mode: per-hand (word held) vs all-zero (rolls).
+
 use crate::chord_state::{Chord, FingerChord};
 use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey};
 
