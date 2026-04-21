@@ -104,6 +104,16 @@ struct KeyState {
     word: bool,       // left ⌘
 }
 
+fn finger_bit(finger: Finger) -> u8 {
+    match finger {
+        Finger::Index => 0,
+        Finger::Middle => 1,
+        Finger::Ring => 2,
+        Finger::Pinky => 3,
+        Finger::Thumb => 4,
+    }
+}
+
 impl KeyState {
     fn left_bits(&self) -> u8 {
         (self.left[0] as u8) << 3
@@ -215,7 +225,18 @@ pub fn run_tutor() {
     let mut key_state = KeyState::default();
     let mut practice = practice;
     let mut errored = false;
-    let mut hand_touched = false; // target hand had bits at some point this step
+    // Per-hand accumulator (OR of every finger bit pressed during the current
+    // chord session). Resets only when that hand goes to zero, so a flicker
+    // on a held key is an idempotent no-op and a 6KRO roll can complete even
+    // when all keys aren't held simultaneously.
+    let mut chord_right_acc: u8 = 0;
+    let mut chord_left_acc: u8 = 0;
+    // "Touched this step" — bits pressed by *new key-down events during the
+    // current step*, ignoring carryover reseeded from the previous step.
+    // Drives hand_touched so abandon detection only fires if the user
+    // actually attempted the chord (rather than just releasing old fingers).
+    let mut touched_right: u8 = 0;
+    let mut touched_left: u8 = 0;
 
     // Initial draw
     terminal
@@ -234,6 +255,29 @@ pub fn run_tutor() {
         };
 
         update_key_state(&mut key_state, &rhe_event);
+
+        // Snapshot step/mode before processing so we can detect a step
+        // transition and re-seed the accumulator with target-relevant
+        // currently-held bits (handles consecutive same-hand phonemes:
+        // carryover bits that aren't in the new target don't poison the
+        // next accumulator, while bits that ARE still count as pressed).
+        let prev_step_idx = practice.step_idx;
+        let prev_mode = practice.mode;
+
+        // OR the pressed bit into the accumulator. Hand-zero reset happens
+        // at the END of the loop so the step handler can still see pre-release
+        // state when a hand goes to zero (for abandon detection).
+        if rhe_event.direction == KeyDirection::Down {
+            match rhe_event.key {
+                PhysicalKey::Finger(Hand::Right, finger) => {
+                    chord_right_acc |= 1u8 << finger_bit(finger);
+                }
+                PhysicalKey::Finger(Hand::Left, finger) => {
+                    chord_left_acc |= 1u8 << finger_bit(finger);
+                }
+                _ => {}
+            }
+        }
 
         // Feed real output pipeline
         for sm_event in sm.feed(rhe_event) {
@@ -255,9 +299,9 @@ pub fn run_tutor() {
         let current_word_name = practice.current_word().map(|w| w.word.as_str()).unwrap_or("?");
         let mode_str = match practice.mode { WordMode::Brief => "brief", WordMode::Phoneme => "phon" };
         log.push(format!(
-            "state R:{:05b} L:{:04b} word={} | \"{}\" [{}] step={} err={}",
-            key_state.right_bits(),
+            "state L:{:04b} R:{:05b} word={} | \"{}\" [{}] step={} err={}",
             key_state.left_bits(),
+            key_state.right_bits(),
             key_state.word,
             current_word_name,
             mode_str,
@@ -273,11 +317,12 @@ pub fn run_tutor() {
         } else {
             let is_key_down = rhe_event.direction == KeyDirection::Down;
 
-            // Word key down → switch to phoneme mode
+            // Word key down → switch to phoneme mode. Accumulators and
+            // hand_touched are derived from live key state, so fingers
+            // pressed before word are still valid.
             if rhe_event.key == PhysicalKey::Word && rhe_event.direction == KeyDirection::Down {
                 practice.mode = WordMode::Phoneme;
                 practice.step_idx = 0;
-                hand_touched = false;
             }
             // Word key up at step 0 (no progress) → back to default mode
             else if rhe_event.key == PhysicalKey::Word
@@ -287,7 +332,6 @@ pub fn run_tutor() {
             {
                 practice.mode = practice.default_mode();
                 practice.step_idx = 0;
-                hand_touched = false;
             }
 
             if let Some(target) = practice.current_target() {
@@ -295,37 +339,67 @@ pub fn run_tutor() {
                 let step = practice.current_step().unwrap();
 
                 if step.space_only {
-                    // Commit step: any finger down = error, word up = advance
+                    // Phoneme commit step: word release advances, any finger is error.
                     if is_key_down && rhe_event.key != PhysicalKey::Word {
                         log.push("  → RESET (finger during commit)".to_string());
                         practice.reset_word();
-                        hand_touched = false;
                         errored = true;
                     } else if !key_state.word {
                         log.push("  → MATCH (commit)".to_string());
                         practice.advance_step();
-                        hand_touched = false;
+                    }
+                } else if target.right == 0 && target.left == 0 && !target.word {
+                    // Brief commit step (all-off target): any new key = error, all-off = advance.
+                    if is_key_down {
+                        log.push("  → RESET (finger during commit)".to_string());
+                        practice.reset_word();
+                        errored = true;
+                    } else if all_off {
+                        log.push("  → MATCH (commit)".to_string());
+                        practice.advance_step();
                     }
                 } else {
-                    // Track if target hand was pressed (only on key-down for that hand)
+                    // Update "touched this step" trackers on each key-down.
+                    // These differ from chord_*_acc because acc can be reseeded
+                    // from carryover at step-transition time — we only want
+                    // hand_touched to reflect *fresh* key-downs in this step,
+                    // otherwise abandon fires on a pure release of carryover.
                     if is_key_down {
-                        let pressed_target_hand = match rhe_event.key {
-                            PhysicalKey::Finger(Hand::Right, _) => target.right != 0,
-                            PhysicalKey::Finger(Hand::Left, _) => target.left != 0,
-                            _ => false,
-                        };
-                        if pressed_target_hand {
-                            hand_touched = true;
+                        match rhe_event.key {
+                            PhysicalKey::Finger(Hand::Right, finger) => {
+                                touched_right |= 1u8 << finger_bit(finger);
+                            }
+                            PhysicalKey::Finger(Hand::Left, finger) => {
+                                touched_left |= 1u8 << finger_bit(finger);
+                            }
+                            _ => {}
                         }
                     }
 
-                    // Detect abandoned chord: hand was touched, now back to zero
-                    let target_hand_zero = if target.right != 0 {
-                        key_state.right_bits() == 0
-                    } else {
-                        key_state.left_bits() == 0
-                    };
-                    let hand_abandoned = hand_touched && target_hand_zero && !is_key_down;
+                    // hand_touched: user pressed a target-hand key in *this* step.
+                    let hand_touched = (target.right != 0 && touched_right != 0)
+                        || (target.left != 0 && touched_left != 0);
+
+                    // "Target hands empty" — only the hands the target cares about.
+                    let target_hands_empty = (target.right == 0
+                        || key_state.right_bits() == 0)
+                        && (target.left == 0 || key_state.left_bits() == 0);
+
+                    // Match only checks hands named by the target. A carryover
+                    // bit on a non-target hand is ignored (the user is between
+                    // phonemes, still releasing their previous chord).
+                    let acc_matches = (target.right == 0
+                        || chord_right_acc == target.right)
+                        && (target.left == 0 || chord_left_acc == target.left)
+                        && key_state.word == target.word;
+
+                    // Same gating for the extra-key check — a leftover bit on
+                    // a non-target hand isn't "extra", it's carryover.
+                    let has_extra_acc = (target.right != 0
+                        && (chord_right_acc & !target.right) != 0)
+                        || (target.left != 0
+                            && (chord_left_acc & !target.left) != 0)
+                        || (key_state.word && !target.word);
 
                     let space_dropped = rhe_event.key == PhysicalKey::Word
                         && rhe_event.direction == KeyDirection::Up
@@ -335,31 +409,56 @@ pub fn run_tutor() {
                     if space_dropped {
                         log.push("  → RESET (space released mid-word)".to_string());
                         practice.reset_word();
-                        hand_touched = false;
                         if !all_off {
                             errored = true;
                         }
-                    } else if hand_abandoned {
-                        log.push("  → RESET (chord abandoned)".to_string());
-                        practice.reset_word();
-                        hand_touched = false;
-                        if !all_off {
-                            errored = true;
-                        }
-                    } else if is_key_down && target.has_extra(&key_state) {
+                    } else if is_key_down && has_extra_acc {
                         log.push("  → RESET (extra key down)".to_string());
                         practice.reset_word();
-                        hand_touched = false;
                         if !all_off {
                             errored = true;
                         }
-                    } else if target.matches(&key_state) {
+                    } else if acc_matches && hand_touched {
+                        // Chord complete — union of pressed keys equals target.
+                        // Advances to the following commit step where the user
+                        // must release everything to finalise the word.
                         log.push("  → MATCH".to_string());
                         practice.advance_step();
-                        hand_touched = false;
+                    } else if hand_touched && target_hands_empty && !is_key_down {
+                        log.push("  → RESET (chord abandoned)".to_string());
+                        practice.reset_word();
+                        if !all_off {
+                            errored = true;
+                        }
                     }
                 }
             }
+        }
+
+        // Step transition reseed: on MATCH/reset/mode-change, rebuild the
+        // accumulator from currently held keys intersected with the new
+        // target (stale carryover drops; legitimate head-starts stay), and
+        // wipe the "touched this step" trackers so abandon detection won't
+        // fire on release of carryover alone.
+        if practice.step_idx != prev_step_idx || practice.mode != prev_mode {
+            if let Some(new_target) = practice.current_target() {
+                chord_right_acc = key_state.right_bits() & new_target.right;
+                chord_left_acc = key_state.left_bits() & new_target.left;
+            } else {
+                chord_right_acc = 0;
+                chord_left_acc = 0;
+            }
+            touched_right = 0;
+            touched_left = 0;
+        }
+
+        // Hand-zero accumulator reset runs AFTER the step handler so abandon
+        // detection still sees the partial-attempt bits on the final key-up.
+        if key_state.right_bits() == 0 {
+            chord_right_acc = 0;
+        }
+        if key_state.left_bits() == 0 {
+            chord_left_acc = 0;
         }
 
         // Draw after every event
@@ -657,89 +756,201 @@ fn draw_keyboard(
     held_left: u8,  // 4 bits
     held_word: bool,
 ) {
-    let left_labels = ["P", "R", "M", "I"];
-    let right_labels = ["I", "M", "R", "P"];
+    // Labels depend on live state:
+    //   word held   → phoneme mode
+    //   word free   → roll/suffix mode
+    // Thumb held on right-hand swaps consonants to their voiced pair.
+    let phoneme_mode = held_word;
+    let voiced = held_right & (1 << 4) != 0;
 
-    let target_style = Style::default().fg(Color::Black).bg(Color::White);
-    let dim_style = Style::default().fg(Color::DarkGray);
-    let held_style = Style::default().fg(Color::Rgb(8, 8, 8));
+    // 10 cells left→right: L pinky/ring/middle/idx-outer/idx-inner,
+    // R idx-inner/idx-outer/middle/ring/pinky. Inner-index cells are
+    // placeholders for future digit-mode support.
+    // Gradient from cyan-ish to yellow-ish for visual position hint.
+    let key_colors = [
+        Color::Rgb(0x66, 0xFF, 0xFF), //  0  L pinky
+        Color::Rgb(0x77, 0xEE, 0xEE), //  1  L ring
+        Color::Rgb(0x88, 0xDD, 0xDD), //  2  L middle
+        Color::Rgb(0x99, 0xCC, 0xCC), //  3  L idx-outer
+        Color::Rgb(0xAA, 0xBB, 0xBB), //  4  L idx-inner (future)
+        Color::Rgb(0xBB, 0xAA, 0xAA), //  5  R idx-inner (future)
+        Color::Rgb(0xCC, 0x99, 0x99), //  6  R idx-outer
+        Color::Rgb(0xDD, 0x88, 0x88), //  7  R middle
+        Color::Rgb(0xEE, 0x77, 0x77), //  8  R ring
+        Color::Rgb(0xFF, 0x66, 0x66), //  9  R pinky
+    ];
+    let dot_colors = [
+        Color::Rgb(0x33, 0x7F, 0x7F),
+        Color::Rgb(0x3B, 0x77, 0x77),
+        Color::Rgb(0x44, 0x6E, 0x6E),
+        Color::Rgb(0x4C, 0x66, 0x66),
+        Color::Rgb(0x55, 0x5D, 0x5D),
+        Color::Rgb(0x5D, 0x55, 0x55),
+        Color::Rgb(0x66, 0x4C, 0x4C),
+        Color::Rgb(0x6E, 0x44, 0x44),
+        Color::Rgb(0x77, 0x3B, 0x3B),
+        Color::Rgb(0x7F, 0x33, 0x33),
+    ];
+
+    let left_labels: [&str; 5] = if phoneme_mode {
+        ["æ", "ɛ", "ɪ", "ʌ", ""]
+    } else {
+        ["-'s", "-ed", "-ing", "-s", ""]
+    };
+    let right_labels: [&str; 5] = if phoneme_mode {
+        if voiced {
+            ["", "d", "z", "g", "b"]
+        } else {
+            ["", "t", "s", "k", "p"]
+        }
+    } else if voiced {
+        ["", "there", "here", "my", "because"]
+    } else {
+        ["", "you", "and", "that", "for"]
+    };
+
+    // Cell → target bit mapping. None = inner-index placeholder (never lit yet).
+    let left_bit = |i: usize| -> Option<u8> {
+        match i { 0 => Some(3), 1 => Some(2), 2 => Some(1), 3 => Some(0), _ => None }
+    };
+    let right_bit = |i: usize| -> Option<u8> {
+        match i { 1 => Some(0), 2 => Some(1), 3 => Some(2), 4 => Some(3), _ => None }
+    };
+
+    const CELL: usize = 9;
+    let border_style = Style::default().fg(Color::Rgb(0x50, 0x50, 0x50));
+    let dashes = "─".repeat(CELL);
+    // Bordered box = the 4 resting finger keys per hand.
+    let box_top = format!("┌{0}┬{0}┬{0}┬{0}┐", dashes);
+    let box_bot = format!("└{0}┴{0}┴{0}┴{0}┘", dashes);
+    // Inner-index cells sit between the two boxes with no outlines —
+    // a bare colored strip in the "stretched" column slot.
+    let empty_cell = " ".repeat(CELL);
 
     let mut lines: Vec<Line> = Vec::new();
 
-    // Target row (with borders)
-    lines.push(Line::from(
-        "  ┌─────┬─────┬─────┬─────┐  ┌─────┬─────┬─────┬─────┐",
-    ));
+    // Top border row (inner-index cells get blank space where their border would be)
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled(box_top.clone(), border_style),
+        Span::raw("  "),
+        Span::raw(empty_cell.clone()),
+        Span::raw("  "),
+        Span::raw(empty_cell.clone()),
+        Span::raw("  "),
+        Span::styled(box_top, border_style),
+    ]));
+
+    // Label row — 4 bordered cells, then two unbordered inner cells, then 4 more.
+    let make_cell_style = |i: usize, target: bool| -> Style {
+        if target {
+            let color = key_colors[i];
+            Style::default().fg(color).bg(color)
+        } else {
+            Style::default().fg(Color::Rgb(0x40, 0x40, 0x40))
+        }
+    };
 
     let mut row: Vec<Span> = vec![Span::raw("  ")];
     for i in 0..4 {
-        let bit = 3 - i;
-        let target = target_left & (1 << bit) != 0;
-        let style = if target { target_style } else { dim_style };
-        row.push(Span::raw("│"));
-        row.push(Span::styled(format!("  {}  ", left_labels[i]), style));
+        let target = left_bit(i).map(|b| target_left & (1 << b) != 0).unwrap_or(false);
+        row.push(Span::styled("│", border_style));
+        row.push(Span::styled(
+            format!("{:^1$}", left_labels[i], CELL),
+            make_cell_style(i, target),
+        ));
     }
-    row.push(Span::raw("│  "));
-    for i in 0..4 {
-        let target = target_right & (1 << i) != 0;
-        let style = if target { target_style } else { dim_style };
-        row.push(Span::raw("│"));
-        row.push(Span::styled(format!("  {}  ", right_labels[i]), style));
+    row.push(Span::styled("│", border_style));
+    // Left inner-index placeholder cell (no border)
+    row.push(Span::raw("  "));
+    row.push(Span::styled(
+        format!("{:^1$}", left_labels[4], CELL),
+        make_cell_style(4, false),
+    ));
+    row.push(Span::raw("  "));
+    // Right inner-index placeholder cell
+    row.push(Span::styled(
+        format!("{:^1$}", right_labels[0], CELL),
+        make_cell_style(5, false),
+    ));
+    row.push(Span::raw("  "));
+    // Right bordered box
+    row.push(Span::styled("│", border_style));
+    for i in 1..5 {
+        let target = right_bit(i).map(|b| target_right & (1 << b) != 0).unwrap_or(false);
+        row.push(Span::styled(
+            format!("{:^1$}", right_labels[i], CELL),
+            make_cell_style(5 + i, target),
+        ));
+        row.push(Span::styled("│", border_style));
     }
-    row.push(Span::raw("│"));
     lines.push(Line::from(row));
 
-    lines.push(Line::from(
-        "  └─────┴─────┴─────┴─────┘  └─────┴─────┴─────┴─────┘",
-    ));
+    // Bottom border row
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled(box_bot.clone(), border_style),
+        Span::raw("  "),
+        Span::raw(empty_cell.clone()),
+        Span::raw("  "),
+        Span::raw(empty_cell),
+        Span::raw("  "),
+        Span::styled(box_bot, border_style),
+    ]));
 
-    // Held row (no borders, subtle)
+    // Held row — dots coloured at half the key-colour brightness.
+    let dot_span = |cell_idx: usize, held: bool| -> Span<'static> {
+        let dot = if held { format!("{:^1$}", "●", CELL) } else { " ".repeat(CELL) };
+        Span::styled(dot, Style::default().fg(dot_colors[cell_idx]))
+    };
     let mut row2: Vec<Span> = vec![Span::raw("   ")];
     for i in 0..4 {
-        let bit = 3 - i;
-        let held = held_left & (1 << bit) != 0;
-        row2.push(Span::styled(
-            if held { "  ●   " } else { "      " },
-            held_style,
-        ));
+        let held = left_bit(i).map(|b| held_left & (1 << b) != 0).unwrap_or(false);
+        row2.push(dot_span(i, held));
+        row2.push(Span::raw(" "));
     }
-    row2.push(Span::raw("   "));
-    for i in 0..4 {
-        let held = held_right & (1 << i) != 0;
-        row2.push(Span::styled(
-            if held { "  ●   " } else { "      " },
-            held_style,
-        ));
+    // Inner-index dots — no border spacing, just the dot + gap
+    row2.push(Span::raw(" "));
+    row2.push(dot_span(4, false)); // inner-L: never held yet
+    row2.push(Span::raw("  "));
+    row2.push(dot_span(5, false)); // inner-R: never held yet
+    row2.push(Span::raw("  "));
+    for i in 1..5 {
+        let held = right_bit(i).map(|b| held_right & (1 << b) != 0).unwrap_or(false);
+        row2.push(dot_span(5 + i, held));
+        row2.push(Span::raw(" "));
     }
     lines.push(Line::from(row2));
 
-    // Thumbs target — word=magenta text, mod=cyan filled block
-    let word_active = Style::default().fg(Color::Rgb(255, 0, 255)).bold();
-    let mod_active = Style::default().fg(Color::Black).bg(Color::Rgb(0, 255, 255)).bold();
+    // Thumbs target — word = purple filled block, mod = cyan filled block.
+    let word_active = Style::default()
+        .fg(Color::Rgb(0x40, 0x00, 0x70))
+        .bg(Color::Rgb(0x40, 0x00, 0x70));
+    let mod_active = Style::default()
+        .fg(Color::Rgb(0, 255, 0))
+        .bg(Color::Rgb(0, 255, 0));
+    let dim_style = Style::default().fg(Color::Rgb(0x40, 0x40, 0x40));
     let word_t = if target_word { word_active } else { dim_style };
-    let mod_t = if target_right & (1 << 4) != 0 {
-        mod_active
-    } else {
-        dim_style
-    };
+    let mod_t = if target_right & (1 << 4) != 0 { mod_active } else { dim_style };
+
+    // New layout total ≈ 108 cols. Word under left idx area, mod under right idx area.
     lines.push(Line::from(vec![
-        Span::raw("         "),
-        Span::styled("[word]", word_t),
-        Span::raw("                    "),
+        Span::raw(" ".repeat(38)),
+        Span::styled(" word ", word_t),
+        Span::raw(" ".repeat(22)),
         Span::styled(" mod ", mod_t),
     ]));
 
-    // Thumbs held (subtle, no borders)
+    // Thumbs held at half brightness, matching the dot style.
+    let word_dot = Style::default().fg(Color::Rgb(0x20, 0x00, 0x38));
+    let mod_dot = Style::default().fg(Color::Rgb(0, 0x7F, 0));
     lines.push(Line::from(vec![
-        Span::raw("         "),
-        Span::styled(
-            if held_word { "  ●   " } else { "      " },
-            held_style,
-        ),
-        Span::raw("                    "),
+        Span::raw(" ".repeat(38)),
+        Span::styled(if held_word { "  ●   " } else { "      " }, word_dot),
+        Span::raw(" ".repeat(22)),
         Span::styled(
             if held_right & (1 << 4) != 0 { "  ●  " } else { "     " },
-            held_style,
+            mod_dot,
         ),
     ]));
 

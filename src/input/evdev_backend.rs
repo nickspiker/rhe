@@ -11,7 +11,7 @@
 //! (typically membership in the `input` group).
 
 use super::HidEvent;
-use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey, Thumb};
+use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey};
 use std::ffi::CString;
 use std::fs;
 use std::os::unix::io::RawFd;
@@ -20,7 +20,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 
 // evdev event-type codes
+const EV_SYN: u16 = 0x00;
 const EV_KEY: u16 = 0x01;
+const SYN_REPORT: u16 = 0x00;
+const BUS_VIRTUAL: u16 = 0x06;
 
 // Positional scancodes from linux/input-event-codes.h — these are
 // pre-xkb hardware positions, identical whether the user is on QWERTY,
@@ -42,6 +45,27 @@ const KEY_LEFTALT: u16 = 56;
 
 // EVIOCGRAB = _IOW('E', 0x90, int) — stable Linux ABI, x86-64 generic _IOC layout.
 const EVIOCGRAB: libc::c_ulong = 0x40044590;
+
+// uinput ioctls (type 'U' = 0x55). Stable Linux ABI.
+const UI_SET_EVBIT: libc::c_ulong = 0x40045564; // _IOW('U', 100, int)
+const UI_SET_KEYBIT: libc::c_ulong = 0x40045565; // _IOW('U', 101, int)
+const UI_DEV_CREATE: libc::c_ulong = 0x5501; // _IO ('U',   1)
+const UI_DEV_SETUP: libc::c_ulong = 0x405c5503; // _IOW('U',   3, struct uinput_setup)
+
+#[repr(C)]
+struct InputId {
+    bustype: u16,
+    vendor: u16,
+    product: u16,
+    version: u16,
+}
+
+#[repr(C)]
+struct UinputSetup {
+    id: InputId,
+    name: [u8; 80],
+    ff_effects_max: u32,
+}
 
 // EVIOCGBIT(ev, len) = _IOC(_IOC_READ=2, type='E', nr=0x20+ev, size=len).
 // Generic _IOC layout: (dir << 30) | (size << 16) | (type << 8) | nr.
@@ -87,17 +111,33 @@ impl EvdevInput {
 
         eprintln!("evdev: grabbed {} keyboard device(s)", grabbed.len());
 
+        // Open a uinput virtual keyboard for passing non-rhe keys back to the OS.
+        // If this fails (no permission on /dev/uinput) we still run, we just
+        // can't forward — ESC will quit the grab.
+        let uinput_fd = match open_uinput() {
+            Ok(fd) => Some(fd),
+            Err(e) => {
+                eprintln!("evdev: passthrough disabled ({}); non-rhe keys will be swallowed", e);
+                None
+            }
+        };
+
         for fd in grabbed {
             let tx = tx.clone();
             let enabled = enabled.clone();
-            std::thread::spawn(move || reader_loop(fd, tx, enabled));
+            std::thread::spawn(move || reader_loop(fd, uinput_fd, tx, enabled));
         }
 
         Ok(Self { rx })
     }
 }
 
-fn reader_loop(fd: RawFd, tx: mpsc::Sender<HidEvent>, enabled: Arc<AtomicBool>) {
+fn reader_loop(
+    fd: RawFd,
+    uinput_fd: Option<RawFd>,
+    tx: mpsc::Sender<HidEvent>,
+    enabled: Arc<AtomicBool>,
+) {
     const BATCH: usize = 32;
     let mut buf: [InputEvent; BATCH] = unsafe { std::mem::zeroed() };
     let buf_bytes = std::mem::size_of::<[InputEvent; BATCH]>();
@@ -113,29 +153,34 @@ fn reader_loop(fd: RawFd, tx: mpsc::Sender<HidEvent>, enabled: Arc<AtomicBool>) 
             if ev.type_ != EV_KEY {
                 continue;
             }
-            // value: 0=up, 1=down, 2=autorepeat — skip autorepeat (we want one press / one release).
-            let dir = match ev.value {
-                0 => KeyDirection::Up,
-                1 => KeyDirection::Down,
-                _ => continue,
-            };
 
-            if ev.code == KEY_ESC && dir == KeyDirection::Down {
-                if enabled.load(Ordering::Relaxed) {
+            let rhe_key = linux_to_physical(ev.code);
+            let active = enabled.load(Ordering::Relaxed);
+
+            // ESC down → rhe quit signal. Never forward.
+            if ev.code == KEY_ESC && ev.value == 1 {
+                if active {
                     let _ = tx.send(HidEvent::Quit);
                 }
                 continue;
             }
 
-            if !enabled.load(Ordering::Relaxed) {
-                continue;
+            // rhe's own keys, when active: consume, don't forward.
+            if active {
+                if let Some(key) = rhe_key {
+                    let dir = match ev.value {
+                        0 => KeyDirection::Up,
+                        1 => KeyDirection::Down,
+                        _ => continue, // skip autorepeat on chord keys
+                    };
+                    let _ = tx.send(HidEvent::Key(KeyEvent { key, direction: dir }));
+                    continue;
+                }
             }
 
-            if let Some(key) = linux_to_physical(ev.code) {
-                let _ = tx.send(HidEvent::Key(KeyEvent {
-                    key,
-                    direction: dir,
-                }));
+            // Anything else → re-inject into the OS via uinput.
+            if let Some(ufd) = uinput_fd {
+                forward_key(ufd, ev.code, ev.value);
             }
         }
     }
@@ -143,6 +188,76 @@ fn reader_loop(fd: RawFd, tx: mpsc::Sender<HidEvent>, enabled: Arc<AtomicBool>) 
         libc::ioctl(fd, EVIOCGRAB, 0i32);
         libc::close(fd);
     }
+}
+
+fn forward_key(uinput_fd: RawFd, code: u16, value: i32) {
+    let key_ev = InputEvent {
+        time: libc::timeval { tv_sec: 0, tv_usec: 0 },
+        type_: EV_KEY,
+        code,
+        value,
+    };
+    let syn_ev = InputEvent {
+        time: libc::timeval { tv_sec: 0, tv_usec: 0 },
+        type_: EV_SYN,
+        code: SYN_REPORT,
+        value: 0,
+    };
+    let ev_size = std::mem::size_of::<InputEvent>();
+    unsafe {
+        libc::write(uinput_fd, &key_ev as *const _ as *const libc::c_void, ev_size);
+        libc::write(uinput_fd, &syn_ev as *const _ as *const libc::c_void, ev_size);
+    }
+}
+
+/// Create a virtual keyboard via `/dev/uinput`. Returns its fd, which we
+/// write `input_event` records to when forwarding non-rhe keys back to the OS.
+///
+/// Requires write access to `/dev/uinput` (commonly root; can be granted
+/// to the `input` group via a udev rule:
+/// `KERNEL=="uinput", GROUP="input", MODE="0660"`).
+fn open_uinput() -> Result<RawFd, String> {
+    let path = CString::new("/dev/uinput").unwrap();
+    let fd = unsafe { libc::open(path.as_ptr(), libc::O_WRONLY | libc::O_NONBLOCK) };
+    if fd < 0 {
+        return Err(format!("open /dev/uinput: {}", std::io::Error::last_os_error()));
+    }
+
+    unsafe {
+        libc::ioctl(fd, UI_SET_EVBIT, EV_KEY as i32);
+        libc::ioctl(fd, UI_SET_EVBIT, EV_SYN as i32);
+        // Register every key code up through KEY_MICMUTE (0xF8). Covers the
+        // full standard keyboard range without needing per-key logic.
+        for code in 1..=0xF8i32 {
+            libc::ioctl(fd, UI_SET_KEYBIT, code);
+        }
+    }
+
+    let mut setup: UinputSetup = unsafe { std::mem::zeroed() };
+    setup.id.bustype = BUS_VIRTUAL;
+    setup.id.vendor = 0x7268; // "rh"
+    setup.id.product = 0x6500; // "e\0"
+    setup.id.version = 1;
+    let name = b"rhe passthrough";
+    setup.name[..name.len()].copy_from_slice(name);
+
+    let rc = unsafe {
+        libc::ioctl(fd, UI_DEV_SETUP, &setup as *const UinputSetup as *const libc::c_void)
+    };
+    if rc < 0 {
+        let err = std::io::Error::last_os_error();
+        unsafe { libc::close(fd) };
+        return Err(format!("UI_DEV_SETUP: {}", err));
+    }
+
+    let rc = unsafe { libc::ioctl(fd, UI_DEV_CREATE) };
+    if rc < 0 {
+        let err = std::io::Error::last_os_error();
+        unsafe { libc::close(fd) };
+        return Err(format!("UI_DEV_CREATE: {}", err));
+    }
+
+    Ok(fd)
 }
 
 fn linux_to_physical(code: u16) -> Option<PhysicalKey> {
@@ -155,8 +270,8 @@ fn linux_to_physical(code: u16) -> Option<PhysicalKey> {
         KEY_K => PhysicalKey::Finger(Hand::Right, Finger::Middle),
         KEY_L => PhysicalKey::Finger(Hand::Right, Finger::Ring),
         KEY_SEMICOLON => PhysicalKey::Finger(Hand::Right, Finger::Pinky),
-        KEY_SPACE => PhysicalKey::Thumb(Thumb::Space),
-        KEY_LEFTALT => PhysicalKey::Thumb(Thumb::Mod),
+        KEY_SPACE => PhysicalKey::Finger(Hand::Right, Finger::Thumb),
+        KEY_LEFTALT => PhysicalKey::Word,
         _ => return None,
     })
 }

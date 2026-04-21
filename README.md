@@ -180,7 +180,8 @@ coverage. Zero finger movement.
 ## Architecture
 
 ```
-IOHIDManager / evdev     raw key events (1 per state change, no repeats)
+IOHIDManager (macOS)     raw key events (1 per state change, no repeats)
+evdev grab (Linux)       — pre-xkb scancodes, layout-independent
         │
   State machine          word held → per-hand firing
         │                word not held → all-zero firing (rolls)
@@ -189,7 +190,9 @@ IOHIDManager / evdev     raw key events (1 per state change, no repeats)
         │                roll lookup → instant emit
         │                suffix → backspace + append
         │
- CGEvent / uinput        inject text into focused application
+ CGEvent (macOS)         inject text into focused application
+ uinput passthrough (Linux) — passes non-rhe keys back to OS
+                            — text injection coming (see Roadmap)
 ```
 
 Purely event-driven. No polling, no timers, no key repeat. One
@@ -199,14 +202,64 @@ physical key change = one event = one state machine transition.
 
 ```
 cargo run --release -- tutor     learn the chords
-cargo run --release -- run       full engine (macOS menu bar)
+cargo run --release -- run       full engine (macOS menu bar only, for now)
 cargo run --bin gen_briefs       regenerate roll assignments
 cargo test                       verify everything
 ```
 
-Requires Input Monitoring permission on macOS (keyboard seizure via
+### macOS
+
+Requires Input Monitoring permission (keyboard seizure via
 IOHIDManager). Run with `sudo` or add your terminal to System
 Settings → Privacy & Security → Input Monitoring.
+
+### Linux
+
+Grab keyboards via evdev and inject passthrough via uinput — the user
+running rhe needs read access to `/dev/input/event*` and write access
+to `/dev/uinput`. One-time setup:
+
+```
+sudo usermod -aG input $USER
+echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' \
+    | sudo tee /etc/udev/rules.d/99-uinput.rules
+sudo udevadm control --reload-rules
+sudo modprobe -r uinput && sudo modprobe uinput
+```
+
+Log out and back in (or `newgrp input`) for the group change to
+apply. Tutor works today on Linux; full `run` mode (text injection
+into apps) is on the roadmap.
+
+## Roadmap
+
+Short-term:
+
+- **Linux text output** — libxkbcommon reverse-map + uinput injection
+  for Latin output in the user's active layout (Dvorak/Colemak/any),
+  with `Ctrl+Shift+U <hex> Enter` fallback for IPA and other unicode
+  not representable in the current keymap. Unlocks `rhe run` on
+  Linux.
+- **Number mode** — `word + mod` tap to enter. Ten physical finger
+  positions (home row extended to include the inner-index stretch
+  keys, QWERTY G + H) map 1-to-1 to digits 0–9. Mirrored 2-finger
+  chords for negate, decimal point, thousands separator; mod-variants
+  for `%`, `°`, `e`, `π`, etc.
+- **Operators and symbols** — extended chord set for math, punctuation,
+  and common programmer symbols, accessible via mode-switch chords.
+
+Longer-term:
+
+- **256-bit keymask** — generalize the chord representation from
+  9-bit home-row to a full 256-bit HID usage bitmask. Lets users
+  bind any chord on any physical key to any action (phoneme, brief,
+  digit, custom text, mode switch).
+- **User-configurable chord → action map** — config file so power
+  users can rewire layouts without rebuilding.
+- **libei migration** — replace the Linux uinput path with libei
+  (freedesktop emulated-input protocol) once it stabilizes across
+  major compositors. Cleaner text injection, no xkb reverse-map
+  dance.
 
 ## Building
 
