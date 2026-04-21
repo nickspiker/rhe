@@ -9,6 +9,9 @@ pub trait TextOutput {
 #[cfg(target_os = "macos")]
 pub mod macos;
 
+#[cfg(target_os = "linux")]
+pub mod linux;
+
 /// No-op output backend for platforms where text injection isn't wired up.
 ///
 /// On Linux, uinput routes through the user's xkb layout (so injected

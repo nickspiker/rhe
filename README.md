@@ -188,19 +188,21 @@ coverage. Zero finger movement.
 ## Architecture
 
 ```
-IOHIDManager (macOS)     raw key events (1 per state change, no repeats)
-evdev grab (Linux)       — pre-xkb scancodes, layout-independent
+IOHIDManager (macOS)        raw key events (1 per state change, no repeats)
+evdev grab (Linux)          — pre-xkb scancodes, layout-independent
         │
-  State machine          word held → per-hand firing
-        │                word not held → all-zero firing (rolls)
+  State machine             word held → per-hand firing
+        │                   word not held → all-zero firing (rolls)
         │
-   Interpreter           phoneme buffer → dictionary → word
-        │                roll lookup → instant emit
-        │                suffix → backspace + append
+   Interpreter              phoneme buffer → dictionary → word
+        │                   roll lookup → instant emit
+        │                   suffix → backspace + append
         │
- CGEvent (macOS)         inject text into focused application
- uinput passthrough (Linux) — passes non-rhe keys back to OS
-                            — text injection coming (see Roadmap)
+ CGEvent (macOS)            inject text into focused application
+ uinput + xkb (Linux)       — reverse-map char → scancode+mods under
+                              user's active xkb layout (Dvorak/Colemak/…)
+                            — Ctrl+Shift+U <hex> Enter fallback for chars
+                              outside the active layout (IPA, emoji)
 ```
 
 Purely event-driven. No polling, no timers, no key repeat. One
@@ -236,8 +238,9 @@ sudo modprobe -r uinput && sudo modprobe uinput
 ```
 
 Log out and back in (or `newgrp input`) for the group change to
-apply. Tutor works today on Linux; full `run` mode (text injection
-into apps) is on the roadmap.
+apply. Tutor and text injection both work on Linux. Full `rhe run`
+engine (tray app + system-wide) is still macOS-only; Linux users can
+build on top of the tutor loop for now.
 
 ## Roadmap
 
@@ -257,14 +260,13 @@ Done:
   ordered by measured effort, inflected forms auto-excluded from rolls
 - **Brief generator** — `gen_briefs` with pinned overrides, stemming,
   proper noun exclusion, value-based ranking
-
-Short-term:
-
 - **Linux text output** — libxkbcommon reverse-map + uinput injection
   for Latin output in the user's active layout (Dvorak/Colemak/any),
   with `Ctrl+Shift+U <hex> Enter` fallback for IPA and other unicode
-  not representable in the current keymap. Unlocks `rhe run` on
-  Linux.
+  not representable in the current keymap.
+
+Short-term:
+
 - **Auto chord mapping** — `gen_map` reads bench timings + phoneme
   frequencies and generates `src/chord_map_data.rs` automatically.
   Users run bench, rebuild, mapping is personalized to their hands.
@@ -275,6 +277,16 @@ Short-term:
   for `%`, `°`, `e`, `π`, etc.
 - **Operators and symbols** — extended chord set for math, punctuation,
   and common programmer symbols, accessible via mode-switch chords.
+- **Caps Lock 3-mode cycle** — tap Caps Lock to cycle between normal
+  typing, rhe, and CAPS mode. Caps Lock LED indicates state via
+  `EV_LED` writes to the grabbed keyboard (works on X11, Wayland, and
+  bare TTY — same low-level path as the grab).
+- **Brief generator improvements** — rework the brief-selection
+  scoring to (a) exclude natural-split 2-phoneme words where the
+  brief gesture equals the phoneme gesture (wasted slot), (b) rank
+  chord slots by ergonomic cost (finger count + tendon-conflict
+  skip patterns), and (c) match value-ranked words to cost-ranked
+  slots pairwise rather than bit-order.
 
 Longer-term:
 
@@ -284,6 +296,9 @@ Longer-term:
   digit, custom text, mode switch).
 - **User-configurable chord → action map** — config file so power
   users can rewire layouts without rebuilding.
+- **Linux layout hot-reload** — detect xkb layout changes at runtime
+  (currently the reverse map is built once at startup). Matters if
+  the user switches layouts mid-session.
 - **libei migration** — replace the Linux uinput path with libei
   (freedesktop emulated-input protocol) once it stabilizes across
   major compositors. Cleaner text injection, no xkb reverse-map

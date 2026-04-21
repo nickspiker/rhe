@@ -15,7 +15,9 @@ use crate::input::evdev_backend::EvdevInput as GrabInput;
 #[cfg(target_os = "macos")]
 use crate::input::iohid_backend::IoHidInput as GrabInput;
 use crate::interpreter::Interpreter;
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+use crate::output::linux::LinuxOutput as PlatformOutput;
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 use crate::output::NullOutput as PlatformOutput;
 use crate::output::TextOutput;
 #[cfg(target_os = "macos")]
