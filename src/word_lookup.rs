@@ -15,6 +15,8 @@ impl WordLookup {
 
     /// Look up a word's phoneme sequence.
     pub fn lookup(&self, word: &str) -> Option<&[Phoneme]> {
-        self.word_to_phonemes.get(&word.to_lowercase()).map(|v| v.as_slice())
+        self.word_to_phonemes
+            .get(&word.to_lowercase())
+            .map(|v| v.as_slice())
     }
 }

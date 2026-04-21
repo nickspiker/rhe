@@ -26,6 +26,10 @@ pub fn load_word_freq() -> String {
     load("en_freq.txt")
 }
 
+pub fn load_briefs() -> String {
+    load("briefs.txt")
+}
+
 fn load(filename: &str) -> String {
     for path in lookup_paths(filename) {
         if let Ok(contents) = fs::read_to_string(&path) {

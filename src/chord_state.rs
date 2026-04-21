@@ -26,17 +26,19 @@ impl FingerChord {
             Finger::Middle => Self(1 << 1),
             Finger::Ring => Self(1 << 2),
             Finger::Pinky => Self(1 << 3),
+            Finger::Thumb => Self(1 << 4),
         }
     }
 }
 
 /// A fully resolved chord: everything the interpreter needs.
-/// No mode — ordering doesn't matter. Just which keys were held.
+/// Right = 4 finger bits (mod/thumb tracked separately in modkey field).
+/// Left = 4 finger bits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Chord {
     pub right: FingerChord,
     pub left: FingerChord,
     pub modkey: bool,
-    /// Was space held when this chord completed?
+    /// Was word key held when this chord completed?
     pub space_held: bool,
 }

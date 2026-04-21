@@ -1,0 +1,514 @@
+//! Generates `src/briefs_data.rs` — optimized brief (chord→word) assignments.
+//!
+//! Run with: `cargo run --bin gen_briefs`
+
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
+
+// ── Consonant mappings (right hand, 5 bits: bit4=mod, bits3-0=PRMI) ──────────
+
+fn cmu_consonant_to_right(ph: &str) -> Option<u8> {
+    match ph {
+        // Without mod (15 consonants)
+        "T"  => Some(0b00001),
+        "S"  => Some(0b00010),
+        "K"  => Some(0b00100),
+        "P"  => Some(0b01000),
+        "N"  => Some(0b00011),
+        "R"  => Some(0b00101),
+        "L"  => Some(0b00110),
+        "HH" => Some(0b00111),
+        "F"  => Some(0b01001),
+        "W"  => Some(0b01010),
+        "TH" => Some(0b01100),
+        "SH" => Some(0b01011),
+        "CH" => Some(0b01101),
+        "NG" => Some(0b01110),
+        "Y"  => Some(0b01111),
+        // With mod (9 voiced consonants)
+        "D"  => Some(0b10001),
+        "Z"  => Some(0b10010),
+        "G"  => Some(0b10100),
+        "B"  => Some(0b11000),
+        "M"  => Some(0b10011),
+        "DH" => Some(0b10101),
+        "V"  => Some(0b11001),
+        "ZH" => Some(0b11011),
+        "JH" => Some(0b11101),
+        _ => None,
+    }
+}
+
+// ── Vowel mappings (left hand, 4 bits: PRMI) ────────────────────────────────
+
+fn cmu_vowel_to_left(ph: &str) -> Option<u8> {
+    match ph {
+        "AH" => Some(0b0001), // ʌ  Ah
+        "IH" => Some(0b0010), // ɪ  Ih
+        "EH" => Some(0b0100), // ɛ  Eh
+        "AE" => Some(0b1000), // æ  Ae
+        "IY" => Some(0b0011), // iː Iy
+        "AA" => Some(0b0101), // ɑ  Aa
+        "EY" => Some(0b0110), // eɪ Ey
+        "ER" => Some(0b0111), // ɝ  Er
+        "AY" => Some(0b1001), // aɪ Ay
+        "OW" => Some(0b1010), // oʊ Ow
+        "AO" => Some(0b1100), // ɔ  Ao
+        "UW" => Some(0b1011), // uː Uw
+        "AW" => Some(0b1101), // aʊ Aw
+        "UH" => Some(0b1110), // ʊ  Uh
+        "OY" => Some(0b1111), // ɔɪ Oy
+        _ => None,
+    }
+}
+
+fn is_vowel_phoneme(ph: &str) -> bool {
+    matches!(
+        ph,
+        "AH" | "IH" | "EH" | "AE" | "IY" | "AA" | "EY" | "ER" | "AY" | "OW" | "AO" | "UW"
+            | "AW" | "UH" | "OY"
+    )
+}
+
+fn is_consonant_phoneme(ph: &str) -> bool {
+    cmu_consonant_to_right(ph).is_some()
+}
+
+/// Strip stress digits from CMU phoneme (e.g. "AE1" → "AE")
+fn strip_stress(ph: &str) -> &str {
+    let bytes = ph.as_bytes();
+    if !bytes.is_empty() && bytes[bytes.len() - 1].is_ascii_digit() {
+        &ph[..ph.len() - 1]
+    } else {
+        ph
+    }
+}
+
+// ── Ergonomic scoring ────────────────────────────────────────────────────────
+
+/// Count bits set.
+fn popcount(v: u8) -> u32 {
+    v.count_ones()
+}
+
+/// Finger effort for a 4-bit pattern (bits 0-3 = index, middle, ring, pinky).
+/// Lower = easier.
+fn finger_effort(bits: u8) -> u32 {
+    let n = popcount(bits);
+    if n == 0 {
+        return 0;
+    }
+    // Base cost: number of fingers
+    let finger_cost = match n {
+        1 => 1,
+        2 => 3,
+        3 => 6,
+        4 => 10,
+        _ => 15,
+    };
+    // Adjacency bonus: non-adjacent pairs cost more
+    let gap_penalty = if n >= 2 {
+        let mut gaps = 0u32;
+        let mut prev = None;
+        for b in 0..4u8 {
+            if bits & (1 << b) != 0 {
+                if let Some(p) = prev {
+                    let dist: u8 = b - p;
+                    if dist > 1 {
+                        gaps += (dist - 1) as u32;
+                    }
+                }
+                prev = Some(b);
+            }
+        }
+        gaps
+    } else {
+        0
+    };
+    // Finger weight: pinky (bit3) = +2, ring (bit2) = +1
+    let weight = if bits & 0b1000 != 0 { 2 } else { 0 }
+        + if bits & 0b0100 != 0 { 1 } else { 0 };
+
+    finger_cost + gap_penalty + weight
+}
+
+/// Total effort for a chord (right 5-bit, left 4-bit).
+/// Mod (bit4 of right) adds cost since it uses the thumb.
+fn chord_effort(right: u8, left: u8) -> u32 {
+    let mod_cost = if right & 0b10000 != 0 { 3 } else { 0 };
+    let right_fingers = right & 0xF;
+    // A chord must have at least one side nonzero to be useful
+    let r = finger_effort(right_fingers);
+    let l = finger_effort(left);
+    r + l + mod_cost
+}
+
+/// Return all valid chord slots (right, left) sorted by ergonomic ease.
+/// Excludes (0, 0) since that's no chord.
+fn all_slots_by_effort() -> Vec<(u8, u8)> {
+    let mut slots: Vec<(u8, u8, u32)> = Vec::new();
+    for right in 0u8..32 {
+        for left in 0u8..16 {
+            if right == 0 && left == 0 {
+                continue;
+            }
+            let e = chord_effort(right, left);
+            slots.push((right, left, e));
+        }
+    }
+    slots.sort_by_key(|&(r, l, e)| (e, popcount(r) + popcount(l), r, l));
+    slots.into_iter().map(|(r, l, _)| (r, l)).collect()
+}
+
+// ── Phoneme label helpers for comments ───────────────────────────────────────
+
+fn right_label(right: u8) -> String {
+    let fingers = right & 0xF;
+    let has_mod = right & 0b10000 != 0;
+    let cons = match fingers {
+        0b0000 => "-",
+        0b0001 => "T",
+        0b0010 => "S",
+        0b0100 => "K",
+        0b1000 => "P",
+        0b0011 => "N",
+        0b0101 => "R",
+        0b0110 => "L",
+        0b0111 => "H",
+        0b1001 => "F",
+        0b1010 => "W",
+        0b1100 => "Th",
+        0b1011 => "Sh",
+        0b1101 => "Ch",
+        0b1110 => "Ng",
+        0b1111 => "Y",
+        _ => "?",
+    };
+    let voiced = if has_mod {
+        match fingers {
+            0b0001 => "D",
+            0b0010 => "Z",
+            0b0100 => "G",
+            0b1000 => "B",
+            0b0011 => "M",
+            0b0101 => "Dh",
+            0b1001 => "V",
+            0b1011 => "Zh",
+            0b1101 => "Jh",
+            _ => return format!("{}+mod", cons),
+        }
+    } else {
+        cons
+    };
+    if has_mod && fingers != 0 {
+        voiced.to_string()
+    } else {
+        cons.to_string()
+    }
+}
+
+fn left_label(left: u8) -> String {
+    match left {
+        0b0000 => "-".into(),
+        0b0001 => "Ah".into(),
+        0b0010 => "Ih".into(),
+        0b0100 => "Eh".into(),
+        0b1000 => "Ae".into(),
+        0b0011 => "Iy".into(),
+        0b0101 => "Aa".into(),
+        0b0110 => "Ey".into(),
+        0b0111 => "Er".into(),
+        0b1001 => "Ay".into(),
+        0b1010 => "Ow".into(),
+        0b1100 => "Ao".into(),
+        0b1011 => "Uw".into(),
+        0b1101 => "Aw".into(),
+        0b1110 => "Uh".into(),
+        0b1111 => "Oy".into(),
+        _ => "?".into(),
+    }
+}
+
+// ── Main ─────────────────────────────────────────────────────────────────────
+
+fn main() {
+    let project = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let cmu_path = project.join("data/cmudict.dict");
+    let freq_path = project.join("data/en_freq.txt");
+    let out_path = project.join("src/briefs_data.rs");
+
+    // 1. Load CMU dict (word → phoneme list)
+    let mut cmu: HashMap<String, Vec<String>> = HashMap::new();
+    {
+        let f = fs::File::open(&cmu_path).expect("cannot open cmudict.dict");
+        for line in BufReader::new(f).lines() {
+            let line = line.unwrap();
+            let line = line.trim();
+            if line.is_empty() || line.starts_with(";;;") {
+                continue;
+            }
+            let mut parts = line.splitn(2, ' ');
+            let word_raw = match parts.next() {
+                Some(w) => w.trim(),
+                None => continue,
+            };
+            let phonemes = match parts.next() {
+                Some(p) => p.trim(),
+                None => continue,
+            };
+            // Skip alternate pronunciations like "word(2)"
+            if word_raw.contains('(') {
+                continue;
+            }
+            // Skip words with punctuation (e.g. "'s", "a.")
+            let word = word_raw.to_lowercase();
+            if !word.chars().all(|c| c.is_ascii_alphabetic() || c == '\'') {
+                continue;
+            }
+            // Only keep words that are pure alpha (no apostrophes for simplicity in briefs)
+            if !word.chars().all(|c| c.is_ascii_alphabetic()) {
+                // Allow "don't" style later if needed, but skip for now
+                // Actually let's allow apostrophe words
+            }
+            let phs: Vec<String> = phonemes.split_whitespace().map(String::from).collect();
+            cmu.entry(word).or_insert(phs);
+        }
+    }
+    eprintln!("Loaded {} CMU entries", cmu.len());
+
+    // 2. Load frequency list
+    let mut freq_words: Vec<(String, u64)> = Vec::new();
+    {
+        let f = fs::File::open(&freq_path).expect("cannot open en_freq.txt");
+        for line in BufReader::new(f).lines() {
+            let line = line.unwrap();
+            let mut parts = line.split_whitespace();
+            let word = match parts.next() {
+                Some(w) => w.to_lowercase(),
+                None => continue,
+            };
+            let count: u64 = match parts.next().and_then(|c| c.parse().ok()) {
+                Some(c) => c,
+                None => continue,
+            };
+            freq_words.push((word, count));
+        }
+    }
+    // Sort descending by frequency
+    freq_words.sort_by(|a, b| b.1.cmp(&a.1));
+    eprintln!("Loaded {} frequency entries", freq_words.len());
+
+    // 3. Take top 1000 words that exist in CMU
+    let mut top_words: Vec<(String, u64, Vec<String>)> = Vec::new();
+    for (word, count) in &freq_words {
+        if top_words.len() >= 1000 {
+            break;
+        }
+        if let Some(phs) = cmu.get(word) {
+            top_words.push((word.clone(), *count, phs.clone()));
+        }
+    }
+    eprintln!("Selected {} words for brief assignment", top_words.len());
+
+    // 4. Compute natural brief for each word
+    struct WordInfo {
+        word: String,
+        #[allow(dead_code)]
+        rank: usize, // 0-based frequency rank
+        natural_right: u8,
+        natural_left: u8,
+        first_consonant: String,
+        first_vowel: String,
+    }
+
+    let mut words: Vec<WordInfo> = Vec::new();
+    for (rank, (word, _count, phs)) in top_words.iter().enumerate() {
+        let stripped: Vec<&str> = phs.iter().map(|p| strip_stress(p)).collect();
+
+        let first_cons = stripped.iter().find(|p| is_consonant_phoneme(p)).copied();
+        let first_vow = stripped.iter().find(|p| is_vowel_phoneme(p)).copied();
+
+        let right = first_cons
+            .and_then(cmu_consonant_to_right)
+            .unwrap_or(0);
+        let left = first_vow.and_then(cmu_vowel_to_left).unwrap_or(0);
+
+        words.push(WordInfo {
+            word: word.clone(),
+            rank,
+            natural_right: right,
+            natural_left: left,
+            first_consonant: first_cons.unwrap_or("-").to_string(),
+            first_vowel: first_vow.unwrap_or("-").to_string(),
+        });
+    }
+
+    // 5. Assignment
+    //
+    // Phase 0: Pinned overrides (hand-curated, never moved).
+    // Phase A: Top 50 get ergonomic overrides (best slots regardless of phoneme).
+    // Phase B: Remaining words get natural slots; collisions resolved by bumping.
+
+    // ─── PINNED OVERRIDES ───
+    // Edit these to lock specific words to specific chords.
+    // Format: (right_5bits, left_4bits, "word")
+    let pinned: &[(u8, u8, &str)] = &[
+        (0b10000, 0b0000, "the"),   // fastest slot (mod only) for most common word
+    ];
+
+    let all_slots = all_slots_by_effort();
+    let mut occupied: HashSet<(u8, u8)> = HashSet::new();
+    let mut assigned_words: HashSet<String> = HashSet::new();
+    // (right, left) → (word, comment)
+    let mut assignments: Vec<(u8, u8, String, String)> = Vec::new();
+
+    // Phase 0: pinned
+    for &(right, left, word) in pinned {
+        occupied.insert((right, left));
+        assigned_words.insert(word.to_string());
+        assignments.push((right, left, word.to_string(), "pinned".into()));
+    }
+
+    // Phase A: ergonomic top 50 (skip already-pinned words)
+    let top_n = 50;
+    let mut ergo_count = 0;
+    for w in &words {
+        if ergo_count >= top_n {
+            break;
+        }
+        if assigned_words.contains(&w.word) {
+            continue;
+        }
+        // Find easiest unoccupied slot
+        let slot = all_slots
+            .iter()
+            .find(|s| !occupied.contains(s))
+            .copied()
+            .expect("ran out of slots");
+        occupied.insert(slot);
+        assigned_words.insert(w.word.clone());
+        ergo_count += 1;
+        let comment = format!(
+            "ergo #{} (natural: {}+{})",
+            ergo_count,
+            w.first_consonant,
+            w.first_vowel
+        );
+        assignments.push((slot.0, slot.1, w.word.clone(), comment));
+    }
+
+    // Phase B: remaining words, natural slot first, then nearest
+    for w in &words {
+        if assigned_words.contains(&w.word) {
+            continue;
+        }
+        let nat = (w.natural_right, w.natural_left);
+
+        if nat.0 == 0 && nat.1 == 0 {
+            if let Some(slot) = all_slots.iter().find(|s| !occupied.contains(s)).copied() {
+                occupied.insert(slot);
+                assigned_words.insert(w.word.clone());
+                assignments.push((slot.0, slot.1, w.word.clone(), "no phoneme match".into()));
+            }
+            continue;
+        }
+
+        if !occupied.contains(&nat) {
+            occupied.insert(nat);
+            assigned_words.insert(w.word.clone());
+            let comment = format!("{}+{}", w.first_consonant, w.first_vowel);
+            assignments.push((nat.0, nat.1, w.word.clone(), comment));
+        } else {
+            // Bumped — find nearest unoccupied slot
+            // Priority: same consonant different vowel, then same vowel different consonant,
+            // then anything by effort
+            let slot = find_nearest_slot(nat, &occupied, &all_slots);
+            if let Some(slot) = slot {
+                occupied.insert(slot);
+                let comment = format!(
+                    "bumped from {}+{} → {}+{}",
+                    right_label(nat.0),
+                    left_label(nat.1),
+                    right_label(slot.0),
+                    left_label(slot.1),
+                );
+                assignments.push((slot.0, slot.1, w.word.clone(), comment));
+            }
+            // else: no slot available, word dropped
+        }
+    }
+
+    // Sort assignments by frequency rank (we stored them in order, but let's sort
+    // by the word's position in the original list for nice grouping)
+    // Actually, let's sort by effort for readability
+    assignments.sort_by_key(|(r, l, _, _)| chord_effort(*r, *l));
+
+    // 6. Write output
+    let mut out = String::new();
+    out.push_str(
+        "/// Auto-generated brief assignments. Edit and recompile to customize.\n\
+         /// Format: (right_5bits, left_4bits, \"word\")\n\
+         /// Right bits: I=0001 M=0010 R=0100 P=1000 T(mod)=10000\n\
+         /// Left bits:  I=0001 M=0010 R=0100 P=1000\n\
+         pub const BRIEFS: &[(u8, u8, &str)] = &[\n",
+    );
+
+    for (right, left, word, comment) in &assignments {
+        out.push_str(&format!(
+            "    (0b{:05b}, 0b{:04b}, {:w$}  // {}\n",
+            right,
+            left,
+            format!("\"{}\"),", word),
+            comment,
+            w = 20,
+        ));
+    }
+
+    out.push_str("];\n");
+
+    fs::write(&out_path, &out).expect("cannot write briefs_data.rs");
+    eprintln!(
+        "Wrote {} briefs to {}",
+        assignments.len(),
+        out_path.display()
+    );
+}
+
+/// Find the nearest unoccupied slot to `target`.
+/// Priority: same right (consonant) different left, then same left different right,
+/// then fallback to any by effort.
+fn find_nearest_slot(
+    target: (u8, u8),
+    occupied: &HashSet<(u8, u8)>,
+    all_slots: &[(u8, u8)],
+) -> Option<(u8, u8)> {
+    let (tr, tl) = target;
+
+    // 1. Same consonant, different vowel (sorted by effort)
+    let same_cons: Option<(u8, u8)> = all_slots
+        .iter()
+        .filter(|(r, l)| *r == tr && *l != tl && !occupied.contains(&(*r, *l)))
+        .copied()
+        .next();
+    if same_cons.is_some() {
+        return same_cons;
+    }
+
+    // 2. Same vowel, different consonant
+    let same_vowel: Option<(u8, u8)> = all_slots
+        .iter()
+        .filter(|(r, l)| *l == tl && *r != tr && !occupied.contains(&(*r, *l)))
+        .copied()
+        .next();
+    if same_vowel.is_some() {
+        return same_vowel;
+    }
+
+    // 3. Any unoccupied slot by effort
+    all_slots
+        .iter()
+        .find(|s| !occupied.contains(s))
+        .copied()
+}

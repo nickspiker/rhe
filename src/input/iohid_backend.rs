@@ -3,8 +3,8 @@
 //! Seizes the keyboard at the HID level. One event per press, one per release.
 //! No OS key repeat. No rdev.
 
-use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey, Thumb};
 use super::HidEvent;
+use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -66,19 +66,13 @@ mod ffi {
             allocator: CFAllocatorRef,
             options: IOOptionBits,
         ) -> IOHIDManagerRef;
-        pub fn IOHIDManagerSetDeviceMatching(
-            manager: IOHIDManagerRef,
-            matching: CFDictionaryRef,
-        );
+        pub fn IOHIDManagerSetDeviceMatching(manager: IOHIDManagerRef, matching: CFDictionaryRef);
         pub fn IOHIDManagerRegisterInputValueCallback(
             manager: IOHIDManagerRef,
             callback: IOHIDValueCallback,
             context: *mut c_void,
         );
-        pub fn IOHIDManagerOpen(
-            manager: IOHIDManagerRef,
-            options: IOOptionBits,
-        ) -> IOReturn;
+        pub fn IOHIDManagerOpen(manager: IOHIDManagerRef, options: IOOptionBits) -> IOReturn;
         pub fn IOHIDManagerScheduleWithRunLoop(
             manager: IOHIDManagerRef,
             run_loop: CFRunLoopRef,
@@ -157,10 +151,7 @@ impl IoHidInput {
                 ffi::IOHIDManagerSetDeviceMatching(manager, matching as ffi::CFDictionaryRef);
 
                 // Register callback
-                let ctx = Box::into_raw(Box::new(CallbackContext {
-                    tx,
-                    enabled,
-                }));
+                let ctx = Box::into_raw(Box::new(CallbackContext { tx, enabled }));
                 ffi::IOHIDManagerRegisterInputValueCallback(
                     manager,
                     hid_callback,
@@ -174,7 +165,10 @@ impl IoHidInput {
                 // Open with seize — grabs the keyboard exclusively
                 let result = ffi::IOHIDManagerOpen(manager, ffi::kIOHIDOptionsTypeSeizeDevice);
                 if result != 0 {
-                    panic!("IOHIDManagerOpen failed: {} — check Input Monitoring permissions", result);
+                    panic!(
+                        "IOHIDManagerOpen failed: {} — check Input Monitoring permissions",
+                        result
+                    );
                 }
 
                 // Run forever
@@ -251,15 +245,15 @@ fn hid_usage_to_physical(usage: u32) -> Option<PhysicalKey> {
         ffi::kHIDUsage_KeyboardD => Some(PhysicalKey::Finger(Hand::Left, Finger::Middle)),
         ffi::kHIDUsage_KeyboardF => Some(PhysicalKey::Finger(Hand::Left, Finger::Index)),
 
-        // Right hand home row (QWERTY J K L ;)
+        // Right hand home row (QWERTY J K L ;) + spacebar as 5th bit
         ffi::kHIDUsage_KeyboardJ => Some(PhysicalKey::Finger(Hand::Right, Finger::Index)),
         ffi::kHIDUsage_KeyboardK => Some(PhysicalKey::Finger(Hand::Right, Finger::Middle)),
         ffi::kHIDUsage_KeyboardL => Some(PhysicalKey::Finger(Hand::Right, Finger::Ring)),
         ffi::kHIDUsage_KeyboardSemicolon => Some(PhysicalKey::Finger(Hand::Right, Finger::Pinky)),
+        ffi::kHIDUsage_KeyboardSpacebar => Some(PhysicalKey::Finger(Hand::Right, Finger::Thumb)),
 
-        // Thumbs
-        ffi::kHIDUsage_KeyboardSpacebar => Some(PhysicalKey::Thumb(Thumb::Space)),
-        ffi::kHIDUsage_KeyboardLeftGUI => Some(PhysicalKey::Thumb(Thumb::Mod)),
+        // Word boundary (left ⌘)
+        ffi::kHIDUsage_KeyboardLeftGUI => Some(PhysicalKey::Word),
 
         _ => None,
     }

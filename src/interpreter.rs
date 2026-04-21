@@ -106,10 +106,7 @@ mod tests {
         let the_key = ChordKey(0b0001_0001); // right index + left index
         briefs.insert(the_key, "the ".to_string());
 
-        let dict = PhonemeDictionary::build(
-            "CAT  K AE1 T\nTHE  DH AH0\n",
-            "the 1000\ncat 500\n",
-        );
+        let dict = PhonemeDictionary::build("CAT  K AE1 T\nTHE  DH AH0\n", "the 1000\ncat 500\n");
 
         Interpreter::new(phonemes, briefs, dict)
     }

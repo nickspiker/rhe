@@ -10,8 +10,8 @@
 //! Requires the running user to have read access to `/dev/input/event*`
 //! (typically membership in the `input` group).
 
-use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey, Thumb};
 use super::HidEvent;
+use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey, Thumb};
 use std::ffi::CString;
 use std::fs;
 use std::os::unix::io::RawFd;
@@ -66,8 +66,8 @@ impl EvdevInput {
     pub fn start_grab(enabled: Arc<AtomicBool>) -> Result<Self, String> {
         let (tx, rx) = mpsc::channel();
 
-        let devices = find_keyboards()
-            .map_err(|e| format!("evdev: failed to scan /dev/input: {}", e))?;
+        let devices =
+            find_keyboards().map_err(|e| format!("evdev: failed to scan /dev/input: {}", e))?;
         if devices.is_empty() {
             return Err(
                 "evdev: no keyboard devices found — is the user in the `input` group?".into(),
@@ -104,9 +104,7 @@ fn reader_loop(fd: RawFd, tx: mpsc::Sender<HidEvent>, enabled: Arc<AtomicBool>) 
     let ev_size = std::mem::size_of::<InputEvent>();
 
     loop {
-        let n = unsafe {
-            libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf_bytes)
-        };
+        let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf_bytes) };
         if n <= 0 {
             break;
         }
@@ -134,7 +132,10 @@ fn reader_loop(fd: RawFd, tx: mpsc::Sender<HidEvent>, enabled: Arc<AtomicBool>) 
             }
 
             if let Some(key) = linux_to_physical(ev.code) {
-                let _ = tx.send(HidEvent::Key(KeyEvent { key, direction: dir }));
+                let _ = tx.send(HidEvent::Key(KeyEvent {
+                    key,
+                    direction: dir,
+                }));
             }
         }
     }

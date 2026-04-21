@@ -1,4 +1,4 @@
-use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey, Thumb};
+use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -103,10 +103,10 @@ fn rdev_to_physical(key: rdev::Key) -> Option<PhysicalKey> {
         rdev::Key::KeyL => Some(PhysicalKey::Finger(Hand::Right, Finger::Ring)),
         rdev::Key::SemiColon => Some(PhysicalKey::Finger(Hand::Right, Finger::Pinky)),
 
-        // Thumbs — space is right thumb, left ⌘ is rhe's thumb (grabbed)
-        // Right ⌘ is untouched — use it for normal macOS shortcuts
-        rdev::Key::Space => Some(PhysicalKey::Thumb(Thumb::Space)),
-        rdev::Key::MetaLeft => Some(PhysicalKey::Thumb(Thumb::Mod)),
+        // Spacebar = right hand thumb (5th bit)
+        rdev::Key::Space => Some(PhysicalKey::Finger(Hand::Right, Finger::Thumb)),
+        // Left ⌘ = word boundary
+        rdev::Key::MetaLeft => Some(PhysicalKey::Word),
 
         _ => None,
     }
