@@ -295,7 +295,13 @@ pub fn run_tutor() {
                 let step = practice.current_step().unwrap();
 
                 if step.space_only {
-                    if !key_state.word {
+                    // Commit step: any finger down = error, word up = advance
+                    if is_key_down && rhe_event.key != PhysicalKey::Word {
+                        log.push("  → RESET (finger during commit)".to_string());
+                        practice.reset_word();
+                        hand_touched = false;
+                        errored = true;
+                    } else if !key_state.word {
                         log.push("  → MATCH (commit)".to_string());
                         practice.advance_step();
                         hand_touched = false;

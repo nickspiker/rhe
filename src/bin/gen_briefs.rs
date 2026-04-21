@@ -350,10 +350,11 @@ fn main() {
         natural_left: u8,
         first_consonant: String,
         first_vowel: String,
+        value: f64, // frequency * (phoneme_count - 1)
     }
 
     let mut words: Vec<WordInfo> = Vec::new();
-    for (rank, (word, _count, phs)) in top_words.iter().enumerate() {
+    for (rank, (word, count, phs)) in top_words.iter().enumerate() {
         let stripped: Vec<&str> = phs.iter().map(|p| strip_stress(p)).collect();
 
         let first_cons = stripped.iter().find(|p| is_consonant_phoneme(p)).copied();
@@ -364,6 +365,15 @@ fn main() {
             .unwrap_or(0);
         let left = first_vow.and_then(cmu_vowel_to_left).unwrap_or(0);
 
+        // Count phonemes (consonants + vowels that map to our system)
+        let phoneme_count = stripped
+            .iter()
+            .filter(|p| is_consonant_phoneme(p) || is_vowel_phoneme(p))
+            .count();
+
+        // Value = frequency * (phoneme_count - 1): how much time a roll saves
+        let value = *count as f64 * (phoneme_count.saturating_sub(1) as f64);
+
         words.push(WordInfo {
             word: word.clone(),
             rank,
@@ -371,8 +381,12 @@ fn main() {
             natural_left: left,
             first_consonant: first_cons.unwrap_or("-").to_string(),
             first_vowel: first_vow.unwrap_or("-").to_string(),
+            value,
         });
     }
+
+    // Sort by value for ergonomic assignment (highest value = most deserving of fast slot)
+    words.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
 
     // 5. Assignment
     //
@@ -420,8 +434,9 @@ fn main() {
         assigned_words.insert(w.word.clone());
         ergo_count += 1;
         let comment = format!(
-            "ergo #{} (natural: {}+{})",
+            "ergo #{} val={:.0} (natural: {}+{})",
             ergo_count,
+            w.value,
             w.first_consonant,
             w.first_vowel
         );
