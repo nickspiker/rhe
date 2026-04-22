@@ -249,7 +249,7 @@ pub fn run_tutor() {
     )
     .expect("failed to start key capture");
     #[cfg(target_os = "macos")]
-    let input = GrabInput::start_grab(grab_enabled).expect("failed to start key capture");
+    let input = GrabInput::start_grab(grab_enabled, true).expect("failed to start key capture");
 
     // Real output pipeline: same events → state machine → interpreter → text injection
     let mut sm = StateMachine::new();
@@ -1138,7 +1138,7 @@ pub fn run_bench() {
     )
     .expect("failed to start key capture");
     #[cfg(target_os = "macos")]
-    let input = GrabInput::start_grab(grab_enabled).expect("failed to start key capture");
+    let input = GrabInput::start_grab(grab_enabled, true).expect("failed to start key capture");
 
     let mut key_state = KeyState::default();
 

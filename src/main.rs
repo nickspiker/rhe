@@ -210,8 +210,8 @@ fn listen() {
                     let phoneme = phonemes.lookup(key);
                     let label = phoneme.map(|p| p.to_ipa()).unwrap_or("?");
                     println!(
-                        "  >>> CHORD key={} R:{:04b} L:{:04b} mod={} → {}",
-                        key.0, chord.right.0, chord.left.0, chord.modkey, label
+                        "  >>> CHORD R:{:04b} L:{:04b} mod={} → {}",
+                        chord.right.0, chord.left.0, chord.modkey, label
                     );
                 }
                 state_machine::Event::SpaceUp => println!("  >>> SPACE UP"),
@@ -233,7 +233,7 @@ fn listen() {
 fn run() {
     eprintln!("rhe — loading...");
 
-    let enabled = Arc::new(AtomicBool::new(false));
+    let enabled = Arc::new(AtomicBool::new(true)); // start in rhe mode
     let quit = Arc::new(AtomicBool::new(false));
     let fallback = interpreter::FallbackMode::new_shared_from_env();
     let enabled_engine = enabled.clone();
@@ -263,7 +263,7 @@ fn run() {
 
         let out = output::macos::MacOSOutput::new();
 
-        let input = input::iohid_backend::IoHidInput::start_grab(enabled_engine)
+        let input = input::iohid_backend::IoHidInput::start_grab(enabled_engine, false)
             .expect("failed to start key capture");
         let mut sm = state_machine::StateMachine::new();
 
@@ -279,8 +279,8 @@ fn run() {
                     state_machine::Event::Chord(chord) => {
                         let key = chord_map::ChordKey::from_chord(chord);
                         eprintln!(
-                            "  chord: key={} R:{:04b} L:{:04b} mod={}",
-                            key.0, chord.right.0, chord.left.0, chord.modkey
+                            "  chord: R:{:04b} L:{:04b} mod={}",
+                            chord.right.0, chord.left.0, chord.modkey
                         );
                     }
                     state_machine::Event::SpaceUp => eprintln!("  space-up"),
@@ -424,7 +424,7 @@ fn rollover_test() {
     println!();
 
     let enabled = Arc::new(AtomicBool::new(true));
-    let input = IoHidInput::start_grab(enabled).expect("failed to start key capture");
+    let input = IoHidInput::start_grab(enabled, true).expect("failed to start key capture");
 
     let mut held: Vec<&str> = Vec::new();
     let mut max_held: usize = 0;

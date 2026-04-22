@@ -101,29 +101,21 @@ pub fn run_tray(
     };
 
     let initial_fallback = FallbackMode::from_u8(fallback.load(Ordering::Relaxed));
-    let autospell_item = CheckMenuItem::new(
-        "Autospell",
+    let is_autospell = initial_fallback == FallbackMode::Autospell;
+    let mode_item = MenuItem::new(
+        if is_autospell { "Autospell" } else { "IPA" },
         true,
-        initial_fallback == FallbackMode::Autospell,
         None,
     );
-    let ipa_item = CheckMenuItem::new(
-        "IPA (GTK/Qt/IBus only)",
+    let enabled_item = MenuItem::new(
+        if initial_enabled { "rhe" } else { "keyboard" },
         true,
-        initial_fallback == FallbackMode::Ipa,
         None,
     );
-    let fallback_menu = Submenu::new("Fallback", true);
-    fallback_menu.append(&autospell_item).ok();
-    fallback_menu.append(&ipa_item).ok();
-
-    let enabled_item = CheckMenuItem::new("Enabled", true, initial_enabled, None);
-    let quit_item = MenuItem::new("Quit", true, None);
+    let quit_item = MenuItem::new("Exit", true, None);
     let menu = Menu::new();
+    menu.append(&mode_item).ok();
     menu.append(&enabled_item).ok();
-    menu.append(&PredefinedMenuItem::separator()).ok();
-    menu.append(&fallback_menu).ok();
-    menu.append(&PredefinedMenuItem::separator()).ok();
     menu.append(&quit_item).ok();
 
     let tray = TrayIconBuilder::new()
@@ -148,50 +140,45 @@ pub fn run_tray(
         }
     });
 
+    let mode_id = mode_item.id().clone();
     let enabled_id = enabled_item.id().clone();
     let quit_id = quit_item.id().clone();
-    let autospell_id = autospell_item.id().clone();
-    let ipa_id = ipa_item.id().clone();
 
     event_loop.run(move |event, _, control_flow| {
-        // Pure event-driven — block until a real event arrives.
         *control_flow = ControlFlow::Wait;
 
         if let Event::UserEvent(user_event) = event {
             match user_event {
+                TrayEvent::Menu(id) if id == mode_id => {
+                    // Toggle between Autospell and IPA
+                    let current = FallbackMode::from_u8(fallback.load(Ordering::Relaxed));
+                    let next = match current {
+                        FallbackMode::Autospell => FallbackMode::Ipa,
+                        FallbackMode::Ipa => FallbackMode::Autospell,
+                    };
+                    fallback.store(next.as_u8(), Ordering::Relaxed);
+                    mode_item.set_text(match next {
+                        FallbackMode::Autospell => "Autospell",
+                        FallbackMode::Ipa => "IPA",
+                    });
+                    eprintln!("rhe: mode → {:?} (tray)", next);
+                }
                 TrayEvent::Menu(id) if id == enabled_id => {
                     let now = !enabled.load(Ordering::Relaxed);
                     enabled.store(now, Ordering::Relaxed);
-                    enabled_item.set_checked(now);
+                    enabled_item.set_text(if now { "rhe" } else { "keyboard" });
                     let icon = if now { icon_on.clone() } else { icon_off.clone() };
                     tray.set_icon(Some(icon)).ok();
-                    eprintln!("rhe: {} (tray)", if now { "enabled" } else { "disabled" });
+                    eprintln!("rhe: {} (tray)", if now { "rhe" } else { "keyboard" });
                 }
                 TrayEvent::Menu(id) if id == quit_id => {
-                    eprintln!("rhe: quit from tray");
+                    eprintln!("rhe: exit from tray");
                     quit.store(true, Ordering::Relaxed);
                     *control_flow = ControlFlow::Exit;
                 }
-                // Fallback mode: mutually exclusive check items. Clicking
-                // either one selects it and unchecks the other; clicking
-                // the already-selected one is a no-op (we re-assert the
-                // check so it can't be toggled off into an invalid state).
-                TrayEvent::Menu(id) if id == autospell_id => {
-                    fallback.store(FallbackMode::Autospell.as_u8(), Ordering::Relaxed);
-                    autospell_item.set_checked(true);
-                    ipa_item.set_checked(false);
-                    eprintln!("rhe: fallback → autospell (tray)");
-                }
-                TrayEvent::Menu(id) if id == ipa_id => {
-                    fallback.store(FallbackMode::Ipa.as_u8(), Ordering::Relaxed);
-                    autospell_item.set_checked(false);
-                    ipa_item.set_checked(true);
-                    eprintln!("rhe: fallback → IPA (tray)");
-                }
                 TrayEvent::StateChanged => {
-                    // Engine thread toggled enabled (e.g. caps tap).
                     let current = enabled.load(Ordering::Relaxed);
-                    enabled_item.set_checked(current);
+                    enabled_item.set_text(if current { "rhe" } else { "keyboard" });
                     let icon = if current {
                         icon_on.clone()
                     } else {

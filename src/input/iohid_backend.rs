@@ -181,6 +181,8 @@ struct CallbackContext {
     manager: ffi::IOHIDManagerRef,
     /// Tracked modifier state for passthrough re-injection
     modifier_flags: std::sync::Mutex<u64>,
+    /// If true, Escape sends Quit. If false, Escape passes through.
+    esc_quits: bool,
 }
 
 pub struct IoHidInput {
@@ -188,7 +190,7 @@ pub struct IoHidInput {
 }
 
 impl IoHidInput {
-    pub fn start_grab(enabled: Arc<AtomicBool>) -> Result<Self, String> {
+    pub fn start_grab(enabled: Arc<AtomicBool>, esc_quits: bool) -> Result<Self, String> {
         let (tx, rx) = mpsc::channel();
 
         std::thread::spawn(move || {
@@ -203,9 +205,11 @@ impl IoHidInput {
                 ffi::IOHIDManagerSetDeviceMatching(manager, matching as ffi::CFDictionaryRef);
 
                 // Register callback
+                let enabled_for_led = enabled.clone();
                 let ctx = Box::into_raw(Box::new(CallbackContext {
                     tx, enabled, manager,
                     modifier_flags: std::sync::Mutex::new(0),
+                    esc_quits,
                 }));
                 ffi::IOHIDManagerRegisterInputValueCallback(
                     manager,
@@ -225,6 +229,12 @@ impl IoHidInput {
                         result
                     );
                 }
+
+                // Set caps lock LED to match initial state:
+                // rhe active (enabled=true) → LED OFF
+                // keyboard mode (enabled=false) → LED ON
+                let initial_enabled = enabled_for_led.load(Ordering::Relaxed);
+                set_caps_lock_led(manager, !initial_enabled);
 
                 // Run forever
                 ffi::CFRunLoopRun();
@@ -272,19 +282,27 @@ extern "C" fn hid_callback(
             KeyDirection::Up
         };
 
-        // Caps lock toggle: flip the shared enabled flag (same one tray uses)
-        if usage == ffi::kHIDUsage_KeyboardCapsLock && pressed != 0 {
-            let was_enabled = ctx.enabled.load(Ordering::Relaxed);
-            let now_enabled = !was_enabled;
-            ctx.enabled.store(now_enabled, Ordering::Relaxed);
-            // Toggle caps lock LED: ON when rhe is OFF (normal keyboard mode)
-            set_caps_lock_led(ctx.manager, !now_enabled);
+        // Caps lock: only toggle on key-down, ignore key-up
+        if usage == ffi::kHIDUsage_KeyboardCapsLock {
+            if pressed != 0 {
+                let was_enabled = ctx.enabled.load(Ordering::Relaxed);
+                let now_enabled = !was_enabled;
+                ctx.enabled.store(now_enabled, Ordering::Relaxed);
+                set_caps_lock_led(ctx.manager, !now_enabled);
+            }
             return;
         }
 
-        // Escape → quit (always works regardless of mode)
+        // Escape handling
         if usage == ffi::kHIDUsage_KeyboardEscape && pressed != 0 {
-            let _ = ctx.tx.send(HidEvent::Quit);
+            if ctx.esc_quits {
+                let _ = ctx.tx.send(HidEvent::Quit);
+                return;
+            }
+            // Not quitting — pass escape through to OS
+            if let Some(vk) = hid_usage_to_virtual_keycode(usage) {
+                reinject_key(vk, usage, true, &ctx.modifier_flags);
+            }
             return;
         }
 

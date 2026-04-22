@@ -126,17 +126,20 @@ impl Interpreter {
                     None
                 } else {
                     let phonemes = std::mem::take(&mut self.buffer);
-                    let text = if let Some(word) = self.dictionary.lookup(&phonemes) {
+                    let mode = FallbackMode::from_u8(self.fallback.load(Ordering::Relaxed));
+                    let text = if mode == FallbackMode::Ipa {
+                        // IPA mode: always output IPA, skip dictionary
+                        let ipa: String = phonemes.iter().map(|p| p.to_ipa()).collect();
+                        format!("{} ", ipa)
+                    } else if let Some(word) = self.dictionary.lookup(&phonemes) {
                         format!("{} ", word)
                     } else {
-                        let mode = FallbackMode::from_u8(self.fallback.load(Ordering::Relaxed));
+                        // Autospell fallback for unknown words
                         let fallback: String = match mode {
                             FallbackMode::Autospell => {
                                 phonemes.iter().map(|p| p.to_grapheme()).collect()
                             }
-                            FallbackMode::Ipa => {
-                                phonemes.iter().map(|p| p.to_ipa()).collect()
-                            }
+                            FallbackMode::Ipa => unreachable!(), // handled above
                         };
                         format!("{} ", fallback)
                     };
