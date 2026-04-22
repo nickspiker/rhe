@@ -241,6 +241,13 @@ pub fn run_tutor() {
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout())).unwrap();
 
     let grab_enabled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    #[cfg(target_os = "linux")]
+    let input = GrabInput::start_grab(
+        grab_enabled,
+        crate::input::evdev_backend::QuitTrigger::EscAlone,
+    )
+    .expect("failed to start key capture");
+    #[cfg(target_os = "macos")]
     let input = GrabInput::start_grab(grab_enabled).expect("failed to start key capture");
 
     // Real output pipeline: same events → state machine → interpreter → text injection
@@ -525,7 +532,8 @@ pub fn run_tutor() {
 // ─── Build practice steps ───
 
 fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
-    let common_text = [
+    let wiki = crate::wiki::load_sentences();
+    let fallback = [
         "alice was beginning to get very tired of sitting by her sister on the bank",
         "and of having nothing to do once or twice she had into the book",
         "her sister was reading but it had no pictures or conversations in it",
@@ -548,6 +556,12 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
         "under the hedge in another moment down went alice after it",
     ];
 
+    let common_text: Vec<String> = if !wiki.is_empty() {
+        wiki
+    } else {
+        fallback.iter().map(|s| s.to_string()).collect()
+    };
+
     let mut sentences: Vec<Vec<PracticeWord>> = Vec::new();
 
     for line in &common_text {
@@ -561,6 +575,7 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
                 let clean: String = word_str
                     .chars()
                     .filter(|c| c.is_alphabetic() || *c == '\'')
+                    .flat_map(|c| c.to_lowercase())
                     .collect();
 
                 let Some(phonemes) = lookup.lookup(&clean) else {
@@ -745,14 +760,27 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
         }
     }
 
+    // Pick a random starting sentence so successive launches don't always
+    // begin with "alice was beginning…" — practice text rotates through
+    // the full set via next_word()'s wrap-around.
+    let sentence_idx = if sentences.is_empty() {
+        0
+    } else {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0);
+        (seed as usize) % sentences.len()
+    };
+
     let first_has_brief = sentences
-        .first()
+        .get(sentence_idx)
         .and_then(|s| s.first())
         .map_or(false, |w| w.brief_steps.is_some());
 
     Practice {
         sentences,
-        sentence_idx: 0,
+        sentence_idx,
         word_idx: 0,
         step_idx: 0,
         mode: if first_has_brief { WordMode::Brief } else { WordMode::Phoneme },
@@ -1053,8 +1081,8 @@ fn draw_keyboard(
 
     // Thumbs target — word = purple filled block, mod = cyan filled block.
     let word_active = Style::default()
-        .fg(Color::Rgb(0x40, 0x00, 0x70))
-        .bg(Color::Rgb(0x40, 0x00, 0x70));
+        .fg(Color::Rgb(0x80, 0x00, 0xFF))
+        .bg(Color::Rgb(0x80, 0x00, 0xFF));
     let mod_active = Style::default()
         .fg(Color::Rgb(0, 255, 0))
         .bg(Color::Rgb(0, 255, 0));
@@ -1071,7 +1099,7 @@ fn draw_keyboard(
     ]));
 
     // Thumbs held at half brightness, matching the dot style.
-    let word_dot = Style::default().fg(Color::Rgb(0x20, 0x00, 0x38));
+    let word_dot = Style::default().fg(Color::Rgb(0x40, 0x00, 0x80));
     let mod_dot = Style::default().fg(Color::Rgb(0, 0x7F, 0));
     lines.push(Line::from(vec![
         Span::raw(" ".repeat(38)),
@@ -1094,6 +1122,13 @@ pub fn run_bench() {
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout())).unwrap();
 
     let grab_enabled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    #[cfg(target_os = "linux")]
+    let input = GrabInput::start_grab(
+        grab_enabled,
+        crate::input::evdev_backend::QuitTrigger::EscAlone,
+    )
+    .expect("failed to start key capture");
+    #[cfg(target_os = "macos")]
     let input = GrabInput::start_grab(grab_enabled).expect("failed to start key capture");
 
     let mut key_state = KeyState::default();

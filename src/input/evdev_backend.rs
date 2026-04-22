@@ -29,6 +29,7 @@ const BUS_VIRTUAL: u16 = 0x06;
 // pre-xkb hardware positions, identical whether the user is on QWERTY,
 // Dvorak, Colemak, or anything else.
 const KEY_ESC: u16 = 1;
+const KEY_CAPSLOCK: u16 = 58;
 const KEY_A: u16 = 30;
 const KEY_S: u16 = 31;
 const KEY_D: u16 = 32;
@@ -82,12 +83,25 @@ struct InputEvent {
     value: i32,
 }
 
+/// How the user signals "quit rhe" from the grabbed keyboard.
+#[derive(Clone, Copy)]
+pub enum QuitTrigger {
+    /// Esc alone — used by the tutor where Esc isn't meaningful for text.
+    EscAlone,
+    /// Esc while Caps Lock is held — used by `rhe run` so Esc still passes
+    /// through to the focused app for vim, dialogs, etc.
+    CapsLockPlusEsc,
+}
+
 pub struct EvdevInput {
     pub rx: mpsc::Receiver<HidEvent>,
 }
 
 impl EvdevInput {
-    pub fn start_grab(enabled: Arc<AtomicBool>) -> Result<Self, String> {
+    pub fn start_grab(
+        enabled: Arc<AtomicBool>,
+        quit: QuitTrigger,
+    ) -> Result<Self, String> {
         let (tx, rx) = mpsc::channel();
 
         let devices =
@@ -125,7 +139,7 @@ impl EvdevInput {
         for fd in grabbed {
             let tx = tx.clone();
             let enabled = enabled.clone();
-            std::thread::spawn(move || reader_loop(fd, uinput_fd, tx, enabled));
+            std::thread::spawn(move || reader_loop(fd, uinput_fd, tx, enabled, quit));
         }
 
         Ok(Self { rx })
@@ -137,11 +151,22 @@ fn reader_loop(
     uinput_fd: Option<RawFd>,
     tx: mpsc::Sender<HidEvent>,
     enabled: Arc<AtomicBool>,
+    quit: QuitTrigger,
 ) {
     const BATCH: usize = 32;
     let mut buf: [InputEvent; BATCH] = unsafe { std::mem::zeroed() };
     let buf_bytes = std::mem::size_of::<[InputEvent; BATCH]>();
     let ev_size = std::mem::size_of::<InputEvent>();
+
+    // Caps-lock state tracking:
+    //   caps_held: key physically down right now (used to gate caps+Esc quit).
+    //   caps_solo: true since last caps-down, cleared by any other key-down.
+    //              On caps-up, if still true, it was a solo tap → toggle rhe.
+    // In CapsLockPlusEsc mode we intercept caps entirely (OS never sees it);
+    // in EscAlone mode caps passes through and doesn't toggle.
+    let mut caps_held = false;
+    let mut caps_solo = false;
+    let caps_is_rhe_key = matches!(quit, QuitTrigger::CapsLockPlusEsc);
 
     loop {
         let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf_bytes) };
@@ -154,15 +179,49 @@ fn reader_loop(
                 continue;
             }
 
+            // Caps-lock handling (intercept in run mode, passthrough in tutor).
+            if ev.code == KEY_CAPSLOCK {
+                match ev.value {
+                    1 => {
+                        caps_held = true;
+                        caps_solo = true;
+                    }
+                    0 => {
+                        caps_held = false;
+                        if caps_is_rhe_key && caps_solo {
+                            let was = enabled.fetch_xor(true, Ordering::Relaxed);
+                            eprintln!(
+                                "rhe: {} (caps-lock tap)",
+                                if was { "disabled" } else { "enabled" }
+                            );
+                        }
+                        caps_solo = false;
+                    }
+                    _ => {} // autorepeat — no state change
+                }
+                if caps_is_rhe_key {
+                    continue; // intercept caps; OS doesn't see it
+                }
+                // tutor mode: fall through to passthrough
+            } else if ev.value == 1 {
+                // Any non-caps key-down breaks solo-caps tracking.
+                caps_solo = false;
+            }
+
             let rhe_key = linux_to_physical(ev.code);
             let active = enabled.load(Ordering::Relaxed);
 
-            // ESC down → rhe quit signal. Never forward.
+            // Quit gesture. Esc down only; Esc up + autorepeat ignored.
             if ev.code == KEY_ESC && ev.value == 1 {
-                if active {
+                let should_quit = match quit {
+                    QuitTrigger::EscAlone => active,
+                    QuitTrigger::CapsLockPlusEsc => caps_held,
+                };
+                if should_quit {
                     let _ = tx.send(HidEvent::Quit);
+                    continue;
                 }
-                continue;
+                // else: fall through to passthrough so Esc reaches the app.
             }
 
             // rhe's own keys, when active: consume, don't forward.
@@ -283,6 +342,13 @@ fn find_keyboards() -> std::io::Result<Vec<String>> {
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
         if !name.starts_with("event") {
+            continue;
+        }
+        // Skip our own uinput devices — grabbing them creates a feedback loop
+        // where every char we emit comes right back in as input.
+        let dev_name = std::fs::read_to_string(format!("/sys/class/input/{}/device/name", name))
+            .unwrap_or_default();
+        if dev_name.trim().starts_with("rhe ") {
             continue;
         }
         let path = format!("/dev/input/{}", name);

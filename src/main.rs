@@ -15,6 +15,7 @@ mod table_gen;
 #[cfg(target_os = "macos")]
 mod tray;
 mod tutor;
+mod wiki;
 mod word_lookup;
 
 #[cfg(target_os = "macos")]
@@ -302,10 +303,63 @@ fn run() {
     tray::run_tray(enabled);
 }
 
-#[cfg(not(target_os = "macos"))]
+/// Full engine on Linux — evdev grab + uinput output, no tray yet.
+/// Esc to quit.
+#[cfg(target_os = "linux")]
 fn run() {
-    eprintln!("rhe run: text injection is not yet supported on this platform.");
-    eprintln!("use `rhe tutor` to practice chords without emitting text.");
+    eprintln!("rhe — loading...");
+
+    let cmudict = data::load_cmudict();
+    let freq = data::load_word_freq();
+
+    let phoneme_table = chord_map::PhonemeTable::new();
+    let dictionary = table_gen::PhonemeDictionary::build(&cmudict, &freq);
+    let brief_table = briefs::load_briefs();
+
+    let mut interp = interpreter::Interpreter::new(phoneme_table, brief_table, dictionary);
+
+    // Input FIRST so the keyboard scan completes before any rhe-owned
+    // uinput devices show up in /dev/input/event*. Otherwise we'd grab
+    // ourselves and every emitted char would feedback-loop through the
+    // reader.
+    let enabled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let input = input::evdev_backend::EvdevInput::start_grab(
+        enabled,
+        input::evdev_backend::QuitTrigger::CapsLockPlusEsc,
+    )
+    .expect("failed to start key capture");
+    let out = output::linux::LinuxOutput::new();
+    let mut sm = state_machine::StateMachine::new();
+
+    eprintln!("rhe: ready. type to emit into focused app. CapsLock+Esc to quit.");
+
+    loop {
+        let event = match input.rx.recv() {
+            Ok(input::HidEvent::Key(ev)) => ev,
+            Ok(input::HidEvent::Quit) => break,
+            Err(_) => break,
+        };
+
+        for sm_event in sm.feed(event) {
+            if let Some(action) = interp.process(&sm_event) {
+                use output::TextOutput;
+                match action {
+                    interpreter::Action::Emit(ref text) => out.emit(text),
+                    interpreter::Action::Backspace(n) => out.backspace(n),
+                    interpreter::Action::Suffix(ref text) => {
+                        out.backspace(1);
+                        out.emit(text);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn run() {
+    eprintln!("rhe run: not yet supported on this platform.");
+    eprintln!("use `rhe tutor` to practice chords.");
 }
 
 #[cfg(target_os = "macos")]

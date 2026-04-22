@@ -7,6 +7,22 @@
   per physical key state change, zero OS key repeat noise
 - **evdev driver** (Linux) — pre-xkb scancode grab with uinput passthrough
   for non-rhe keys
+- **Linux text output** — libxkbcommon reverse-map + uinput injection
+  picks up the user's active xkb layout (Dvorak/Colemak/…) so
+  emitted scancodes produce the right characters. `Ctrl+Shift+U <hex>
+  Enter` fallback for chars outside the keymap (IPA, emoji). Env var
+  `RHE_UNICODE_FALLBACK=off` suppresses the fallback when running
+  against a terminal.
+- **Linux `rhe run`** — full engine on Linux. Input-then-output ordering
+  + self-grab filter prevents feedback loops. Caps Lock tap toggles
+  rhe enabled/disabled (solo tap detection), Caps Lock + Esc quits.
+  Esc alone passes through to the focused app.
+- **Random practice text** — tutor fetches 20 random Wikipedia article
+  extracts via the MediaWiki batch API (`generator=random&grnlimit=20`),
+  strips parentheticals / brackets / non-ASCII, dedupes sentences by
+  content, caches for a week at `~/.cache/rhe/practice_wiki.txt`.
+  Falls back to bundled Alice in Wonderland if offline. Practice
+  starts at a random sentence each launch (wraps around).
 - **Interactive tutor** — step-by-step chord teaching with real-time key
   display, brief/phoneme mode switching, error recovery, word backtrack
 - **Bench mode** (`rhe bench`) — measures chord speed per finger combo,
@@ -32,6 +48,11 @@
   all-zero when word not held (rolls). Rolling briefs work on 6KRO
   keyboards.
 - **Purely event-driven** — no polling, no timers. Block on channel recv.
+- **Tutor colour scheme** — word button active `#8000FF` purple filled
+  block (hint dot `#400080` at half brightness), mod button active green
+  `#00FF00` (hint dot `#007F00`), per-cell cyan→yellow gradient across
+  the 10 finger positions, inner-index cells reserved for future digit
+  mode.
 
 ## 0.0.1 — 2026-04-20
 

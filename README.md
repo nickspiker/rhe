@@ -212,7 +212,7 @@ physical key change = one event = one state machine transition.
 
 ```
 cargo run --release -- tutor     learn the chords
-cargo run --release -- run       full engine (macOS menu bar only, for now)
+cargo run --release -- run       full engine (macOS menu bar, Linux Esc-to-quit)
 cargo run --bin gen_briefs       regenerate roll assignments
 cargo test                       verify everything
 ```
@@ -238,9 +238,16 @@ sudo modprobe -r uinput && sudo modprobe uinput
 ```
 
 Log out and back in (or `newgrp input`) for the group change to
-apply. Tutor and text injection both work on Linux. Full `rhe run`
-engine (tray app + system-wide) is still macOS-only; Linux users can
-build on top of the tutor loop for now.
+apply. `rhe tutor` and `rhe run` both work on Linux. A tray/menu-bar
+toggle isn't wired up yet — on Linux, press **Esc** during `rhe run`
+to quit.
+
+For words that resolve to IPA (phonemes that aren't in the English
+dictionary), rhe falls back to GTK/Qt/IBus unicode input (`Ctrl+Shift+U
+<hex> Enter`). That works in GUI apps but looks like keyboard
+gibberish in terminals, where `Ctrl+U` means "kill line". Set
+`RHE_UNICODE_FALLBACK=off` to suppress the fallback — unmapped chars
+drop silently with a stderr log line.
 
 ## Roadmap
 
@@ -264,6 +271,14 @@ Done:
   for Latin output in the user's active layout (Dvorak/Colemak/any),
   with `Ctrl+Shift+U <hex> Enter` fallback for IPA and other unicode
   not representable in the current keymap.
+- **Linux `rhe run`** — full engine on Linux (evdev grab + uinput
+  injection). Caps Lock tap toggles rhe enabled/disabled, Caps+Esc
+  quits. Esc alone passes through to the focused app.
+- **Random practice text** — tutor fetches 20 random Wikipedia
+  article extracts via the MediaWiki batch API, strips brackets/
+  parentheticals/non-ASCII, dedupes, caches to
+  `~/.cache/rhe/practice_wiki.txt` for a week. Falls back to bundled
+  Alice in Wonderland if offline. Random starting sentence each run.
 
 Short-term:
 
@@ -277,16 +292,21 @@ Short-term:
   for `%`, `°`, `e`, `π`, etc.
 - **Operators and symbols** — extended chord set for math, punctuation,
   and common programmer symbols, accessible via mode-switch chords.
-- **Caps Lock 3-mode cycle** — tap Caps Lock to cycle between normal
-  typing, rhe, and CAPS mode. Caps Lock LED indicates state via
-  `EV_LED` writes to the grabbed keyboard (works on X11, Wayland, and
-  bare TTY — same low-level path as the grab).
+- **Caps Lock 3-mode cycle + LED indicator** — expand the current
+  2-state toggle into a 3-mode cycle (off / rhe-dict / rhe-CAPS).
+  Drive the caps-lock LED via `EV_LED` writes to signal mode visually
+  on the keyboard itself — works on X11, Wayland, and bare TTY.
 - **Brief generator improvements** — rework the brief-selection
   scoring to (a) exclude natural-split 2-phoneme words where the
   brief gesture equals the phoneme gesture (wasted slot), (b) rank
   chord slots by ergonomic cost (finger count + tendon-conflict
   skip patterns), and (c) match value-ranked words to cost-ranked
   slots pairwise rather than bit-order.
+- **IPA-only output mode** — toolbar toggle that always emits IPA
+  phonemes regardless of dictionary match. For linguistic work,
+  phonetic transcription, etc.
+- **Linux tray/system-wide toggle** — GTK indicator or similar so
+  `rhe run` on Linux can be toggled on/off like the macOS menu bar.
 
 Longer-term:
 

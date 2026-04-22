@@ -69,6 +69,11 @@ pub struct LinuxOutput {
     /// char → (kernel scancode, modifier mask). Produces the character
     /// when the modifiers are held and the key is tapped.
     reverse_map: HashMap<char, (u16, u8)>,
+    /// Whether to emit `Ctrl+Shift+U <hex> Enter` for chars outside the
+    /// reverse map. Enabled by default for GTK/Qt apps; set
+    /// `RHE_UNICODE_FALLBACK=off` if output goes to a terminal (shells
+    /// interpret Ctrl+U as "kill line" and the hex digits land literally).
+    unicode_fallback: bool,
 }
 
 impl LinuxOutput {
@@ -97,7 +102,16 @@ impl LinuxOutput {
             }
         };
 
-        Self { fd, reverse_map }
+        let unicode_fallback = !matches!(
+            std::env::var("RHE_UNICODE_FALLBACK").as_deref(),
+            Ok("off") | Ok("0") | Ok("false")
+        );
+
+        Self {
+            fd,
+            reverse_map,
+            unicode_fallback,
+        }
     }
 
     fn emit_key(&self, code: u16, value: i32) {
@@ -130,14 +144,16 @@ impl LinuxOutput {
             if mods & MOD_SHIFT != 0 {
                 self.emit_key(KEY_LEFTSHIFT, 0);
             }
+        } else if self.unicode_fallback {
+            self.unicode_fallback_emit(c);
         } else {
-            self.unicode_fallback(c);
+            eprintln!("rhe: char U+{:04X} not in keymap, dropped", c as u32);
         }
     }
 
     /// GTK/Qt/IBus unicode input: Ctrl+Shift+U (release), then hex digits,
     /// then Enter to commit. Works in most modern GUI apps.
-    fn unicode_fallback(&self, c: char) {
+    fn unicode_fallback_emit(&self, c: char) {
         let codepoint = c as u32;
         // Start: Ctrl+Shift held, tap U, release Shift+Ctrl.
         self.emit_key(KEY_LEFTCTRL, 1);
