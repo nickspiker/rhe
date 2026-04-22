@@ -223,6 +223,14 @@ Requires Input Monitoring permission (keyboard seizure via
 IOHIDManager). Run with `sudo` or add your terminal to System
 Settings → Privacy & Security → Input Monitoring.
 
+`rhe run` shows a menu bar item with a right-click menu: mode toggle
+(`rhe` ↔ `keyboard`), fallback toggle (`Autospell` ↔ `IPA`), and
+`Exit`. Tapping Caps Lock also toggles rhe/keyboard, and the
+caps-lock LED reflects the current mode — LED off = rhe active,
+LED on = keyboard passthrough. Modifiers (Shift/Ctrl/Alt/Cmd) are
+tracked and re-applied to passthrough events, so keyboard mode
+behaves like a normal keyboard.
+
 ### Linux
 
 Grab keyboards via evdev and inject passthrough via uinput — the user
@@ -241,20 +249,26 @@ Log out and back in (or `newgrp input`) for the group change to
 apply. `rhe tutor` and `rhe run` both work on Linux.
 
 `rhe run` shows a tray icon (StatusNotifierItem) with a right-click
-menu: enable/disable toggle, fallback-mode selector (Autospell / IPA),
-and quit. The tray works out of the box on KDE, XFCE, Cinnamon, and
-MATE; on GNOME, install and enable `gnome-shell-extension-appindicator`.
-Tapping Caps Lock also toggles enabled without having to click the
-menu, and Caps+Esc quits.
+menu: mode toggle (`rhe` ↔ `keyboard`), fallback toggle
+(`Autospell` ↔ `IPA`), and `Exit`. The tray works out of the box on
+KDE, XFCE, Cinnamon, and MATE; on GNOME, install and enable
+`gnome-shell-extension-appindicator`. Caps Lock also toggles
+rhe/keyboard — a solo tap toggles, Caps+Esc quits (the up-edge is
+only treated as a tap if no other key was pressed in between, so
+combinations stay available). Unlike on macOS, the caps-lock LED
+isn't a reliable indicator here because xkb actively reconciles it
+against its own state — the tray icon's color is the visual mode
+indicator on Linux.
 
-Out-of-dictionary words fall back to either English-approximate ASCII
-spelling (Autospell, default) or raw IPA unicode. IPA mode injects
-via the GTK/Qt/IBus `Ctrl+Shift+U <hex> Enter` sequence — that works
-in GUI apps but looks like keyboard gibberish in terminals, where
-`Ctrl+U` means "kill line". Pick the mode that matches where you're
-typing (tray menu, live). Set `RHE_FALLBACK=ipa` to start in IPA mode;
-set `RHE_UNICODE_FALLBACK=off` to drop unmapped chars silently instead
-of using the Ctrl+Shift+U path.
+Fallback mode choices: `Autospell` emits English-approximate ASCII
+when a phoneme sequence isn't in the dictionary (any keyboard layout,
+any terminal). `IPA` emits raw IPA unicode for every word, bypassing
+the dictionary entirely — useful for linguistic work, but unicode
+injection goes through the GTK/Qt/IBus `Ctrl+Shift+U <hex> Enter`
+sequence which looks like keyboard gibberish in terminals (`Ctrl+U`
+= "kill line" there). Set `RHE_FALLBACK=ipa` to start in IPA mode;
+set `RHE_UNICODE_FALLBACK=off` to drop unmapped chars silently
+instead of using the Ctrl+Shift+U path.
 
 ## Roadmap
 
@@ -282,10 +296,12 @@ Done:
   injection). Caps Lock tap toggles rhe enabled/disabled, Caps+Esc
   quits. Esc alone passes through to the focused app.
 - **Cross-platform tray menu** — StatusNotifierItem on Linux / native
-  NSStatusItem on macOS via `tray-icon`. Right-click for enable/disable,
-  fallback-mode selector (Autospell ↔ IPA), and quit. Fully
-  event-driven — the tao event loop sleeps until a menu click or a
-  caps-tap proxy nudge fires.
+  NSStatusItem on macOS via `tray-icon`. Right-click for mode toggle
+  (rhe ↔ keyboard), fallback toggle (Autospell ↔ IPA), and exit.
+  Fully event-driven — the tao event loop sleeps until a menu click
+  or a caps-tap proxy nudge fires. Caps-lock LED tracks mode on
+  macOS (off = rhe, on = keyboard); Linux uses the tray icon's color
+  since xkb fights direct LED writes.
 - **Random practice text** — tutor fetches 20 random Wikipedia
   article extracts via the MediaWiki batch API, strips brackets/
   parentheticals/non-ASCII, dedupes, caches to
