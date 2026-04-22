@@ -8,6 +8,7 @@ mod chord_state;
 mod data;
 mod hand;
 mod input;
+mod key_mask;
 mod interpreter;
 mod output;
 mod state_machine;
