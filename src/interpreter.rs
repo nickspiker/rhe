@@ -112,7 +112,7 @@ mod tests {
         let mut briefs = BriefTable::new();
 
         // "the" as a brief on both-hands combo
-        let the_key = ChordKey(0b0001_0001); // right index + left index
+        let the_key = ChordKey::from_packed_u16(0b0001_0001); // right index + left index
         briefs.insert(the_key, "the ".to_string());
 
         let dict = PhonemeDictionary::build("CAT  K AE1 T\nTHE  DH AH0\n", "the 1000\ncat 500\n");

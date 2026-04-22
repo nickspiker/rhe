@@ -9,6 +9,7 @@ mod data;
 mod hand;
 mod input;
 mod key_mask;
+mod scan;
 mod interpreter;
 mod output;
 mod state_machine;
@@ -141,10 +142,8 @@ fn show_map() {
         );
     }
 
-    println!(
-        "\n39 phonemes mapped. {} slots free for briefs.",
-        chord_map::ChordKey::MAX as usize - 39
-    );
+    // 9-bit chord space (4R + 4L + mod) = 512 slots, 39 phonemes assigned.
+    println!("\n39 phonemes mapped. {} slots free for briefs.", 512 - 39);
 }
 
 fn show_briefs() {
@@ -166,26 +165,26 @@ fn show_briefs() {
     println!("{:<10} {:<10} {:<5} {}", "Right", "Left", "⌘", "Word");
     println!("{}", "-".repeat(40));
 
+    let mut entries: Vec<_> = brief_table
+        .iter()
+        .filter(|(key, _)| key.right_bits() != 0 && key.left_bits() != 0)
+        .collect();
+    entries.sort_by(|a, b| a.1.cmp(b.1));
     let mut count = 0;
-    for key_val in 0..chord_map::ChordKey::MAX {
-        let key = chord_map::ChordKey(key_val);
-        if let Some(word) = brief_table.lookup(key) {
-            let right = key.right_bits();
-            let left = key.left_bits();
-            if right != 0 && left != 0 {
-                let mod_str = if key.has_mod() { "⌘" } else { "" };
-                println!(
-                    "{:<10} {:<10} {:<5} {}",
-                    combo_label(right),
-                    combo_label(left),
-                    mod_str,
-                    word.trim()
-                );
-                count += 1;
-                if count >= 50 {
-                    break;
-                }
-            }
+    for (key, word) in entries {
+        let right = key.right_bits();
+        let left = key.left_bits();
+        let mod_str = if key.has_mod() { "⌘" } else { "" };
+        println!(
+            "{:<10} {:<10} {:<5} {}",
+            combo_label(right),
+            combo_label(left),
+            mod_str,
+            word.trim()
+        );
+        count += 1;
+        if count >= 50 {
+            break;
         }
     }
 }

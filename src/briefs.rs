@@ -15,14 +15,14 @@ pub fn load_briefs() -> BriefTable {
     for &(left, right, word) in BRIEFS {
         let has_mod = right & (1 << 4) != 0;
         let fingers = right & 0xF;
-        let key = fingers as u16 | (left as u16) << 4 | if has_mod { 1u16 << 8 } else { 0 };
-        table.insert(ChordKey(key), format!("{} ", word));
+        let key = ChordKey::from_packed(fingers, left, has_mod);
+        table.insert(key, format!("{} ", word));
     }
 
     // Suffixes: left-hand only (right=0), marked with \x01 prefix
     for &(left, suffix) in SUFFIXES {
-        let key = (left as u16) << 4; // right=0, no mod
-        table.insert(ChordKey(key), format!("\x01{} ", suffix));
+        let key = ChordKey::from_packed(0, left, false);
+        table.insert(key, format!("\x01{} ", suffix));
     }
 
     eprintln!("rhe: loaded {} briefs + {} suffixes", BRIEFS.len(), SUFFIXES.len());

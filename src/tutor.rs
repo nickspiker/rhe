@@ -639,33 +639,30 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
 
                 // Build brief steps (no word key) if brief exists
                 let brief_steps = {
-                    use crate::chord_map::ChordKey;
                     let mut found = None;
-                    for k in 0..ChordKey::MAX {
-                        if let Some(brief_word) = brief_table.lookup(ChordKey(k)) {
-                            if brief_word.trim() == clean {
-                                // Found brief for this word
-                                let right =
-                                    (k & 0xF) as u8 | if k & (1 << 8) != 0 { 1u8 << 4 } else { 0 };
-                                let left = ((k >> 4) & 0xF) as u8;
-                                found = Some(vec![
-                                    Step {
-                                        target: Target {
-                                            right,
-                                            left,
-                                            word: false,
-                                        },
-                                        phoneme: None,
-                                        space_only: false,
+                    for (key, brief_word) in brief_table.iter() {
+                        if brief_word.trim() == clean {
+                            // Found brief for this word
+                            let right =
+                                key.right_bits() | if key.has_mod() { 1u8 << 4 } else { 0 };
+                            let left = key.left_bits();
+                            found = Some(vec![
+                                Step {
+                                    target: Target {
+                                        right,
+                                        left,
+                                        word: false,
                                     },
-                                    Step {
-                                        target: Target::default(), // all off
-                                        phoneme: None,
-                                        space_only: false,
-                                    },
-                                ]);
-                                break;
-                            }
+                                    phoneme: None,
+                                    space_only: false,
+                                },
+                                Step {
+                                    target: Target::default(), // all off
+                                    phoneme: None,
+                                    space_only: false,
+                                },
+                            ]);
+                            break;
                         }
                     }
                     found
@@ -674,7 +671,6 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
                 // Build suffix steps: roll(base) + suffix chord + all-off
                 let (suffix_steps, suffix_label) = {
                     use crate::suffixes_data::SUFFIXES;
-                    use crate::chord_map::ChordKey;
                     let phoneme_count = phoneme_steps.iter().filter(|s| s.phoneme.is_some()).count();
                     let mut found = (None, None);
 
@@ -696,41 +692,39 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
 
                             for base in &bases {
                                 // Find roll for base
-                                for k in 0..ChordKey::MAX {
-                                    if let Some(brief_word) = brief_table.lookup(ChordKey(k)) {
-                                        if brief_word.trim() == base {
-                                            let r = (k & 0xF) as u8
-                                                | if k & (1 << 8) != 0 { 1u8 << 4 } else { 0 };
-                                            let l = ((k >> 4) & 0xF) as u8;
-                                            let steps = vec![
-                                                // Roll for base (no word key)
-                                                Step {
-                                                    target: Target { right: r, left: l, word: false },
-                                                    phoneme: None,
-                                                    space_only: false,
-                                                },
-                                                // All off between roll and suffix
-                                                Step {
-                                                    target: Target::default(),
-                                                    phoneme: None,
-                                                    space_only: false,
-                                                },
-                                                // Suffix chord (left hand only, no word key)
-                                                Step {
-                                                    target: Target { right: 0, left: suffix_bits, word: false },
-                                                    phoneme: None,
-                                                    space_only: false,
-                                                },
-                                                // All off
-                                                Step {
-                                                    target: Target::default(),
-                                                    phoneme: None,
-                                                    space_only: false,
-                                                },
-                                            ];
-                                            found = (Some(steps), Some(format!("~{}", suffix_str)));
-                                            break;
-                                        }
+                                for (key, brief_word) in brief_table.iter() {
+                                    if brief_word.trim() == base {
+                                        let r = key.right_bits()
+                                            | if key.has_mod() { 1u8 << 4 } else { 0 };
+                                        let l = key.left_bits();
+                                        let steps = vec![
+                                            // Roll for base (no word key)
+                                            Step {
+                                                target: Target { right: r, left: l, word: false },
+                                                phoneme: None,
+                                                space_only: false,
+                                            },
+                                            // All off between roll and suffix
+                                            Step {
+                                                target: Target::default(),
+                                                phoneme: None,
+                                                space_only: false,
+                                            },
+                                            // Suffix chord (left hand only, no word key)
+                                            Step {
+                                                target: Target { right: 0, left: suffix_bits, word: false },
+                                                phoneme: None,
+                                                space_only: false,
+                                            },
+                                            // All off
+                                            Step {
+                                                target: Target::default(),
+                                                phoneme: None,
+                                                space_only: false,
+                                            },
+                                        ];
+                                        found = (Some(steps), Some(format!("~{}", suffix_str)));
+                                        break;
                                     }
                                 }
                                 if found.0.is_some() { break; }

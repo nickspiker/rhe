@@ -1,38 +1,95 @@
 //! Phoneme-to-chord mapping, `ChordKey` encoding, `PhonemeTable` and `BriefTable`.
 
 use crate::chord_state::Chord;
+use crate::key_mask::KeyMask;
+use crate::scan;
 
-/// A chord key: unique index into phoneme/brief tables.
+/// A chord key — the set of physical keys that fire this chord.
 ///
-/// Encoding: 9 bits total
-///   bits 0-3: right hand finger chord (4 bits, 0-15)
-///   bits 4-7: left hand finger chord (4 bits, 0-15)
-///   bit 8:    mod (⌘) state (1 bit)
+/// Internally a `KeyMask` (256-bit, one bit per HID scancode), so it can
+/// represent any physical keyboard chord. For now rhe uses only 9 of
+/// those bits (4 right fingers + 4 left fingers + right thumb / "mod"),
+/// but the wider representation is what lets future features bind to
+/// inner-index keys, function row, etc.
 ///
-/// Total: 2^9 = 512 possible chord keys.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ChordKey(pub u16);
+/// Backward-compatible packed-bit accessors (`right_bits`, `left_bits`,
+/// `has_mod`) translate back to the legacy 9-bit layout for display/
+/// legacy-storage purposes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct ChordKey(KeyMask);
 
 impl ChordKey {
-    pub const MAX: u16 = 512;
+    /// Empty chord (no keys pressed).
+    pub const EMPTY: Self = Self(KeyMask::EMPTY);
 
+    /// Build from a state-machine-level `Chord`.
     pub fn from_chord(chord: &Chord) -> Self {
-        let right = chord.right.0 as u16 & 0xF;
-        let left = (chord.left.0 as u16 & 0xF) << 4;
-        let modkey = if chord.modkey { 1u16 << 8 } else { 0 };
-        Self(right | left | modkey)
+        Self::from_packed(chord.right.0 & 0xF, chord.left.0 & 0xF, chord.modkey)
     }
 
+    /// Build from the legacy packed representation: 4 right-finger bits,
+    /// 4 left-finger bits, plus the modkey flag. This is how
+    /// `briefs_data.rs`, `suffixes_data.rs`, and `Phoneme::chord_key`
+    /// still express chords — kept so those data tables don't have to
+    /// change format yet.
+    pub fn from_packed(right_fingers: u8, left_fingers: u8, has_mod: bool) -> Self {
+        let mut mask = KeyMask::EMPTY;
+        const LEFT: [u8; 4] = [scan::L_IDX, scan::L_MID, scan::L_RING, scan::L_PINKY];
+        const RIGHT: [u8; 4] = [scan::R_IDX, scan::R_MID, scan::R_RING, scan::R_PINKY];
+        for (bit, code) in LEFT.iter().enumerate() {
+            if left_fingers & (1 << bit) != 0 {
+                mask.set(*code);
+            }
+        }
+        for (bit, code) in RIGHT.iter().enumerate() {
+            if right_fingers & (1 << bit) != 0 {
+                mask.set(*code);
+            }
+        }
+        if has_mod {
+            mask.set(scan::R_THUMB);
+        }
+        Self(mask)
+    }
+
+    /// Legacy u16 construction (used by some callers that round-trip
+    /// a packed encoding). Bits 0-3 = right, bits 4-7 = left, bit 8 = mod.
+    pub fn from_packed_u16(packed: u16) -> Self {
+        Self::from_packed(
+            (packed & 0xF) as u8,
+            ((packed >> 4) & 0xF) as u8,
+            packed & (1 << 8) != 0,
+        )
+    }
+
+    /// The underlying 256-bit mask.
+    pub fn mask(self) -> KeyMask {
+        self.0
+    }
+
+    /// 4-bit packed right-finger bits (index=bit0, middle=bit1, ring=bit2, pinky=bit3).
     pub fn right_bits(self) -> u8 {
-        (self.0 & 0xF) as u8
+        let mut bits = 0u8;
+        if self.0.test(scan::R_IDX) { bits |= 1 << 0; }
+        if self.0.test(scan::R_MID) { bits |= 1 << 1; }
+        if self.0.test(scan::R_RING) { bits |= 1 << 2; }
+        if self.0.test(scan::R_PINKY) { bits |= 1 << 3; }
+        bits
     }
 
+    /// 4-bit packed left-finger bits (index=bit0, middle=bit1, ring=bit2, pinky=bit3).
     pub fn left_bits(self) -> u8 {
-        ((self.0 >> 4) & 0xF) as u8
+        let mut bits = 0u8;
+        if self.0.test(scan::L_IDX) { bits |= 1 << 0; }
+        if self.0.test(scan::L_MID) { bits |= 1 << 1; }
+        if self.0.test(scan::L_RING) { bits |= 1 << 2; }
+        if self.0.test(scan::L_PINKY) { bits |= 1 << 3; }
+        bits
     }
 
+    /// Is the mod bit (right thumb / spacebar) part of this chord?
     pub fn has_mod(self) -> bool {
-        self.0 & (1 << 8) != 0
+        self.0.test(scan::R_THUMB)
     }
 }
 
@@ -232,89 +289,65 @@ impl Phoneme {
             Uh => (0, 0b1101, false), // rank 14, 11M, index+ring+pinky
             Oy => (0, 0b1011, false), // rank 15, 2M, index+middle+pinky
         };
-        ChordKey(right as u16 | (left as u16) << 4 | if modkey { 1u16 << 8 } else { 0 })
+        ChordKey::from_packed(right, left, modkey)
     }
 }
 
-/// Phoneme table: maps ChordKey → Phoneme.
+/// Phoneme table: maps ChordKey → Phoneme. HashMap-backed so the 256-bit
+/// keyspace isn't a problem (only actual phoneme chords consume memory).
 pub struct PhonemeTable {
-    entries: Vec<Option<Phoneme>>,
+    entries: std::collections::HashMap<ChordKey, Phoneme>,
 }
 
 impl PhonemeTable {
     /// Build the table from all phoneme definitions.
     pub fn new() -> Self {
-        let mut entries = vec![None; ChordKey::MAX as usize];
+        let mut entries = std::collections::HashMap::new();
         let all_phonemes = [
-            Phoneme::T,
-            Phoneme::D,
-            Phoneme::S,
-            Phoneme::Z,
-            Phoneme::K,
-            Phoneme::G,
-            Phoneme::P,
-            Phoneme::B,
-            Phoneme::N,
-            Phoneme::M,
-            Phoneme::R,
-            Phoneme::Dh,
-            Phoneme::L,
-            Phoneme::H,
-            Phoneme::F,
-            Phoneme::V,
-            Phoneme::W,
-            Phoneme::Th,
-            Phoneme::Sh,
-            Phoneme::Zh,
-            Phoneme::Ch,
-            Phoneme::Jh,
-            Phoneme::Ng,
-            Phoneme::Y,
-            Phoneme::Ah,
-            Phoneme::Ih,
-            Phoneme::Eh,
-            Phoneme::Ae,
-            Phoneme::Iy,
-            Phoneme::Aa,
-            Phoneme::Ey,
-            Phoneme::Er,
-            Phoneme::Ay,
-            Phoneme::Ow,
-            Phoneme::Ao,
-            Phoneme::Uw,
-            Phoneme::Aw,
-            Phoneme::Uh,
-            Phoneme::Oy,
+            Phoneme::T, Phoneme::D, Phoneme::S, Phoneme::Z, Phoneme::K,
+            Phoneme::G, Phoneme::P, Phoneme::B, Phoneme::N, Phoneme::M,
+            Phoneme::R, Phoneme::Dh, Phoneme::L, Phoneme::H, Phoneme::F,
+            Phoneme::V, Phoneme::W, Phoneme::Th, Phoneme::Sh, Phoneme::Zh,
+            Phoneme::Ch, Phoneme::Jh, Phoneme::Ng, Phoneme::Y,
+            Phoneme::Ah, Phoneme::Ih, Phoneme::Eh, Phoneme::Ae, Phoneme::Iy,
+            Phoneme::Aa, Phoneme::Ey, Phoneme::Er, Phoneme::Ay, Phoneme::Ow,
+            Phoneme::Ao, Phoneme::Uw, Phoneme::Aw, Phoneme::Uh, Phoneme::Oy,
         ];
         for p in all_phonemes {
-            entries[p.chord_key().0 as usize] = Some(p);
+            entries.insert(p.chord_key(), p);
         }
         Self { entries }
     }
 
     pub fn lookup(&self, key: ChordKey) -> Option<Phoneme> {
-        self.entries.get(key.0 as usize).copied().flatten()
+        self.entries.get(&key).copied()
     }
 }
 
 /// Brief table: maps ChordKey → word string (for instant output without space).
 pub struct BriefTable {
-    entries: Vec<Option<String>>,
+    entries: std::collections::HashMap<ChordKey, String>,
 }
 
 impl BriefTable {
     pub fn new() -> Self {
         Self {
-            entries: vec![None; ChordKey::MAX as usize],
+            entries: std::collections::HashMap::new(),
         }
     }
 
     pub fn insert(&mut self, key: ChordKey, word: String) {
-        self.entries[key.0 as usize] = Some(word);
+        self.entries.insert(key, word);
     }
 
     pub fn lookup(&self, key: ChordKey) -> Option<&str> {
-        self.entries.get(key.0 as usize)?.as_deref()
+        self.entries.get(&key).map(String::as_str)
+    }
+
+    /// Iterate over all (chord, word) entries. Used by the tutor to find
+    /// which chord produces a given word (reverse lookup).
+    pub fn iter(&self) -> impl Iterator<Item = (&ChordKey, &String)> {
+        self.entries.iter()
     }
 }
 
@@ -350,8 +383,7 @@ mod tests {
     #[test]
     fn no_phoneme_collisions() {
         let table = PhonemeTable::new();
-        let count = table.entries.iter().filter(|e| e.is_some()).count();
-        assert_eq!(count, 39);
+        assert_eq!(table.entries.len(), 39);
     }
 
     #[test]
