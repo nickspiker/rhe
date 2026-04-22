@@ -22,7 +22,12 @@ use std::sync::mpsc;
 // evdev event-type codes
 const EV_SYN: u16 = 0x00;
 const EV_KEY: u16 = 0x01;
+const EV_LED: u16 = 0x11;
 const SYN_REPORT: u16 = 0x00;
+// LED codes: 0 = num-lock, 1 = caps-lock, 2 = scroll-lock.
+// All are potentially reconciled by xkb against its own state; scroll-lock
+// is usually the least-managed, but whichever works on the user's box.
+const LED_CODE: u16 = 0x00; // LED_NUML
 const BUS_VIRTUAL: u16 = 0x06;
 
 // Positional scancodes from linux/input-event-codes.h — these are
@@ -83,15 +88,27 @@ struct InputEvent {
     value: i32,
 }
 
-/// How the user signals "quit rhe" from the grabbed keyboard.
+/// How the user signals "quit rhe" and whether caps lock toggles the grab.
+///
+/// In both `CapsLockPlusEsc` and `EscOrCapsPlusEsc`, Caps Lock is
+/// intercepted and a solo tap toggles the `enabled` flag (passthrough on/
+/// off). `EscAlone` leaves caps alone — for unit tests, not typical use.
 #[derive(Clone, Copy)]
 pub enum QuitTrigger {
-    /// Esc alone — used by the tutor where Esc isn't meaningful for text.
+    /// Esc alone quits. Caps lock passes through to OS, doesn't toggle.
     EscAlone,
-    /// Esc while Caps Lock is held — used by `rhe run` so Esc still passes
-    /// through to the focused app for vim, dialogs, etc.
+    /// Caps+Esc quits, Esc alone passes through. Caps taps toggle enabled.
+    /// Used by `rhe run` where Esc is needed by the focused app (vim, etc).
     CapsLockPlusEsc,
+    /// Either Esc alone OR Caps+Esc quits. Caps taps toggle enabled.
+    /// Used by the tutor so Esc still exits traditionally, *and* the user
+    /// can tap caps to pause the tutor and type normally for a moment.
+    EscOrCapsPlusEsc,
 }
+
+/// Callback fired when a caps-lock solo-tap toggles the `enabled` flag.
+/// Lets the tray (or any other UI) refresh itself without polling.
+pub type ToggleHook = Arc<dyn Fn() + Send + Sync + 'static>;
 
 pub struct EvdevInput {
     pub rx: mpsc::Receiver<HidEvent>,
@@ -101,6 +118,7 @@ impl EvdevInput {
     pub fn start_grab(
         enabled: Arc<AtomicBool>,
         quit: QuitTrigger,
+        on_toggle: Option<ToggleHook>,
     ) -> Result<Self, String> {
         let (tx, rx) = mpsc::channel();
 
@@ -136,10 +154,25 @@ impl EvdevInput {
             }
         };
 
+        // In caps-is-rhe-key mode, set the scroll-lock LED to mirror the
+        // initial passthrough state. "LED on = typing normally" → so LED
+        // is off when rhe starts enabled.
+        let caps_controls_led = matches!(
+            quit,
+            QuitTrigger::CapsLockPlusEsc | QuitTrigger::EscOrCapsPlusEsc
+        );
+        if caps_controls_led {
+            let led_on = !enabled.load(Ordering::Relaxed);
+            for &fd in &grabbed {
+                set_scroll_led(fd, led_on);
+            }
+        }
+
         for fd in grabbed {
             let tx = tx.clone();
             let enabled = enabled.clone();
-            std::thread::spawn(move || reader_loop(fd, uinput_fd, tx, enabled, quit));
+            let on_toggle = on_toggle.clone();
+            std::thread::spawn(move || reader_loop(fd, uinput_fd, tx, enabled, quit, on_toggle));
         }
 
         Ok(Self { rx })
@@ -152,6 +185,7 @@ fn reader_loop(
     tx: mpsc::Sender<HidEvent>,
     enabled: Arc<AtomicBool>,
     quit: QuitTrigger,
+    on_toggle: Option<ToggleHook>,
 ) {
     const BATCH: usize = 32;
     let mut buf: [InputEvent; BATCH] = unsafe { std::mem::zeroed() };
@@ -166,7 +200,10 @@ fn reader_loop(
     // in EscAlone mode caps passes through and doesn't toggle.
     let mut caps_held = false;
     let mut caps_solo = false;
-    let caps_is_rhe_key = matches!(quit, QuitTrigger::CapsLockPlusEsc);
+    let caps_is_rhe_key = matches!(
+        quit,
+        QuitTrigger::CapsLockPlusEsc | QuitTrigger::EscOrCapsPlusEsc
+    );
 
     loop {
         let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf_bytes) };
@@ -190,10 +227,15 @@ fn reader_loop(
                         caps_held = false;
                         if caps_is_rhe_key && caps_solo {
                             let was = enabled.fetch_xor(true, Ordering::Relaxed);
+                            let now_enabled = !was;
                             eprintln!(
                                 "rhe: {} (caps-lock tap)",
-                                if was { "disabled" } else { "enabled" }
+                                if now_enabled { "enabled" } else { "disabled" }
                             );
+                            set_scroll_led(fd, !now_enabled);
+                            if let Some(hook) = on_toggle.as_ref() {
+                                hook();
+                            }
                         }
                         caps_solo = false;
                     }
@@ -216,6 +258,10 @@ fn reader_loop(
                 let should_quit = match quit {
                     QuitTrigger::EscAlone => active,
                     QuitTrigger::CapsLockPlusEsc => caps_held,
+                    // Tutor: Esc always quits, regardless of enabled state.
+                    // If caps-toggled rhe off and user hits Esc, they still
+                    // expect the tutor to exit.
+                    QuitTrigger::EscOrCapsPlusEsc => true,
                 };
                 if should_quit {
                     let _ = tx.send(HidEvent::Quit);
@@ -246,6 +292,29 @@ fn reader_loop(
     unsafe {
         libc::ioctl(fd, EVIOCGRAB, 0i32);
         libc::close(fd);
+    }
+}
+
+/// Write the indicator-LED state to a grabbed keyboard. Which physical
+/// LED lights up depends on `LED_CODE` (num-lock by default; scroll-lock
+/// and caps-lock also possible but often xkb-managed).
+fn set_scroll_led(fd: RawFd, on: bool) {
+    let led_ev = InputEvent {
+        time: libc::timeval { tv_sec: 0, tv_usec: 0 },
+        type_: EV_LED,
+        code: LED_CODE,
+        value: if on { 1 } else { 0 },
+    };
+    let syn_ev = InputEvent {
+        time: libc::timeval { tv_sec: 0, tv_usec: 0 },
+        type_: EV_SYN,
+        code: SYN_REPORT,
+        value: 0,
+    };
+    let ev_size = std::mem::size_of::<InputEvent>();
+    unsafe {
+        libc::write(fd, &led_ev as *const _ as *const libc::c_void, ev_size);
+        libc::write(fd, &syn_ev as *const _ as *const libc::c_void, ev_size);
     }
 }
 

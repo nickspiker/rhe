@@ -235,6 +235,32 @@ impl Phoneme {
         }
     }
 
+    /// Approximate English grapheme spelling for this phoneme.
+    /// Used when a phoneme sequence doesn't resolve to a dictionary word
+    /// and the user wants ASCII autospell output instead of IPA.
+    /// Crude by design — English spelling is irregular — but readable and
+    /// representable in any keyboard layout.
+    pub fn to_grapheme(self) -> &'static str {
+        use Phoneme::*;
+        match self {
+            // Consonants
+            T => "t",   D => "d",   S => "s",   Z => "z",
+            K => "k",   G => "g",   P => "p",   B => "b",
+            N => "n",   M => "m",   R => "r",   L => "l",
+            H => "h",   F => "f",   V => "v",   W => "w",
+            Y => "y",
+            Th => "th", Dh => "th",
+            Sh => "sh", Zh => "zh",
+            Ch => "ch", Jh => "j",
+            Ng => "ng",
+            // Vowels
+            Ah => "uh", Ih => "i",  Eh => "e",  Ae => "a",
+            Iy => "ee", Aa => "ah", Ey => "ay", Er => "er",
+            Ay => "y",  Ow => "o",  Ao => "aw", Uw => "oo",
+            Aw => "ow", Uh => "oo", Oy => "oy",
+        }
+    }
+
     /// The ChordKey for this phoneme.
     ///
     /// Mapped by frequency × measured chord effort from bench data.

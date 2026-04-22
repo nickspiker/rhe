@@ -244,7 +244,8 @@ pub fn run_tutor() {
     #[cfg(target_os = "linux")]
     let input = GrabInput::start_grab(
         grab_enabled,
-        crate::input::evdev_backend::QuitTrigger::EscAlone,
+        crate::input::evdev_backend::QuitTrigger::EscOrCapsPlusEsc,
+        None,
     )
     .expect("failed to start key capture");
     #[cfg(target_os = "macos")]
@@ -394,6 +395,7 @@ pub fn run_tutor() {
                     if is_key_down && rhe_event.key != PhysicalKey::Word {
                         log.push("  → RESET (finger during commit)".to_string());
                         practice.reset_word();
+                        last_was_botch = true;
                         errored = true;
                     } else if !key_state.word {
                         log.push("  → MATCH (commit)".to_string());
@@ -405,6 +407,7 @@ pub fn run_tutor() {
                     if is_key_down {
                         log.push("  → RESET (finger during commit)".to_string());
                         practice.reset_word();
+                        last_was_botch = true;
                         errored = true;
                     } else if all_off {
                         log.push("  → MATCH (commit)".to_string());
@@ -469,6 +472,7 @@ pub fn run_tutor() {
                     } else if is_key_down && has_extra_acc {
                         log.push("  → RESET (extra key down)".to_string());
                         practice.reset_word();
+                        last_was_botch = true;
                         if !all_off {
                             errored = true;
                         }
@@ -481,6 +485,7 @@ pub fn run_tutor() {
                     } else if hand_touched && target_hands_empty && !is_key_down {
                         log.push("  → RESET (chord abandoned)".to_string());
                         practice.reset_word();
+                        last_was_botch = true;
                         if !all_off {
                             errored = true;
                         }
@@ -563,8 +568,12 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
     };
 
     let mut sentences: Vec<Vec<PracticeWord>> = Vec::new();
+    // Record where each source line starts in `sentences` so random-start
+    // lands on a line boundary rather than mid-wiki-sentence.
+    let mut line_starts: Vec<usize> = Vec::new();
 
     for line in &common_text {
+        line_starts.push(sentences.len());
         let words: Vec<&str> = line.split_whitespace().collect();
         let mut skipped = Vec::new();
 
@@ -754,17 +763,22 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
         }
     }
 
-    // Pick a random starting sentence so successive launches don't always
-    // begin with "alice was beginning…" — practice text rotates through
-    // the full set via next_word()'s wrap-around.
-    let sentence_idx = if sentences.is_empty() {
+    // Pick a random starting sentence from the set of line-start indices,
+    // so successive launches (a) don't always begin at the first line and
+    // (b) always start at the first chunk of some wiki sentence, not in
+    // the middle of one. next_word() wraps around to cover the rest.
+    let valid_starts: Vec<usize> = line_starts
+        .into_iter()
+        .filter(|&idx| idx < sentences.len())
+        .collect();
+    let sentence_idx = if valid_starts.is_empty() {
         0
     } else {
         let seed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos() as u64)
             .unwrap_or(0);
-        (seed as usize) % sentences.len()
+        valid_starts[(seed as usize) % valid_starts.len()]
     };
 
     let first_has_brief = sentences
@@ -1119,7 +1133,8 @@ pub fn run_bench() {
     #[cfg(target_os = "linux")]
     let input = GrabInput::start_grab(
         grab_enabled,
-        crate::input::evdev_backend::QuitTrigger::EscAlone,
+        crate::input::evdev_backend::QuitTrigger::EscOrCapsPlusEsc,
+        None,
     )
     .expect("failed to start key capture");
     #[cfg(target_os = "macos")]

@@ -14,7 +14,6 @@ mod interpreter;
 mod output;
 mod state_machine;
 mod table_gen;
-#[cfg(target_os = "macos")]
 mod tray;
 mod tutor;
 mod wiki;
@@ -22,9 +21,7 @@ mod word_lookup;
 
 #[cfg(target_os = "macos")]
 use input::KeyInput;
-#[cfg(target_os = "macos")]
 use std::sync::Arc;
-#[cfg(target_os = "macos")]
 use std::sync::atomic::AtomicBool;
 
 fn main() {
@@ -237,7 +234,15 @@ fn run() {
     eprintln!("rhe — loading...");
 
     let enabled = Arc::new(AtomicBool::new(false));
+    let quit = Arc::new(AtomicBool::new(false));
+    let fallback = interpreter::FallbackMode::new_shared_from_env();
     let enabled_engine = enabled.clone();
+    let fallback_engine = fallback.clone();
+    let _quit_engine = quit.clone();
+
+    // Build the tray's event loop on the main thread so its proxy can be
+    // handed to the engine thread before it spawns.
+    let (event_loop, _proxy) = tray::build();
 
     std::thread::spawn(move || {
         let cmudict = data::load_cmudict();
@@ -247,7 +252,12 @@ fn run() {
         let dictionary = table_gen::PhonemeDictionary::build(&cmudict, &freq);
         let brief_table = briefs::load_briefs();
 
-        let mut interp = interpreter::Interpreter::new(phoneme_table, brief_table, dictionary);
+        let mut interp = interpreter::Interpreter::with_fallback(
+            phoneme_table,
+            brief_table,
+            dictionary,
+            fallback_engine,
+        );
 
         eprintln!("rhe: ready. click menu bar icon to enable.");
 
@@ -300,60 +310,101 @@ fn run() {
         }
     });
 
-    tray::run_tray(enabled);
+    tray::run_tray(event_loop, enabled, quit, fallback);
 }
 
-/// Full engine on Linux — evdev grab + uinput output, no tray yet.
-/// Esc to quit.
+/// Full engine on Linux — evdev grab + uinput output + tray menu.
+/// Engine runs in a background thread; the tray event loop owns the main
+/// thread (tray-icon's DBus/StatusNotifierItem machinery requires that).
 #[cfg(target_os = "linux")]
 fn run() {
     eprintln!("rhe — loading...");
 
-    let cmudict = data::load_cmudict();
-    let freq = data::load_word_freq();
+    let enabled = Arc::new(AtomicBool::new(true));
+    let quit = Arc::new(AtomicBool::new(false));
+    let fallback = interpreter::FallbackMode::new_shared_from_env();
+    let enabled_engine = enabled.clone();
+    let fallback_engine = fallback.clone();
+    let quit_engine = quit.clone();
 
-    let phoneme_table = chord_map::PhonemeTable::new();
-    let dictionary = table_gen::PhonemeDictionary::build(&cmudict, &freq);
-    let brief_table = briefs::load_briefs();
+    // Build the tray's event loop on the main thread so its proxy can be
+    // handed to the engine thread before it spawns. The evdev reader wakes
+    // the tray via this proxy whenever caps-tap toggles enabled, so the
+    // tray icon/check item refresh without polling.
+    let (event_loop, proxy) = tray::build();
+    let toggle_proxy = proxy.clone();
+    let on_toggle: input::evdev_backend::ToggleHook =
+        Arc::new(move || {
+            let _ = toggle_proxy.send_event(tray::TrayEvent::StateChanged);
+        });
 
-    let mut interp = interpreter::Interpreter::new(phoneme_table, brief_table, dictionary);
+    std::thread::spawn(move || {
+        let cmudict = data::load_cmudict();
+        let freq = data::load_word_freq();
 
-    // Input FIRST so the keyboard scan completes before any rhe-owned
-    // uinput devices show up in /dev/input/event*. Otherwise we'd grab
-    // ourselves and every emitted char would feedback-loop through the
-    // reader.
-    let enabled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
-    let input = input::evdev_backend::EvdevInput::start_grab(
-        enabled,
-        input::evdev_backend::QuitTrigger::CapsLockPlusEsc,
-    )
-    .expect("failed to start key capture");
-    let out = output::linux::LinuxOutput::new();
-    let mut sm = state_machine::StateMachine::new();
+        let phoneme_table = chord_map::PhonemeTable::new();
+        let dictionary = table_gen::PhonemeDictionary::build(&cmudict, &freq);
+        let brief_table = briefs::load_briefs();
 
-    eprintln!("rhe: ready. type to emit into focused app. CapsLock+Esc to quit.");
+        let mut interp = interpreter::Interpreter::with_fallback(
+            phoneme_table,
+            brief_table,
+            dictionary,
+            fallback_engine,
+        );
 
-    loop {
-        let event = match input.rx.recv() {
-            Ok(input::HidEvent::Key(ev)) => ev,
-            Ok(input::HidEvent::Quit) => break,
-            Err(_) => break,
-        };
+        // Input before output so the keyboard scan completes before any
+        // rhe-owned uinput devices show up in /dev/input/event*.
+        let input = input::evdev_backend::EvdevInput::start_grab(
+            enabled_engine,
+            input::evdev_backend::QuitTrigger::CapsLockPlusEsc,
+            Some(on_toggle),
+        )
+        .expect("failed to start key capture");
+        let out = output::linux::LinuxOutput::new();
+        let mut sm = state_machine::StateMachine::new();
 
-        for sm_event in sm.feed(event) {
-            if let Some(action) = interp.process(&sm_event) {
-                use output::TextOutput;
-                match action {
-                    interpreter::Action::Emit(ref text) => out.emit(text),
-                    interpreter::Action::Backspace(n) => out.backspace(n),
-                    interpreter::Action::Suffix(ref text) => {
-                        out.backspace(1);
-                        out.emit(text);
+        eprintln!(
+            "rhe: ready. Tray icon in system panel. \
+             Caps tap to toggle, CapsLock+Esc to quit."
+        );
+
+        loop {
+            if quit_engine.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
+            // Timeout keeps us responsive to tray-initiated quit even when
+            // no key events are arriving.
+            let event =
+                match input.rx.recv_timeout(std::time::Duration::from_millis(250)) {
+                    Ok(input::HidEvent::Key(ev)) => ev,
+                    Ok(input::HidEvent::Quit) => break,
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(_) => break,
+                };
+
+            for sm_event in sm.feed(event) {
+                if let Some(action) = interp.process(&sm_event) {
+                    use output::TextOutput;
+                    match action {
+                        interpreter::Action::Emit(ref text) => out.emit(text),
+                        interpreter::Action::Backspace(n) => out.backspace(n),
+                        interpreter::Action::Suffix(ref text) => {
+                            out.backspace(1);
+                            out.emit(text);
+                        }
                     }
                 }
             }
         }
-    }
+        // Signal tray to exit as well.
+        quit_engine.store(true, std::sync::atomic::Ordering::Relaxed);
+        // Nudge the tray event loop so it notices the quit flag even if it
+        // is currently asleep in Wait.
+        let _ = proxy.send_event(tray::TrayEvent::StateChanged);
+    });
+
+    tray::run_tray(event_loop, enabled, quit, fallback);
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]

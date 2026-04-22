@@ -1,12 +1,49 @@
-//! macOS menu bar tray icon for enable/disable toggle.
+//! Cross-platform tray icon + right-click menu.
+//!
+//! macOS gets its native menu bar icon via `tray-icon` (which wraps
+//! `NSStatusItem`). Linux gets a StatusNotifierItem registered via DBus
+//! — works out of the box on KDE, XFCE, Cinnamon, MATE; on GNOME the user
+//! needs `gnome-shell-extension-appindicator` installed and enabled.
+//!
+//! The tray provides an ambient always-visible state indicator (icon
+//! color reflects rhe enabled/disabled) and a right-click menu:
+//!
+//!   ☐ Enabled       (check item — toggles rhe on/off)
+//!   ─────────
+//!   Fallback
+//!     ● Autospell   (radio-style: out-of-dict words → ASCII spelling)
+//!     ○ IPA         (raw IPA unicode — GTK/Qt/IBus apps only)
+//!   ─────────
+//!   Quit            (exits the engine)
+//!
+//! Event-driven: the tao event loop sleeps indefinitely until either a
+//! menu event (bridged from `tray-icon`'s own channel via a forwarder
+//! thread) or a state-change notification (sent by the evdev reader via
+//! `EventLoopProxy`) fires.
 
-use tao::event_loop::{ControlFlow, EventLoop};
-use tray_icon::{Icon, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tao::event::Event;
+use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy};
+use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Submenu};
+use tray_icon::{Icon, TrayIconBuilder};
 
+use crate::interpreter::FallbackMode;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 const ICON_SIZE: u32 = 22;
+
+/// Events that wake the tao event loop.
+#[derive(Debug, Clone)]
+pub enum TrayEvent {
+    /// The engine thread toggled the `enabled` flag (via caps tap).
+    /// The tray icon + check item need refreshing.
+    StateChanged,
+    /// A menu item was clicked.
+    Menu(MenuId),
+}
+
+/// Handle a tray can pass to other threads so they can wake the event loop.
+pub type TrayProxy = EventLoopProxy<TrayEvent>;
 
 /// Generate a filled circle icon as RGBA bytes.
 fn circle_icon(r: u8, g: u8, b: u8, a: u8) -> Icon {
@@ -33,58 +70,141 @@ fn circle_icon(r: u8, g: u8, b: u8, a: u8) -> Icon {
     Icon::from_rgba(rgba, ICON_SIZE, ICON_SIZE).expect("failed to create icon")
 }
 
-/// Run the menu bar tray app on the main thread.
-///
-/// `enabled` is shared with the engine thread — clicking the icon
-/// toggles this flag. The engine checks it to decide whether to
-/// intercept keys or pass them through.
-pub fn run_tray(enabled: Arc<AtomicBool>) {
-    let event_loop = EventLoop::new();
+/// Build the event loop + proxy before spawning the engine. The caller
+/// gives the proxy to any thread that wants to notify the tray of state
+/// changes (primarily the evdev reader on Linux / HID callback on macOS).
+pub fn build() -> (tao::event_loop::EventLoop<TrayEvent>, TrayProxy) {
+    let event_loop = EventLoopBuilder::<TrayEvent>::with_user_event().build();
+    let proxy = event_loop.create_proxy();
+    (event_loop, proxy)
+}
 
+/// Run the tray event loop on the main thread. Blocks until `quit` is set
+/// or the menu's Quit item fires.
+///
+/// `fallback` is the shared `AtomicU8` the interpreter reads each time it
+/// hits the fallback branch — the Fallback submenu writes to it directly.
+pub fn run_tray(
+    event_loop: tao::event_loop::EventLoop<TrayEvent>,
+    enabled: Arc<AtomicBool>,
+    quit: Arc<AtomicBool>,
+    fallback: Arc<AtomicU8>,
+) {
     let icon_off = circle_icon(180, 60, 180, 160);
     let icon_on = circle_icon(80, 255, 80, 255);
 
-    let initial = if enabled.load(Ordering::Relaxed) {
+    let initial_enabled = enabled.load(Ordering::Relaxed);
+    let initial_icon = if initial_enabled {
         icon_on.clone()
     } else {
         icon_off.clone()
     };
 
+    let initial_fallback = FallbackMode::from_u8(fallback.load(Ordering::Relaxed));
+    let autospell_item = CheckMenuItem::new(
+        "Autospell",
+        true,
+        initial_fallback == FallbackMode::Autospell,
+        None,
+    );
+    let ipa_item = CheckMenuItem::new(
+        "IPA (GTK/Qt/IBus only)",
+        true,
+        initial_fallback == FallbackMode::Ipa,
+        None,
+    );
+    let fallback_menu = Submenu::new("Fallback", true);
+    fallback_menu.append(&autospell_item).ok();
+    fallback_menu.append(&ipa_item).ok();
+
+    let enabled_item = CheckMenuItem::new("Enabled", true, initial_enabled, None);
+    let quit_item = MenuItem::new("Quit", true, None);
+    let menu = Menu::new();
+    menu.append(&enabled_item).ok();
+    menu.append(&PredefinedMenuItem::separator()).ok();
+    menu.append(&fallback_menu).ok();
+    menu.append(&PredefinedMenuItem::separator()).ok();
+    menu.append(&quit_item).ok();
+
     let tray = TrayIconBuilder::new()
-        .with_icon(initial)
+        .with_icon(initial_icon)
         .with_tooltip("rhe")
+        .with_menu(Box::new(menu))
         .build()
         .expect("failed to build tray icon");
 
     #[cfg(target_os = "macos")]
     tray.set_icon_as_template(false);
 
-    let rx = TrayIconEvent::receiver();
-
-    event_loop.run(move |_event, _, control_flow| {
-        *control_flow = ControlFlow::WaitUntil(
-            std::time::Instant::now() + std::time::Duration::from_millis(50),
-        );
-
-        while let Ok(tray_event) = rx.try_recv() {
-            if let TrayIconEvent::Click {
-                button_state: MouseButtonState::Up,
-                ..
-            } = tray_event
-            {
-                let now = !enabled.load(Ordering::Relaxed);
-                enabled.store(now, Ordering::Relaxed);
-
-                let icon = if now {
-                    icon_on.clone()
-                } else {
-                    icon_off.clone()
-                };
-                tray.set_icon(Some(icon)).ok();
-
-                let state = if now { "ON" } else { "OFF" };
-                eprintln!("rhe: {}", state);
+    // Bridge tray-icon's menu channel into the tao event loop so menu
+    // clicks trigger a UserEvent without us polling.
+    let proxy = event_loop.create_proxy();
+    std::thread::spawn(move || {
+        let rx = MenuEvent::receiver();
+        while let Ok(event) = rx.recv() {
+            if proxy.send_event(TrayEvent::Menu(event.id)).is_err() {
+                break; // event loop closed
             }
+        }
+    });
+
+    let enabled_id = enabled_item.id().clone();
+    let quit_id = quit_item.id().clone();
+    let autospell_id = autospell_item.id().clone();
+    let ipa_id = ipa_item.id().clone();
+
+    event_loop.run(move |event, _, control_flow| {
+        // Pure event-driven — block until a real event arrives.
+        *control_flow = ControlFlow::Wait;
+
+        if let Event::UserEvent(user_event) = event {
+            match user_event {
+                TrayEvent::Menu(id) if id == enabled_id => {
+                    let now = !enabled.load(Ordering::Relaxed);
+                    enabled.store(now, Ordering::Relaxed);
+                    enabled_item.set_checked(now);
+                    let icon = if now { icon_on.clone() } else { icon_off.clone() };
+                    tray.set_icon(Some(icon)).ok();
+                    eprintln!("rhe: {} (tray)", if now { "enabled" } else { "disabled" });
+                }
+                TrayEvent::Menu(id) if id == quit_id => {
+                    eprintln!("rhe: quit from tray");
+                    quit.store(true, Ordering::Relaxed);
+                    *control_flow = ControlFlow::Exit;
+                }
+                // Fallback mode: mutually exclusive check items. Clicking
+                // either one selects it and unchecks the other; clicking
+                // the already-selected one is a no-op (we re-assert the
+                // check so it can't be toggled off into an invalid state).
+                TrayEvent::Menu(id) if id == autospell_id => {
+                    fallback.store(FallbackMode::Autospell.as_u8(), Ordering::Relaxed);
+                    autospell_item.set_checked(true);
+                    ipa_item.set_checked(false);
+                    eprintln!("rhe: fallback → autospell (tray)");
+                }
+                TrayEvent::Menu(id) if id == ipa_id => {
+                    fallback.store(FallbackMode::Ipa.as_u8(), Ordering::Relaxed);
+                    autospell_item.set_checked(false);
+                    ipa_item.set_checked(true);
+                    eprintln!("rhe: fallback → IPA (tray)");
+                }
+                TrayEvent::StateChanged => {
+                    // Engine thread toggled enabled (e.g. caps tap).
+                    let current = enabled.load(Ordering::Relaxed);
+                    enabled_item.set_checked(current);
+                    let icon = if current {
+                        icon_on.clone()
+                    } else {
+                        icon_off.clone()
+                    };
+                    tray.set_icon(Some(icon)).ok();
+                }
+                _ => {}
+            }
+        }
+
+        if quit.load(Ordering::Relaxed) {
+            *control_flow = ControlFlow::Exit;
         }
     });
 }

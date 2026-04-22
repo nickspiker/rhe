@@ -212,7 +212,7 @@ physical key change = one event = one state machine transition.
 
 ```
 cargo run --release -- tutor     learn the chords
-cargo run --release -- run       full engine (macOS menu bar, Linux Esc-to-quit)
+cargo run --release -- run       full engine (tray icon on macOS + Linux)
 cargo run --bin gen_briefs       regenerate roll assignments
 cargo test                       verify everything
 ```
@@ -238,16 +238,23 @@ sudo modprobe -r uinput && sudo modprobe uinput
 ```
 
 Log out and back in (or `newgrp input`) for the group change to
-apply. `rhe tutor` and `rhe run` both work on Linux. A tray/menu-bar
-toggle isn't wired up yet — on Linux, press **Esc** during `rhe run`
-to quit.
+apply. `rhe tutor` and `rhe run` both work on Linux.
 
-For words that resolve to IPA (phonemes that aren't in the English
-dictionary), rhe falls back to GTK/Qt/IBus unicode input (`Ctrl+Shift+U
-<hex> Enter`). That works in GUI apps but looks like keyboard
-gibberish in terminals, where `Ctrl+U` means "kill line". Set
-`RHE_UNICODE_FALLBACK=off` to suppress the fallback — unmapped chars
-drop silently with a stderr log line.
+`rhe run` shows a tray icon (StatusNotifierItem) with a right-click
+menu: enable/disable toggle, fallback-mode selector (Autospell / IPA),
+and quit. The tray works out of the box on KDE, XFCE, Cinnamon, and
+MATE; on GNOME, install and enable `gnome-shell-extension-appindicator`.
+Tapping Caps Lock also toggles enabled without having to click the
+menu, and Caps+Esc quits.
+
+Out-of-dictionary words fall back to either English-approximate ASCII
+spelling (Autospell, default) or raw IPA unicode. IPA mode injects
+via the GTK/Qt/IBus `Ctrl+Shift+U <hex> Enter` sequence — that works
+in GUI apps but looks like keyboard gibberish in terminals, where
+`Ctrl+U` means "kill line". Pick the mode that matches where you're
+typing (tray menu, live). Set `RHE_FALLBACK=ipa` to start in IPA mode;
+set `RHE_UNICODE_FALLBACK=off` to drop unmapped chars silently instead
+of using the Ctrl+Shift+U path.
 
 ## Roadmap
 
@@ -274,6 +281,11 @@ Done:
 - **Linux `rhe run`** — full engine on Linux (evdev grab + uinput
   injection). Caps Lock tap toggles rhe enabled/disabled, Caps+Esc
   quits. Esc alone passes through to the focused app.
+- **Cross-platform tray menu** — StatusNotifierItem on Linux / native
+  NSStatusItem on macOS via `tray-icon`. Right-click for enable/disable,
+  fallback-mode selector (Autospell ↔ IPA), and quit. Fully
+  event-driven — the tao event loop sleeps until a menu click or a
+  caps-tap proxy nudge fires.
 - **Random practice text** — tutor fetches 20 random Wikipedia
   article extracts via the MediaWiki batch API, strips brackets/
   parentheticals/non-ASCII, dedupes, caches to
@@ -292,24 +304,24 @@ Short-term:
   for `%`, `°`, `e`, `π`, etc.
 - **Operators and symbols** — extended chord set for math, punctuation,
   and common programmer symbols, accessible via mode-switch chords.
-- **Caps Lock 3-mode cycle + LED indicator** — expand the current
-  2-state toggle into a 3-mode cycle (off / rhe-dict / rhe-CAPS).
-  Drive the caps-lock LED via `EV_LED` writes to signal mode visually
-  on the keyboard itself — works on X11, Wayland, and bare TTY.
 - **Brief generator improvements** — rework the brief-selection
   scoring to (a) exclude natural-split 2-phoneme words where the
   brief gesture equals the phoneme gesture (wasted slot), (b) rank
   chord slots by ergonomic cost (finger count + tendon-conflict
   skip patterns), and (c) match value-ranked words to cost-ranked
   slots pairwise rather than bit-order.
-- **IPA-only output mode** — toolbar toggle that always emits IPA
-  phonemes regardless of dictionary match. For linguistic work,
-  phonetic transcription, etc.
-- **Linux tray/system-wide toggle** — GTK indicator or similar so
-  `rhe run` on Linux can be toggled on/off like the macOS menu bar.
 
 Longer-term:
 
+- **Down-order chord slots** — rolls are already ordered in muscle
+  memory (the bench measures per-order speed), but the current chord
+  key throws that information away. Carry the down-order permutation
+  alongside the key set so each N-finger chord becomes N! slots
+  (2-finger → 2, 3-finger → 6, 4-finger → 24). Down-edges only —
+  release ordering stays unconstrained since users don't control it
+  consciously. Start by only applying this to briefs (both-hands,
+  word-not-held) and letting `gen_briefs` score orderings by their
+  bench timings, so only fast distinguishable orderings get populated.
 - **256-bit keymask** — generalize the chord representation from
   9-bit home-row to a full 256-bit HID usage bitmask. Lets users
   bind any chord on any physical key to any action (phoneme, brief,

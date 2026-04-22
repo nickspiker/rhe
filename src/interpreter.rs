@@ -3,6 +3,51 @@
 use crate::chord_map::{BriefTable, ChordKey, Phoneme, PhonemeTable};
 use crate::state_machine::Event;
 use crate::table_gen::PhonemeDictionary;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
+
+/// What to emit when a phoneme buffer doesn't resolve to a dictionary word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FallbackMode {
+    /// Approximate English grapheme spelling (e.g. "muhlee"). Always ASCII,
+    /// always representable in any keyboard layout. Default.
+    Autospell,
+    /// Raw IPA characters (e.g. "mɛliː"). Accurate phonetically but
+    /// requires unicode input or a compatible keymap on the output side.
+    Ipa,
+}
+
+impl FallbackMode {
+    /// Resolve from the `RHE_FALLBACK` env var. Defaults to `Autospell`.
+    /// Values: "ipa" or "phonetic" → Ipa; anything else → Autospell.
+    pub fn from_env() -> Self {
+        match std::env::var("RHE_FALLBACK").as_deref() {
+            Ok("ipa") | Ok("phonetic") | Ok("IPA") => Self::Ipa,
+            _ => Self::Autospell,
+        }
+    }
+
+    pub fn as_u8(self) -> u8 {
+        match self {
+            Self::Autospell => 0,
+            Self::Ipa => 1,
+        }
+    }
+
+    pub fn from_u8(raw: u8) -> Self {
+        match raw {
+            1 => Self::Ipa,
+            _ => Self::Autospell,
+        }
+    }
+
+    /// Shared handle seeded from `RHE_FALLBACK`. The tray and interpreter
+    /// both hold a clone of this `Arc` so the menu can flip the mode at
+    /// runtime without restarting the engine.
+    pub fn new_shared_from_env() -> Arc<AtomicU8> {
+        Arc::new(AtomicU8::new(Self::from_env().as_u8()))
+    }
+}
 
 /// Output actions to send to the OS.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,16 +71,29 @@ pub struct Interpreter {
     dictionary: PhonemeDictionary,
     buffer: Vec<Phoneme>,
     emit_history: Vec<usize>, // stack of emitted char counts for multi-backspace
+    fallback: Arc<AtomicU8>,
 }
 
 impl Interpreter {
+    /// Seed the fallback from the `RHE_FALLBACK` env var. The returned
+    /// interpreter owns its own atomic — no runtime switching from outside.
     pub fn new(phonemes: PhonemeTable, briefs: BriefTable, dictionary: PhonemeDictionary) -> Self {
+        Self::with_fallback(phonemes, briefs, dictionary, FallbackMode::new_shared_from_env())
+    }
+
+    pub fn with_fallback(
+        phonemes: PhonemeTable,
+        briefs: BriefTable,
+        dictionary: PhonemeDictionary,
+        fallback: Arc<AtomicU8>,
+    ) -> Self {
         Self {
             phonemes,
             briefs,
             dictionary,
             buffer: Vec::new(),
             emit_history: Vec::new(),
+            fallback,
         }
     }
 
@@ -71,8 +129,16 @@ impl Interpreter {
                     let text = if let Some(word) = self.dictionary.lookup(&phonemes) {
                         format!("{} ", word)
                     } else {
-                        let ipa: String = phonemes.iter().map(|p| p.to_ipa()).collect();
-                        format!("{} ", ipa)
+                        let mode = FallbackMode::from_u8(self.fallback.load(Ordering::Relaxed));
+                        let fallback: String = match mode {
+                            FallbackMode::Autospell => {
+                                phonemes.iter().map(|p| p.to_grapheme()).collect()
+                            }
+                            FallbackMode::Ipa => {
+                                phonemes.iter().map(|p| p.to_ipa()).collect()
+                            }
+                        };
+                        format!("{} ", fallback)
                     };
                     self.emit_history.push(text.chars().count());
                     Some(Action::Emit(text))
