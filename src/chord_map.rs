@@ -409,13 +409,15 @@ impl BriefTable {
         self.unordered.get(&key).map(String::as_str)
     }
 
-    /// Iterate over every (chord, word) pair, ordered or not. Ordered
-    /// entries appear once per (chord, first_down) variant. Used by the
-    /// tutor for reverse word→chord lookup, by `rhe briefs` for display.
-    pub fn iter(&self) -> impl Iterator<Item = (&ChordKey, &String)> {
+    /// Iterate every (chord, first_down, word) entry. Unordered briefs
+    /// yield `first_down = None`; ordered briefs yield the required
+    /// first-down scancode. Used by the tutor for reverse word→chord
+    /// lookup, and by `rhe briefs` for display.
+    pub fn iter(&self) -> impl Iterator<Item = (&ChordKey, Option<u8>, &String)> {
         self.unordered
             .iter()
-            .chain(self.ordered.iter().map(|((k, _), v)| (k, v)))
+            .map(|(k, v)| (k, None, v))
+            .chain(self.ordered.iter().map(|((k, fd), v)| (k, Some(*fd), v)))
     }
 }
 

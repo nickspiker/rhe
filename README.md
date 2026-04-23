@@ -87,6 +87,77 @@ backspaces the trailing space, appends itself, adds a new space.
 Inflected forms ("looking", "wanted", "tries") are excluded from
 rolls — use base word + suffix instead.
 
+### Ordered briefs (homophone splits)
+
+English is riddled with homophones — `to/too/two`, `no/know`,
+`here/hear`, `right/write`, `for/four/fore`, `there/their`,
+`read/red`, `by/buy/bye`, and so on. They share phoneme sequences,
+so the phoneme path can only ever reach one of them (the most
+frequent). Unordered briefs would give each word its own chord,
+burning slots and obscuring the fact that they *are* the same
+sound.
+
+Ordered briefs put every member of a homophone set on the **same**
+chord, distinguished by which key the user presses first.
+
+**Finger difficulty for leading a chord** (easiest → hardest):
+
+```
+thumb < pinky < index < middle < ring
+```
+
+Thumb is the easiest lead because it's strong and independent.
+Pinky has its own tendon and drops first cleanly. Ring is
+tendon-coupled to middle and the hardest finger to move alone.
+
+**Assignment rule**: easiest-available lead gets the most common
+word, hardest-available gets the rare variant. For 3-way sets the
+middle-difficulty finger gets the middle-frequency word.
+
+Examples:
+
+```
+to / too / two       R-idx + R-mid + thumb
+                       thumb-first  → "to"     (most common, easiest lead)
+                       index-first  → "too"
+                       middle-first → "two"    (rarest, hardest lead)
+
+in / inn             R-mid + thumb
+                       thumb-first  → "in"
+                       middle-first → "inn"    (middle = hardest here)
+
+there / their        R-mid + R-ring + thumb
+                       thumb-first  → "there"
+                       ring-first   → "their"  (ring = hardest)
+
+for / four / fore    all four right-hand fingers
+                       pinky-first  → "for"
+                       middle-first → "four"
+                       ring-first   → "fore"
+
+no / know            L-mid + R-mid (symmetric split — hand-dominance rule)
+                       right-lead   → "no"     (right hand = more common)
+                       left-lead    → "know"
+```
+
+The symmetric same-finger-per-hand splits (no/know, here/hear,
+right/write) use right-lead = more common instead of the difficulty
+ranking, because both fingers in a symmetric pair are the same and
+thus equally hard.
+
+Curated in [`src/ordered_briefs_data.rs`](src/ordered_briefs_data.rs).
+Each entry claims its chord slot — unordered briefs can't assign
+to a claimed slot, so there's always one canonical word mapping
+per chord. Every `gen_briefs` run also emits
+[`data/homophones.txt`](data/homophones.txt) listing every CMU
+collision set among the candidate pool, so new pairs are easy to
+spot and add.
+
+Tutor display: when the target is an ordered brief, the cell for
+the first-down key renders at full brightness and the rest of the
+target keys dim to the dot colour. The brighter cell is the
+"press this one first" hint, no extra steps needed.
+
 ## Consonants
 
 Mapped by frequency × measured chord effort. No voicing pairs —
@@ -286,8 +357,27 @@ Done:
   right-only and two-hand slots ordered by measured effort
 - **Suffix system** — 15 left-hand suffixes (-s, -ed, -ing, -ly, etc.)
   ordered by measured effort, inflected forms auto-excluded from rolls
-- **Brief generator** — `gen_briefs` with pinned overrides, stemming,
-  proper noun exclusion, value-based ranking
+- **Brief generator** — `gen_briefs` with stemming, proper-noun
+  exclusion, and a unified greedy pass ranking candidate words by
+  `frequency × (phonemes - 1)` against slots sorted by ergonomic
+  effort. Writes `src/briefs_data.rs`.
+- **Curated candidates file** — `data/brief_candidates.txt` is the
+  editable source of truth for which words get briefs. `gen_briefs`
+  writes it on first run (top-1000, savings-weighted) and reads it
+  thereafter; delete lines you don't want, delete the file to
+  regenerate defaults.
+- **Homophone collision report** — `gen_briefs` emits
+  `data/homophones.txt` every run, listing every CMU phoneme-sequence
+  set that has multiple frequency-listed words. Scoped to sets
+  reachable via a candidate word so it stays useful, not noisy.
+- **Ordered briefs** — chord slots can carry multiple words
+  distinguished by which key lands first. 2-way homophones
+  (no/know, here/hear, right/write) use symmetric same-finger-per-
+  hand split chords; 3-way sets (to/too/two, for/four/fore) use
+  single-hand 3- or 4-finger chords with outer-left / outer-right /
+  center leads. Curated in `src/ordered_briefs_data.rs`; the tutor
+  brightens the first-down cell so the ordering is obvious at a
+  glance.
 - **Linux text output** — libxkbcommon reverse-map + uinput injection
   for Latin output in the user's active layout (Dvorak/Colemak/any),
   with `Ctrl+Shift+U <hex> Enter` fallback for IPA and other unicode
@@ -326,18 +416,28 @@ Short-term:
   chord slots by ergonomic cost (finger count + tendon-conflict
   skip patterns), and (c) match value-ranked words to cost-ranked
   slots pairwise rather than bit-order.
+- **Shifted-right alternate layout** — the left hand stays on A S D F
+  but the right hand moves two keys right (onto L ; ' \\ instead of
+  J K L ;). Thumbs swap roles: left thumb becomes the mod/voicing
+  bit (spacebar), right thumb becomes the word key (alt / cmd).
+  Reason: wider hand separation is more ergonomic for some users,
+  the inner-index stretches (G H) are freed for number-mode digits
+  without stealing from the chord keyspace, and putting the word
+  key on the dominant-hand thumb may speed up phoneme-mode entry.
+  Switchable per-user via the eventual config file — or a build-
+  time flag until config lands.
 
 Longer-term:
 
-- **Down-order chord slots** — rolls are already ordered in muscle
-  memory (the bench measures per-order speed), but the current chord
-  key throws that information away. Carry the down-order permutation
-  alongside the key set so each N-finger chord becomes N! slots
-  (2-finger → 2, 3-finger → 6, 4-finger → 24). Down-edges only —
-  release ordering stays unconstrained since users don't control it
-  consciously. Start by only applying this to briefs (both-hands,
-  word-not-held) and letting `gen_briefs` score orderings by their
-  bench timings, so only fast distinguishable orderings get populated.
+- **Full down-order chord slots** — a first cut shipped as "ordered
+  briefs" (see Done): we track the *first* key to go down and use
+  that to disambiguate between words sharing a chord. The full
+  feature would carry the entire down-order permutation so each
+  N-finger chord becomes N! slots (2-finger → 2, 3-finger → 6,
+  4-finger → 24). Down-edges only — release ordering stays
+  unconstrained since users don't control it consciously. Would let
+  a single chord shape hold 6+ distinct words ranked by roll order
+  rather than just 2.
 - **256-bit keymask** — generalize the chord representation from
   9-bit home-row to a full 256-bit HID usage bitmask. Lets users
   bind any chord on any physical key to any action (phoneme, brief,

@@ -38,6 +38,12 @@ struct Target {
     right: u8, // 5 bits: index=0, middle=1, ring=2, pinky=3, thumb=4
     left: u8,  // 4 bits: pinky=3, ring=2, middle=1, index=0
     word: bool,
+    /// Set of scancodes any of which is an acceptable lead finger for
+    /// this ordered brief. Empty mask = no ordering constraint (phoneme
+    /// steps, commit steps, unordered briefs). A word may list multiple
+    /// leads (e.g. "four" on R-idx or R-mid); the tutor accepts any of
+    /// them and brightens every one of those cells in the display.
+    accepted_leads: KeyMask,
 }
 
 impl Target {
@@ -222,12 +228,12 @@ impl Practice {
 
 // ─── Main loop ───
 
-pub fn run_tutor() {
+pub fn run_tutor(test_mode: bool) {
     let cmudict = crate::data::load_cmudict();
     let freq_data = crate::data::load_word_freq();
     let lookup = WordLookup::new(&cmudict);
     let brief_table = crate::briefs::load_briefs();
-    let practice = build_practice(&lookup, &brief_table);
+    let practice = build_practice(&lookup, &brief_table, test_mode);
 
     terminal::enable_raw_mode().unwrap();
     io::stdout().execute(EnterAlternateScreen).unwrap();
@@ -272,12 +278,27 @@ pub fn run_tutor() {
     // actually attempted the chord (rather than just releasing old fingers).
     let mut touched_right: u8 = 0;
     let mut touched_left: u8 = 0;
+    // First chord-key scancode pressed during the current step. Set on
+    // the first key-down when the touched-tracker was empty, cleared on
+    // step transition. Used to verify ordered briefs — if the target's
+    // `first_down` is Some(X), the user's first press must match X.
+    let mut tutor_first_down: Option<u8> = None;
     let mut fingers_during_word = false;
     let mut last_was_botch = false; // true if last word output was IPA fallback
 
     // Initial draw
     terminal
-        .draw(|f| draw(f, &practice, false, &key_state, &display_phonemes, &display_briefs))
+        .draw(|f| {
+            draw(
+                f,
+                &practice,
+                false,
+                &key_state,
+                tutor_first_down,
+                &display_phonemes,
+                &display_briefs,
+            )
+        })
         .ok();
 
     loop {
@@ -448,6 +469,14 @@ pub fn run_tutor() {
                     // hand_touched to reflect *fresh* key-downs in this step,
                     // otherwise abandon fires on a pure release of carryover.
                     if is_key_down {
+                        // Record the very first key pressed this step so we
+                        // can enforce ordered-brief targets.
+                        if tutor_first_down.is_none()
+                            && (scan::right_bit(rhe_event.scan).is_some()
+                                || scan::left_bit(rhe_event.scan).is_some())
+                        {
+                            tutor_first_down = Some(rhe_event.scan);
+                        }
                         if let Some(bit) = scan::right_bit(rhe_event.scan) {
                             touched_right |= 1u8 << bit;
                         } else if let Some(bit) = scan::left_bit(rhe_event.scan) {
@@ -508,10 +537,29 @@ pub fn run_tutor() {
                         }
                     } else if acc_matches && hand_touched {
                         // Chord complete — union of pressed keys equals target.
-                        // Advances to the following commit step where the user
-                        // must release everything to finalise the word.
-                        log.push("  → MATCH".to_string());
-                        practice.advance_step();
+                        // Ordered briefs also require the user's first-down
+                        // key to be one of the target's accepted leads.
+                        // Empty accepted_leads = no ordering constraint.
+                        let first_down_ok = target.accepted_leads.is_empty()
+                            || tutor_first_down
+                                .map(|fd| target.accepted_leads.test(fd))
+                                .unwrap_or(false);
+                        if !first_down_ok {
+                            log.push(format!(
+                                "  → RESET (wrong lead: got {:?}, want one of {:?})",
+                                tutor_first_down, target.accepted_leads
+                            ));
+                            practice.reset_word();
+                            last_was_botch = true;
+                            if !all_off {
+                                errored = true;
+                            }
+                        } else {
+                            // Advances to the following commit step where the user
+                            // must release everything to finalise the word.
+                            log.push("  → MATCH".to_string());
+                            practice.advance_step();
+                        }
                     } else if hand_touched && target_hands_empty && !is_key_down {
                         log.push("  → RESET (chord abandoned)".to_string());
                         practice.reset_word();
@@ -539,6 +587,10 @@ pub fn run_tutor() {
             }
             touched_right = 0;
             touched_left = 0;
+            // `first_down` is scoped to the current step too — whatever
+            // the user led with on the prior step is irrelevant to the
+            // next one.
+            tutor_first_down = None;
         }
 
         // Hand-zero accumulator reset runs AFTER the step handler so abandon
@@ -549,10 +601,23 @@ pub fn run_tutor() {
         if key_state.left_bits() == 0 {
             chord_left_acc = 0;
         }
+        if key_state.right_bits() == 0 && key_state.left_bits() == 0 {
+            tutor_first_down = None;
+        }
 
         // Draw after every event
         terminal
-            .draw(|f| draw(f, &practice, errored, &key_state, &display_phonemes, &display_briefs))
+            .draw(|f| {
+                draw(
+                    f,
+                    &practice,
+                    errored,
+                    &key_state,
+                    tutor_first_down,
+                    &display_phonemes,
+                    &display_briefs,
+                )
+            })
             .ok();
     }
 
@@ -566,35 +631,73 @@ pub fn run_tutor() {
 
 // ─── Build practice steps ───
 
-fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
-    let wiki = crate::wiki::load_sentences();
-    let fallback = [
-        "alice was beginning to get very tired of sitting by her sister on the bank",
-        "and of having nothing to do once or twice she had into the book",
-        "her sister was reading but it had no pictures or conversations in it",
-        "and what is the use of a book thought alice without pictures or conversations",
-        "so she was considering in her own mind as well as she could",
-        "for the hot day made her feel very and stupid",
-        "whether the pleasure of making a daisy chain would be worth the trouble",
-        "of getting up and picking the when suddenly a white rabbit",
-        "with pink eyes ran close by her there was nothing so very remarkable in that",
-        "nor did alice think it so very much out of the way to hear the rabbit say",
-        "oh dear oh dear i shall be late when she thought it over afterwards",
-        "it occurred to her that she ought to have wondered at this",
-        "but at the time it all seemed quite natural",
-        "but when the rabbit actually took a watch out of its pocket and looked at it",
-        "and then hurried on alice started to her feet",
-        "for it flashed across her mind that she had never before seen a rabbit",
-        "with either a pocket or a watch to take out of it",
-        "and burning with curiosity she ran across the field after it",
-        "and fortunately was just in time to see it pop down a large rabbit hole",
-        "under the hedge in another moment down went alice after it",
+fn build_practice(
+    lookup: &WordLookup,
+    brief_table: &BriefTable,
+    test_mode: bool,
+) -> Practice {
+    // Curated drill sentences that exercise every ordered-brief pair
+    // plus some plain rolls. Used by `rhe tutor test` — reproducible,
+    // offline, and short enough to cycle through while iterating on
+    // chord designs or (eventually) number mode.
+    const TEST_SENTENCES: &[&str] = &[
+        "you and the to too two tests for four and fore here",
+        "i would not know if you could read this but i will try",
+        "we went to the store to buy a new book but bye for now",
+        "here hear me out i need to see the sea clearly",
+        "write what is right then we can hear here again",
+        "there is something over there their book is here",
+        "four is the number for sure and not just fore",
+        "in the inn we would like to find some food",
+        "he will do what is due when it is time",
+        "the butt of the joke is but a small thing",
+        "you will knot the rope i know you will",
+        "i can be busy like a bee all day long",
+        "our hour of practice is almost done now",
+        "where will you wear that fine new jacket",
+        "i knew about the new car before you did",
+        "this week i feel weak but i will push through",
+        "you would find wood by the stream nearby",
+        "the whole team found the hole in the wall",
+        "last night the knight won the fight easily",
+        "he felt through the door and threw it open",
+        "which witch is which i cannot tell which",
+        "i had to wait for the weight to settle down",
+        "the son watches the sun rise each morning",
+        "we will meet for a piece of meat tonight",
     ];
 
-    let common_text: Vec<String> = if !wiki.is_empty() {
-        wiki
+    let common_text: Vec<String> = if test_mode {
+        TEST_SENTENCES.iter().map(|s| s.to_string()).collect()
     } else {
-        fallback.iter().map(|s| s.to_string()).collect()
+        let wiki = crate::wiki::load_sentences();
+        if !wiki.is_empty() {
+            wiki
+        } else {
+            const FALLBACK: &[&str] = &[
+                "alice was beginning to get very tired of sitting by her sister on the bank",
+                "and of having nothing to do once or twice she had into the book",
+                "her sister was reading but it had no pictures or conversations in it",
+                "and what is the use of a book thought alice without pictures or conversations",
+                "so she was considering in her own mind as well as she could",
+                "for the hot day made her feel very and stupid",
+                "whether the pleasure of making a daisy chain would be worth the trouble",
+                "of getting up and picking the when suddenly a white rabbit",
+                "with pink eyes ran close by her there was nothing so very remarkable in that",
+                "nor did alice think it so very much out of the way to hear the rabbit say",
+                "oh dear oh dear i shall be late when she thought it over afterwards",
+                "it occurred to her that she ought to have wondered at this",
+                "but at the time it all seemed quite natural",
+                "but when the rabbit actually took a watch out of its pocket and looked at it",
+                "and then hurried on alice started to her feet",
+                "for it flashed across her mind that she had never before seen a rabbit",
+                "with either a pocket or a watch to take out of it",
+                "and burning with curiosity she ran across the field after it",
+                "and fortunately was just in time to see it pop down a large rabbit hole",
+                "under the hedge in another moment down went alice after it",
+            ];
+            FALLBACK.iter().map(|s| s.to_string()).collect()
+        }
     };
 
     let mut sentences: Vec<Vec<PracticeWord>> = Vec::new();
@@ -642,7 +745,7 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
                     } else if is_right && last_right_used {
                         // Right reused after left steps — insert right=0 release
                         phoneme_steps.push(Step {
-                            target: Target { right: 0, left: 0, word: true },
+                            target: Target { right: 0, left: 0, word: true, accepted_leads: KeyMask::EMPTY },
                             phoneme: None,
                             space_only: false,
                         });
@@ -652,14 +755,14 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
                     } else if is_left && last_left_used {
                         // Left reused after right steps — insert left=0 release
                         phoneme_steps.push(Step {
-                            target: Target { right: 0, left: 0, word: true },
+                            target: Target { right: 0, left: 0, word: true, accepted_leads: KeyMask::EMPTY },
                             phoneme: None,
                             space_only: false,
                         });
                     }
 
                     phoneme_steps.push(Step {
-                        target: Target { right, left, word: true },
+                        target: Target { right, left, word: true, accepted_leads: KeyMask::EMPTY },
                         phoneme: Some(phoneme),
                         space_only: false,
                     });
@@ -676,35 +779,48 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
                     space_only: true,
                 });
 
-                // Build brief steps (no word key) if brief exists
+                // Build brief steps (no word key) if brief exists. A
+                // word may have multiple ordered entries on the same
+                // chord (e.g. "four" accepts either R-idx or R-mid as
+                // lead); collect every acceptable lead scancode.
                 let brief_steps = {
-                    let mut found = None;
-                    for (key, brief_word) in brief_table.iter() {
-                        if brief_word.trim() == clean {
-                            // Found brief for this word
-                            let right =
-                                key.right_bits() | if key.has_mod() { 1u8 << 4 } else { 0 };
-                            let left = key.left_bits();
-                            found = Some(vec![
-                                Step {
-                                    target: Target {
-                                        right,
-                                        left,
-                                        word: false,
-                                    },
-                                    phoneme: None,
-                                    space_only: false,
-                                },
-                                Step {
-                                    target: Target::default(), // all off
-                                    phoneme: None,
-                                    space_only: false,
-                                },
-                            ]);
-                            break;
+                    let mut chord_for_word: Option<(u8, u8)> = None;
+                    let mut leads = KeyMask::EMPTY;
+                    for (key, first_down, brief_word) in brief_table.iter() {
+                        if brief_word.trim() != clean {
+                            continue;
+                        }
+                        let right = key.right_bits()
+                            | if key.has_mod() { 1u8 << 4 } else { 0 };
+                        let left = key.left_bits();
+                        match chord_for_word {
+                            None => chord_for_word = Some((right, left)),
+                            Some(existing) if existing != (right, left) => continue,
+                            _ => {}
+                        }
+                        if let Some(fd) = first_down {
+                            leads.set(fd);
                         }
                     }
-                    found
+                    chord_for_word.map(|(right, left)| {
+                        vec![
+                            Step {
+                                target: Target {
+                                    right,
+                                    left,
+                                    word: false,
+                                    accepted_leads: leads,
+                                },
+                                phoneme: None,
+                                space_only: false,
+                            },
+                            Step {
+                                target: Target::default(), // all off
+                                phoneme: None,
+                                space_only: false,
+                            },
+                        ]
+                    })
                 };
 
                 // Build suffix steps: roll(base) + suffix chord + all-off
@@ -730,43 +846,54 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
                             ];
 
                             for base in &bases {
-                                // Find roll for base
-                                for (key, brief_word) in brief_table.iter() {
-                                    if brief_word.trim() == base {
-                                        let r = key.right_bits()
-                                            | if key.has_mod() { 1u8 << 4 } else { 0 };
-                                        let l = key.left_bits();
-                                        let steps = vec![
-                                            // Roll for base (no word key)
-                                            Step {
-                                                target: Target { right: r, left: l, word: false },
-                                                phoneme: None,
-                                                space_only: false,
-                                            },
-                                            // All off between roll and suffix
-                                            Step {
-                                                target: Target::default(),
-                                                phoneme: None,
-                                                space_only: false,
-                                            },
-                                            // Suffix chord (left hand only, no word key)
-                                            Step {
-                                                target: Target { right: 0, left: suffix_bits, word: false },
-                                                phoneme: None,
-                                                space_only: false,
-                                            },
-                                            // All off
-                                            Step {
-                                                target: Target::default(),
-                                                phoneme: None,
-                                                space_only: false,
-                                            },
-                                        ];
-                                        found = (Some(steps), Some(format!("~{}", suffix_str)));
-                                        break;
+                                // Find roll for base. Collect every
+                                // acceptable lead (multiple ordered
+                                // entries may share a chord for the
+                                // same word).
+                                let mut base_chord: Option<(u8, u8)> = None;
+                                let mut base_leads = KeyMask::EMPTY;
+                                for (key, first_down, brief_word) in brief_table.iter() {
+                                    if brief_word.trim() != base {
+                                        continue;
+                                    }
+                                    let r = key.right_bits()
+                                        | if key.has_mod() { 1u8 << 4 } else { 0 };
+                                    let l = key.left_bits();
+                                    match base_chord {
+                                        None => base_chord = Some((r, l)),
+                                        Some(existing) if existing != (r, l) => continue,
+                                        _ => {}
+                                    }
+                                    if let Some(fd) = first_down {
+                                        base_leads.set(fd);
                                     }
                                 }
-                                if found.0.is_some() { break; }
+                                if let Some((r, l)) = base_chord {
+                                    let steps = vec![
+                                        Step {
+                                            target: Target { right: r, left: l, word: false, accepted_leads: base_leads },
+                                            phoneme: None,
+                                            space_only: false,
+                                        },
+                                        Step {
+                                            target: Target::default(),
+                                            phoneme: None,
+                                            space_only: false,
+                                        },
+                                        Step {
+                                            target: Target { right: 0, left: suffix_bits, word: false, accepted_leads: KeyMask::EMPTY },
+                                            phoneme: None,
+                                            space_only: false,
+                                        },
+                                        Step {
+                                            target: Target::default(),
+                                            phoneme: None,
+                                            space_only: false,
+                                        },
+                                    ];
+                                    found = (Some(steps), Some(format!("~{}", suffix_str)));
+                                    break;
+                                }
                             }
                             if found.0.is_some() { break; }
                         }
@@ -801,8 +928,13 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
         .into_iter()
         .filter(|&idx| idx < sentences.len())
         .collect();
+    // Test mode starts deterministically at sentence 0 so drill order
+    // is reproducible run-to-run. Normal mode randomizes so the user
+    // doesn't start at the same page every session.
     let sentence_idx = if valid_starts.is_empty() {
         0
+    } else if test_mode {
+        valid_starts[0]
     } else {
         let seed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -851,6 +983,11 @@ fn draw(
     practice: &Practice,
     errored: bool,
     key_state: &KeyState,
+    // The scancode the user actually pressed first in this chord
+    // attempt (same value tracked by the tutor's main loop). Used by
+    // the adaptive cell labels to look up ordered briefs correctly
+    // when the user is mid-chord.
+    tutor_first_down: Option<u8>,
     phonemes: &PhonemeTable,
     briefs: &BriefTable,
 ) {
@@ -934,12 +1071,12 @@ fn draw(
         );
 
         // Keyboard: all dark when errored, otherwise show target
-        let (tr, tl, tw) = if errored {
-            (0u8, 0u8, false)
+        let (tr, tl, tw, tleads) = if errored {
+            (0u8, 0u8, false, KeyMask::EMPTY)
         } else if let Some(step) = practice.current_step() {
-            (step.target.right, step.target.left, step.target.word)
+            (step.target.right, step.target.left, step.target.word, step.target.accepted_leads)
         } else {
-            (0, 0, false)
+            (0, 0, false, KeyMask::EMPTY)
         };
         draw_keyboard(
             frame,
@@ -947,9 +1084,11 @@ fn draw(
             tr,
             tl,
             tw,
+            tleads,
             key_state.right_bits(),
             key_state.left_bits(),
             key_state.word,
+            tutor_first_down,
             Some((phonemes, briefs)),
         );
     }
@@ -961,9 +1100,18 @@ fn draw_keyboard(
     target_right: u8, // 5 bits
     target_left: u8,  // 4 bits
     target_word: bool,
+    // For ordered briefs, the set of scancodes that are acceptable
+    // first-down leads. Cells for these keys render at full brightness;
+    // other target cells dim to the dot colour as a "press one of the
+    // bright ones first" cue. Empty mask = no ordering constraint.
+    target_accepted_leads: KeyMask,
     held_right: u8, // 5 bits
     held_left: u8,  // 4 bits
     held_word: bool,
+    // Live first-down key the user has pressed for the current chord
+    // attempt. Passed to the brief lookup for adaptive labels so
+    // claimed (ordered) chords resolve to the correct word mid-roll.
+    user_first_down: Option<u8>,
     // Adaptive labels: when provided, every cell shows the phoneme/brief
     // that would fire if that cell's key were added to the currently-held
     // chord. None = hardcoded fallback labels (used by bench mode).
@@ -1057,12 +1205,23 @@ fn draw_keyboard(
         let mut candidate = base;
         candidate.set(cell_scan);
         let chord = ChordKey::from_mask(candidate);
+        // For ordered-brief lookup: if the user already started a chord
+        // (user_first_down is Some), that's the lead. If nothing is
+        // held, pressing this cell would make IT the lead — so the
+        // hypothetical lookup uses the cell's own scancode. That way a
+        // resting ordered chord still labels its cells with the word
+        // each finger-first would fire.
+        let lookup_first = if base.is_empty() {
+            Some(cell_scan)
+        } else {
+            user_first_down
+        };
         let raw = if held_word {
             phonemes
                 .lookup(chord)
                 .map(|p| p.to_ipa().to_string())
                 .unwrap_or_default()
-        } else if let Some(entry) = briefs.lookup(chord, None) {
+        } else if let Some(entry) = briefs.lookup(chord, lookup_first) {
             if let Some(suffix) = entry.strip_prefix('\x01') {
                 format!("-{}", suffix.trim_end())
             } else {
@@ -1142,14 +1301,34 @@ fn draw_keyboard(
     ]));
 
     // Label row — 4 bordered cells, then two unbordered inner cells, then 4 more.
-    let make_cell_style = |i: usize, target: bool| -> Style {
+    //
+    // Three visual tiers:
+    //   primary target (first_down of an ordered brief, or sole target
+    //     of an unordered one) → black-on-key_color, bold
+    //   secondary target (other target keys when ordering applies) →
+    //     black-on-dot_color, bold — dimmer so the primary pops
+    //   non-target → dark gray text, no background
+    let make_cell_style = |i: usize, target: bool, primary: bool| -> Style {
         if target {
+            let bg = if primary { key_colors[i] } else { dot_colors[i] };
             Style::default()
                 .fg(Color::Rgb(0, 0, 0))
-                .bg(key_colors[i])
+                .bg(bg)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::Rgb(0x40, 0x40, 0x40))
+        }
+    };
+    // `primary` check: a cell is primary if either (a) there's no
+    // ordering hint (empty mask → everything is equally primary) or
+    // (b) this cell's scancode is one of the accepted leads. CELL_SCANS
+    // was defined earlier in this function alongside the adaptive-
+    // label logic.
+    let is_primary = |cell_idx: usize| -> bool {
+        if target_accepted_leads.is_empty() {
+            true
+        } else {
+            target_accepted_leads.test(CELL_SCANS[cell_idx])
         }
     };
 
@@ -1159,7 +1338,7 @@ fn draw_keyboard(
         row.push(Span::styled("│", border_style));
         row.push(Span::styled(
             format!("{:^1$}", left_labels[i], CELL),
-            make_cell_style(i, target),
+            make_cell_style(i, target, is_primary(i)),
         ));
     }
     row.push(Span::styled("│", border_style));
@@ -1167,13 +1346,13 @@ fn draw_keyboard(
     row.push(Span::raw("  "));
     row.push(Span::styled(
         format!("{:^1$}", left_labels[4], CELL),
-        make_cell_style(4, false),
+        make_cell_style(4, false, false),
     ));
     row.push(Span::raw("  "));
     // Right inner-index placeholder cell
     row.push(Span::styled(
         format!("{:^1$}", right_labels[0], CELL),
-        make_cell_style(5, false),
+        make_cell_style(5, false, false),
     ));
     row.push(Span::raw("  "));
     // Right bordered box
@@ -1182,7 +1361,7 @@ fn draw_keyboard(
         let target = right_bit(i).map(|b| target_right & (1 << b) != 0).unwrap_or(false);
         row.push(Span::styled(
             format!("{:^1$}", right_labels[i], CELL),
-            make_cell_style(5 + i, target),
+            make_cell_style(5 + i, target, is_primary(5 + i)),
         ));
         row.push(Span::styled("│", border_style));
     }
@@ -1225,17 +1404,39 @@ fn draw_keyboard(
     lines.push(Line::from(row2));
 
     // Thumbs target — word = purple, mod = green, black bold label overlaid.
+    // Mirrors the finger-cell brightness scheme: primary target gets the
+    // full background colour, secondary (target but not first_down) gets
+    // the dim "dot" colour, non-target stays gray.
     let word_active = Style::default()
         .fg(Color::Rgb(0, 0, 0))
         .bg(Color::Rgb(0x80, 0x00, 0xFF))
+        .add_modifier(Modifier::BOLD);
+    let word_secondary = Style::default()
+        .fg(Color::Rgb(0, 0, 0))
+        .bg(Color::Rgb(0x40, 0x00, 0x80))
         .add_modifier(Modifier::BOLD);
     let mod_active = Style::default()
         .fg(Color::Rgb(0, 0, 0))
         .bg(Color::Rgb(0, 255, 0))
         .add_modifier(Modifier::BOLD);
+    let mod_secondary = Style::default()
+        .fg(Color::Rgb(0, 0, 0))
+        .bg(Color::Rgb(0, 0x7F, 0))
+        .add_modifier(Modifier::BOLD);
     let dim_style = Style::default().fg(Color::Rgb(0x40, 0x40, 0x40));
+    // `word` in rhe's chord model isn't a scancode target_first_down can
+    // point to, so it only has active/inactive — no primary/secondary.
     let word_t = if target_word { word_active } else { dim_style };
-    let mod_t = if target_right & (1 << 4) != 0 { mod_active } else { dim_style };
+    let mod_t = if target_right & (1 << 4) != 0 {
+        if target_accepted_leads.is_empty() || target_accepted_leads.test(scan::R_THUMB) {
+            mod_active
+        } else {
+            mod_secondary
+        }
+    } else {
+        dim_style
+    };
+    let _ = word_secondary; // reserved for future word-first targets
 
     // New layout total ≈ 108 cols. Word under left idx area, mod under right idx area.
     lines.push(Line::from(vec![
@@ -1592,13 +1793,19 @@ fn draw_bench(
             tr,
             tl,
             false,
+            KeyMask::EMPTY,
             key_state.right_bits(),
             key_state.left_bits(),
             key_state.word,
             None,
+            None,
         );
     } else {
-        draw_keyboard(frame, chunks[3], 0, 0, false, 0, 0, false, None);
+        draw_keyboard(
+            frame,
+            chunks[3],
+            0, 0, false, KeyMask::EMPTY, 0, 0, false, None, None,
+        );
     }
 
     // Recent results (bottom area)

@@ -32,7 +32,8 @@ fn main() {
         Some("briefs") => show_briefs(),
         Some("listen") => listen(),
         Some("run") => run(),
-        Some("tutor") => tutor::run_tutor(),
+        Some("tutor") => tutor::run_tutor(false),
+        Some("test") => tutor::run_tutor(true),
         Some("rollover") => rollover_test(),
         Some("bench") => tutor::run_bench(),
         _ => {
@@ -43,7 +44,8 @@ fn main() {
             println!("  rhe briefs    — show word brief assignments");
             println!("  rhe listen    — show raw key events + chords");
             println!("  rhe run       — menu bar app + full engine");
-            println!("  rhe tutor     — interactive typing tutor");
+            println!("  rhe tutor     — interactive typing tutor (Wikipedia text)");
+            println!("  rhe test      — tutor with curated homophone/ordering drills");
             println!("  rhe bench     — measure chord speed per finger combo");
             println!("  rhe rollover  — test simultaneous key count");
         }
@@ -164,11 +166,11 @@ fn show_briefs() {
 
     let mut entries: Vec<_> = brief_table
         .iter()
-        .filter(|(key, _)| key.right_bits() != 0 && key.left_bits() != 0)
+        .filter(|(key, _, _)| key.right_bits() != 0 && key.left_bits() != 0)
         .collect();
-    entries.sort_by(|a, b| a.1.cmp(b.1));
+    entries.sort_by(|a, b| a.2.cmp(b.2));
     let mut count = 0;
-    for (key, word) in entries {
+    for (key, _first_down, word) in entries {
         let right = key.right_bits();
         let left = key.left_bits();
         let mod_str = if key.has_mod() { "⌘" } else { "" };
