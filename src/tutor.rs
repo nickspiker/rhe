@@ -855,6 +855,14 @@ fn draw(
     briefs: &BriefTable,
 ) {
     let area = frame.area();
+
+    // Force solid black background on all terminals
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Block::default().style(Style::default().bg(Color::Rgb(0, 0, 0))),
+        area,
+    );
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
@@ -869,7 +877,7 @@ fn draw(
 
     // Title
     frame.render_widget(
-        Paragraph::new(" rhe tutor  [Esc to quit]").style(Style::default().fg(Color::Cyan)),
+        Paragraph::new(" rhe tutor  [Esc to quit]").style(Style::default().fg(Color::Rgb(0, 255, 255))),
         chunks[0],
     );
 
@@ -878,11 +886,11 @@ fn draw(
         let mut spans = vec![Span::raw(" ")];
         for (i, w) in sentence.iter().enumerate() {
             let style = if i == practice.word_idx {
-                Style::default().fg(Color::White).bold().underlined()
+                Style::default().fg(Color::Rgb(255, 255, 255)).bold().underlined()
             } else if i < practice.word_idx {
-                Style::default().fg(Color::DarkGray)
+                Style::default().fg(Color::Rgb(80, 80, 80))
             } else {
-                Style::default().fg(Color::Gray)
+                Style::default().fg(Color::Rgb(160, 160, 160))
             };
             spans.push(Span::styled(&w.word, style));
             spans.push(Span::raw(" "));
@@ -903,7 +911,7 @@ fn draw(
 
         let mut word_spans = vec![
             Span::styled(" ", Style::default()),
-            Span::styled(&pw.word, Style::default().fg(Color::White).bold()),
+            Span::styled(&pw.word, Style::default().fg(Color::Rgb(255, 255, 255)).bold()),
         ];
         if let Some(label) = &pw.suffix_label {
             word_spans.push(Span::styled(
@@ -916,7 +924,7 @@ fn draw(
             Line::from(word_spans),
             Line::from(vec![Span::styled(
                 phoneme_label,
-                Style::default().fg(Color::Gray),
+                Style::default().fg(Color::Rgb(160, 160, 160)),
             )]),
         ];
 
@@ -1483,6 +1491,12 @@ fn draw_bench(
     round: usize,
 ) {
     let area = frame.area();
+    let area = frame.area();
+    frame.render_widget(
+        Block::default().style(Style::default().bg(Color::Rgb(0, 0, 0))),
+        area,
+    );
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
@@ -1497,7 +1511,7 @@ fn draw_bench(
 
     // Title
     frame.render_widget(
-        Paragraph::new(" rhe bench  [Esc to quit]").style(Style::default().fg(Color::Cyan)),
+        Paragraph::new(" rhe bench  [Esc to quit]").style(Style::default().fg(Color::Rgb(0, 255, 255))),
         chunks[0],
     );
 
@@ -1510,7 +1524,7 @@ fn draw_bench(
     };
     frame.render_widget(
         Paragraph::new(progress_text)
-            .style(Style::default().fg(Color::Gray))
+            .style(Style::default().fg(Color::Rgb(160, 160, 160)))
             .block(Block::default().borders(Borders::BOTTOM)),
         chunks[1],
     );
@@ -1536,12 +1550,12 @@ fn draw_bench(
                 Span::styled(" ", Style::default()),
                 Span::styled(
                     format!("{} hand: {}", hand_name, label),
-                    Style::default().fg(Color::White).bold(),
+                    Style::default().fg(Color::Rgb(255, 255, 255)).bold(),
                 ),
             ]),
             Line::from(vec![Span::styled(
                 format!(" {}", phase_str),
-                Style::default().fg(Color::Gray),
+                Style::default().fg(Color::Rgb(160, 160, 160)),
             )]),
         ];
         frame.render_widget(
@@ -1553,11 +1567,11 @@ fn draw_bench(
             Paragraph::new(vec![
                 Line::from(Span::styled(
                     " Complete!",
-                    Style::default().fg(Color::White).bold(),
+                    Style::default().fg(Color::Rgb(255, 255, 255)).bold(),
                 )),
                 Line::from(Span::styled(
                     " Results printed on exit",
-                    Style::default().fg(Color::Gray),
+                    Style::default().fg(Color::Rgb(160, 160, 160)),
                 )),
             ])
             .block(Block::default().borders(Borders::ALL).title(" Target ")),
