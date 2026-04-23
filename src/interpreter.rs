@@ -1,6 +1,6 @@
 //! Converts state machine events into output actions (emit text, backspace, suffix).
 
-use crate::chord_map::{BriefTable, ChordKey, Phoneme, PhonemeTable};
+use crate::chord_map::{BriefTable, Phoneme, PhonemeTable};
 use crate::state_machine::Event;
 use crate::table_gen::PhonemeDictionary;
 use std::sync::Arc;
@@ -99,15 +99,14 @@ impl Interpreter {
 
     pub fn process(&mut self, event: &Event) -> Option<Action> {
         match event {
-            Event::Chord(chord) => {
-                let key = ChordKey::from_chord(chord);
-                if chord.space_held {
-                    if let Some(phoneme) = self.phonemes.lookup(key) {
+            Event::Chord { key, space_held } => {
+                if *space_held {
+                    if let Some(phoneme) = self.phonemes.lookup(*key) {
                         self.buffer.push(phoneme);
                     }
                     None
                 } else {
-                    self.briefs.lookup(key).map(|s| {
+                    self.briefs.lookup(*key).map(|s| {
                         if s.starts_with('\x01') {
                             // Suffix: backspace trailing space, then emit suffix
                             let suffix = &s[1..];
@@ -165,13 +164,11 @@ impl Interpreter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chord_state::{Chord, FingerChord};
+    use crate::chord_map::ChordKey;
 
-    fn make_chord(right: u8, left: u8, modkey: bool, space: bool) -> Chord {
-        Chord {
-            right: FingerChord(right),
-            left: FingerChord(left),
-            modkey,
+    fn chord_event(right: u8, left: u8, modkey: bool, space: bool) -> Event {
+        Event::Chord {
+            key: ChordKey::from_packed(right, left, modkey),
             space_held: space,
         }
     }
@@ -194,11 +191,11 @@ mod tests {
         let mut interp = setup();
 
         // k = right index+middle (0011), space held
-        interp.process(&Event::Chord(make_chord(0b0011, 0, false, true)));
+        interp.process(&chord_event(0b0011, 0, false, true));
         // æ = left index+middle (0011), space held
-        interp.process(&Event::Chord(make_chord(0, 0b0011, false, true)));
+        interp.process(&chord_event(0, 0b0011, false, true));
         // t = right index (0001), space held
-        interp.process(&Event::Chord(make_chord(0b0001, 0, false, true)));
+        interp.process(&chord_event(0b0001, 0, false, true));
 
         let action = interp.process(&Event::SpaceUp).unwrap();
         assert_eq!(action, Action::Emit("cat ".to_string()));
@@ -209,7 +206,7 @@ mod tests {
         let mut interp = setup();
 
         // Both-hands chord without space = brief
-        let action = interp.process(&Event::Chord(make_chord(0b0001, 0b0001, false, false)));
+        let action = interp.process(&chord_event(0b0001, 0b0001, false, false));
         assert_eq!(action, Some(Action::Emit("the ".to_string())));
     }
 

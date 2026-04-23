@@ -7,9 +7,11 @@ use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-use crate::chord_map::{BriefTable, Phoneme, PhonemeTable};
-use crate::hand::{Finger, Hand, KeyDirection, KeyEvent as RheKeyEvent, PhysicalKey};
+use crate::chord_map::{BriefTable, ChordKey, Phoneme, PhonemeTable};
+use crate::hand::{KeyDirection, KeyEvent as RheKeyEvent};
 use crate::input::HidEvent;
+use crate::key_mask::KeyMask;
+use crate::scan;
 #[cfg(target_os = "linux")]
 use crate::input::evdev_backend::EvdevInput as GrabInput;
 #[cfg(target_os = "macos")]
@@ -111,15 +113,6 @@ struct KeyState {
     word: bool,       // left ⌘
 }
 
-fn finger_bit(finger: Finger) -> u8 {
-    match finger {
-        Finger::Index => 0,
-        Finger::Middle => 1,
-        Finger::Ring => 2,
-        Finger::Pinky => 3,
-        Finger::Thumb => 4,
-    }
-}
 
 impl KeyState {
     fn left_bits(&self) -> u8 {
@@ -254,9 +247,14 @@ pub fn run_tutor() {
     // Real output pipeline: same events → state machine → interpreter → text injection
     let mut sm = StateMachine::new();
     let dict = PhonemeDictionary::build(&cmudict, &freq_data);
-    let interp_briefs = crate::briefs::load_briefs();
-    let mut interp = Interpreter::new(PhonemeTable::new(), interp_briefs, dict);
+    let mut interp = Interpreter::new(PhonemeTable::new(), crate::briefs::load_briefs(), dict);
     let output = PlatformOutput::new();
+
+    // Separate copies of the lookup tables for the adaptive key-cap display.
+    // These get queried every frame with `held ∪ {cell}` to show the user
+    // what each cell would produce as part of the current chord.
+    let display_phonemes = PhonemeTable::new();
+    let display_briefs = crate::briefs::load_briefs();
 
     let mut log: Vec<String> = Vec::new();
     let mut key_state = KeyState::default();
@@ -279,7 +277,7 @@ pub fn run_tutor() {
 
     // Initial draw
     terminal
-        .draw(|f| draw(f, &practice, false, &key_state))
+        .draw(|f| draw(f, &practice, false, &key_state, &display_phonemes, &display_briefs))
         .ok();
 
     loop {
@@ -307,14 +305,10 @@ pub fn run_tutor() {
         // at the END of the loop so the step handler can still see pre-release
         // state when a hand goes to zero (for abandon detection).
         if rhe_event.direction == KeyDirection::Down {
-            match rhe_event.key {
-                PhysicalKey::Finger(Hand::Right, finger) => {
-                    chord_right_acc |= 1u8 << finger_bit(finger);
-                }
-                PhysicalKey::Finger(Hand::Left, finger) => {
-                    chord_left_acc |= 1u8 << finger_bit(finger);
-                }
-                _ => {}
+            if let Some(bit) = scan::right_bit(rhe_event.scan) {
+                chord_right_acc |= 1u8 << bit;
+            } else if let Some(bit) = scan::left_bit(rhe_event.scan) {
+                chord_left_acc |= 1u8 << bit;
             }
         }
 
@@ -357,13 +351,13 @@ pub fn run_tutor() {
             let is_key_down = rhe_event.direction == KeyDirection::Down;
 
             // Word key down → switch to phoneme mode
-            if rhe_event.key == PhysicalKey::Word && rhe_event.direction == KeyDirection::Down {
+            if rhe_event.scan == scan::WORD && rhe_event.direction == KeyDirection::Down {
                 practice.mode = WordMode::Phoneme;
                 practice.step_idx = 0;
                 fingers_during_word = false;
             }
             // Word key up at step 0 (no progress)
-            else if rhe_event.key == PhysicalKey::Word
+            else if rhe_event.scan == scan::WORD
                 && rhe_event.direction == KeyDirection::Up
                 && practice.mode == WordMode::Phoneme
                 && practice.step_idx == 0
@@ -382,7 +376,7 @@ pub fn run_tutor() {
                 practice.step_idx = 0;
             }
             // Track if any finger pressed during word hold
-            if key_state.word && is_key_down && rhe_event.key != PhysicalKey::Word {
+            if key_state.word && is_key_down && rhe_event.scan != scan::WORD {
                 fingers_during_word = true;
             }
 
@@ -390,9 +384,40 @@ pub fn run_tutor() {
                 let target = *target;
                 let step = practice.current_step().unwrap();
 
+                // Bounce-tolerance during commit steps: fingers mid-release
+                // can momentarily re-press a key that was already part of
+                // the just-matched chord. That's physical bounce, not a
+                // fresh chord attempt. Only treat it as an error if the
+                // pressed key wasn't in the prior step's target.
+                let prev_target: Option<Target> = if practice.step_idx > 0 {
+                    practice
+                        .current_steps()
+                        .and_then(|steps| steps.get(practice.step_idx - 1))
+                        .map(|s| s.target)
+                } else {
+                    None
+                };
+                let bounce_of_prev = |scan: u8| -> bool {
+                    let Some(prev) = prev_target else { return false };
+                    if let Some(bit) = crate::scan::left_bit(scan) {
+                        prev.left & (1 << bit) != 0
+                    } else if let Some(bit) = crate::scan::right_bit(scan) {
+                        prev.right & (1 << bit) != 0
+                    } else if scan == crate::scan::WORD {
+                        prev.word
+                    } else {
+                        false
+                    }
+                };
+
                 if step.space_only {
-                    // Phoneme commit step: word release advances, any finger is error.
-                    if is_key_down && rhe_event.key != PhysicalKey::Word {
+                    // Phoneme commit step: word release advances, any
+                    // finger is error — unless it's a bounce of a key
+                    // from the phoneme chord that just matched.
+                    if is_key_down
+                        && rhe_event.scan != scan::WORD
+                        && !bounce_of_prev(rhe_event.scan)
+                    {
                         log.push("  → RESET (finger during commit)".to_string());
                         practice.reset_word();
                         last_was_botch = true;
@@ -403,8 +428,10 @@ pub fn run_tutor() {
                         practice.advance_step();
                     }
                 } else if target.right == 0 && target.left == 0 && !target.word {
-                    // Brief commit step (all-off target): any new key = error, all-off = advance.
-                    if is_key_down {
+                    // Brief commit step (all-off target): any new key
+                    // outside the matched chord = error; bounce of a
+                    // matched-chord key = ignored; all-off = advance.
+                    if is_key_down && !bounce_of_prev(rhe_event.scan) {
                         log.push("  → RESET (finger during commit)".to_string());
                         practice.reset_word();
                         last_was_botch = true;
@@ -421,14 +448,10 @@ pub fn run_tutor() {
                     // hand_touched to reflect *fresh* key-downs in this step,
                     // otherwise abandon fires on a pure release of carryover.
                     if is_key_down {
-                        match rhe_event.key {
-                            PhysicalKey::Finger(Hand::Right, finger) => {
-                                touched_right |= 1u8 << finger_bit(finger);
-                            }
-                            PhysicalKey::Finger(Hand::Left, finger) => {
-                                touched_left |= 1u8 << finger_bit(finger);
-                            }
-                            _ => {}
+                        if let Some(bit) = scan::right_bit(rhe_event.scan) {
+                            touched_right |= 1u8 << bit;
+                        } else if let Some(bit) = scan::left_bit(rhe_event.scan) {
+                            touched_left |= 1u8 << bit;
                         }
                     }
 
@@ -449,15 +472,22 @@ pub fn run_tutor() {
                         && (target.left == 0 || chord_left_acc == target.left)
                         && key_state.word == target.word;
 
-                    // Same gating for the extra-key check — a leftover bit on
-                    // a non-target hand isn't "extra", it's carryover.
+                    // Extra-key detection:
+                    //   Target hand — any bit outside the target set is extra.
+                    //   Non-target hand — HELD bits are carryover (still
+                    //   releasing the previous chord), but FRESH key-downs
+                    //   this step (tracked in touched_*) are wrong-hand
+                    //   errors. `touched_*` is wiped on every step
+                    //   transition, so it only ever contains fresh presses.
                     let has_extra_acc = (target.right != 0
                         && (chord_right_acc & !target.right) != 0)
                         || (target.left != 0
                             && (chord_left_acc & !target.left) != 0)
+                        || (target.right == 0 && touched_right != 0)
+                        || (target.left == 0 && touched_left != 0)
                         || (key_state.word && !target.word);
 
-                    let space_dropped = rhe_event.key == PhysicalKey::Word
+                    let space_dropped = rhe_event.scan == scan::WORD
                         && rhe_event.direction == KeyDirection::Up
                         && target.word
                         && practice.step_idx > 0;
@@ -522,7 +552,7 @@ pub fn run_tutor() {
 
         // Draw after every event
         terminal
-            .draw(|f| draw(f, &practice, errored, &key_state))
+            .draw(|f| draw(f, &practice, errored, &key_state, &display_phonemes, &display_briefs))
             .ok();
     }
 
@@ -797,28 +827,33 @@ fn build_practice(lookup: &WordLookup, brief_table: &BriefTable) -> Practice {
 
 // ─── Key state update ───
 
-/// Check if a word can be typed as base_roll + suffix, and if so return the suffix.
-/// Only suggests if the suffix path is shorter than the phoneme path.
 fn update_key_state(state: &mut KeyState, event: &RheKeyEvent) {
     let pressed = event.direction == KeyDirection::Down;
-    match event.key {
-        PhysicalKey::Finger(Hand::Left, Finger::Pinky) => state.left[0] = pressed,
-        PhysicalKey::Finger(Hand::Left, Finger::Ring) => state.left[1] = pressed,
-        PhysicalKey::Finger(Hand::Left, Finger::Middle) => state.left[2] = pressed,
-        PhysicalKey::Finger(Hand::Left, Finger::Index) => state.left[3] = pressed,
-        PhysicalKey::Finger(Hand::Right, Finger::Index) => state.right[0] = pressed,
-        PhysicalKey::Finger(Hand::Right, Finger::Middle) => state.right[1] = pressed,
-        PhysicalKey::Finger(Hand::Right, Finger::Ring) => state.right[2] = pressed,
-        PhysicalKey::Finger(Hand::Right, Finger::Pinky) => state.right[3] = pressed,
-        PhysicalKey::Finger(Hand::Right, Finger::Thumb) => state.right[4] = pressed,
-        PhysicalKey::Finger(Hand::Left, Finger::Thumb) => {} // left has no thumb key
-        PhysicalKey::Word => state.word = pressed,
+    match event.scan {
+        scan::L_PINKY => state.left[0] = pressed,
+        scan::L_RING => state.left[1] = pressed,
+        scan::L_MID => state.left[2] = pressed,
+        scan::L_IDX => state.left[3] = pressed,
+        scan::R_IDX => state.right[0] = pressed,
+        scan::R_MID => state.right[1] = pressed,
+        scan::R_RING => state.right[2] = pressed,
+        scan::R_PINKY => state.right[3] = pressed,
+        scan::R_THUMB => state.right[4] = pressed,
+        scan::WORD => state.word = pressed,
+        _ => {}
     }
 }
 
 // ─── Drawing ───
 
-fn draw(frame: &mut Frame, practice: &Practice, errored: bool, key_state: &KeyState) {
+fn draw(
+    frame: &mut Frame,
+    practice: &Practice,
+    errored: bool,
+    key_state: &KeyState,
+    phonemes: &PhonemeTable,
+    briefs: &BriefTable,
+) {
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -907,6 +942,7 @@ fn draw(frame: &mut Frame, practice: &Practice, errored: bool, key_state: &KeySt
             key_state.right_bits(),
             key_state.left_bits(),
             key_state.word,
+            Some((phonemes, briefs)),
         );
     }
 }
@@ -920,59 +956,150 @@ fn draw_keyboard(
     held_right: u8, // 5 bits
     held_left: u8,  // 4 bits
     held_word: bool,
+    // Adaptive labels: when provided, every cell shows the phoneme/brief
+    // that would fire if that cell's key were added to the currently-held
+    // chord. None = hardcoded fallback labels (used by bench mode).
+    label_tables: Option<(&PhonemeTable, &BriefTable)>,
 ) {
     // Labels depend on live state:
-    //   word held   → phoneme mode
-    //   word free   → roll/suffix mode
-    // Thumb held on right-hand swaps consonants to their voiced pair.
-    let phoneme_mode = held_word;
-    let voiced = held_right & (1 << 4) != 0;
+    //   word held   → phoneme mode (look up PhonemeTable)
+    //   word free   → brief/suffix mode (look up BriefTable)
+    // Each cell shows what `held ∪ {this_cell}` produces — so an unheld
+    // cell advertises what it would add to the current chord, and a held
+    // cell shows the current chord's output. Bench mode passes `None`
+    // and falls back to the static placeholder strings.
 
     // 10 cells left→right: L pinky/ring/middle/idx-outer/idx-inner,
     // R idx-inner/idx-outer/middle/ring/pinky. Inner-index cells are
     // placeholders for future digit-mode support.
     // Gradient from cyan-ish to yellow-ish for visual position hint.
     let key_colors = [
-        Color::Rgb(0x66, 0xFF, 0xFF), //  0  L pinky
-        Color::Rgb(0x77, 0xEE, 0xEE), //  1  L ring
-        Color::Rgb(0x88, 0xDD, 0xDD), //  2  L middle
-        Color::Rgb(0x99, 0xCC, 0xCC), //  3  L idx-outer
-        Color::Rgb(0xAA, 0xBB, 0xBB), //  4  L idx-inner (future)
-        Color::Rgb(0xBB, 0xAA, 0xAA), //  5  R idx-inner (future)
-        Color::Rgb(0xCC, 0x99, 0x99), //  6  R idx-outer
-        Color::Rgb(0xDD, 0x88, 0x88), //  7  R middle
-        Color::Rgb(0xEE, 0x77, 0x77), //  8  R ring
-        Color::Rgb(0xFF, 0x66, 0x66), //  9  R pinky
+        Color::Rgb(0x60, 0xA8, 0xF0), //  0  L pinky
+        Color::Rgb(0x70, 0xA8, 0xE0), //  1  L ring
+        Color::Rgb(0x80, 0xA8, 0xD0), //  2  L middle
+        Color::Rgb(0x90, 0xA8, 0xC0), //  3  L idx-outer
+        Color::Rgb(0xA0, 0xA8, 0xB0), //  4  L idx-inner (future)
+        Color::Rgb(0xB0, 0xA8, 0xA0), //  5  R idx-inner (future)
+        Color::Rgb(0xC0, 0xA8, 0x90), //  6  R idx-outer
+        Color::Rgb(0xD0, 0xA8, 0x80), //  7  R middle
+        Color::Rgb(0xE0, 0xA8, 0x70), //  8  R ring
+        Color::Rgb(0xF0, 0xA8, 0x60), //  9  R pinky
     ];
     let dot_colors = [
-        Color::Rgb(0x33, 0x7F, 0x7F),
-        Color::Rgb(0x3B, 0x77, 0x77),
-        Color::Rgb(0x44, 0x6E, 0x6E),
-        Color::Rgb(0x4C, 0x66, 0x66),
-        Color::Rgb(0x55, 0x5D, 0x5D),
-        Color::Rgb(0x5D, 0x55, 0x55),
-        Color::Rgb(0x66, 0x4C, 0x4C),
-        Color::Rgb(0x6E, 0x44, 0x44),
-        Color::Rgb(0x77, 0x3B, 0x3B),
-        Color::Rgb(0x7F, 0x33, 0x33),
+        Color::Rgb(0x30, 0x54, 0x78),
+        Color::Rgb(0x38, 0x54, 0x70),
+        Color::Rgb(0x40, 0x54, 0x68),
+        Color::Rgb(0x48, 0x54, 0x60),
+        Color::Rgb(0x50, 0x54, 0x58),
+        Color::Rgb(0x58, 0x54, 0x50),
+        Color::Rgb(0x60, 0x54, 0x48),
+        Color::Rgb(0x68, 0x54, 0x40),
+        Color::Rgb(0x70, 0x54, 0x38),
+        Color::Rgb(0x78, 0x54, 0x30),
     ];
 
-    let left_labels: [&str; 5] = if phoneme_mode {
-        ["æ", "ɛ", "ɪ", "ʌ", ""]
-    } else {
-        ["-'s", "-ed", "-ing", "-s", ""]
-    };
-    let right_labels: [&str; 5] = if phoneme_mode {
-        if voiced {
-            ["", "d", "z", "g", "b"]
-        } else {
-            ["", "t", "s", "k", "p"]
+    // Build held KeyMask for candidate-chord lookups. Word key isn't in
+    // the chord keymap (it's a mode selector, not a chord bit), so it's
+    // handled separately via `held_word`.
+    let held_mask = {
+        let mut m = KeyMask::EMPTY;
+        const L_SCANS: [u8; 4] = [scan::L_IDX, scan::L_MID, scan::L_RING, scan::L_PINKY];
+        const R_SCANS: [u8; 4] = [scan::R_IDX, scan::R_MID, scan::R_RING, scan::R_PINKY];
+        for (bit, s) in L_SCANS.iter().enumerate() {
+            if held_left & (1 << bit) != 0 { m.set(*s); }
         }
-    } else if voiced {
-        ["", "there", "here", "my", "because"]
-    } else {
-        ["", "you", "and", "that", "for"]
+        for (bit, s) in R_SCANS.iter().enumerate() {
+            if held_right & (1 << bit) != 0 { m.set(*s); }
+        }
+        if held_right & (1 << 4) != 0 { m.set(scan::R_THUMB); }
+        m
     };
+
+    // Cell width in columns — labels longer than this get tail-trimmed
+    // so the keyboard layout stays aligned.
+    const CELL_LABEL_MAX: usize = 9;
+    let trim = |s: String| -> String {
+        if s.chars().count() > CELL_LABEL_MAX {
+            s.chars().take(CELL_LABEL_MAX).collect()
+        } else {
+            s
+        }
+    };
+
+    let lookup_label = |cell_scan: u8| -> String {
+        let Some((phonemes, briefs)) = label_tables else {
+            return String::new();
+        };
+        // Phoneme mode fires each hand independently — left hand's label
+        // must only see left-hand held bits, and vice versa, otherwise a
+        // right-hand chord in progress would blank out the left-hand
+        // hints (and distort any remaining left-hand labels). Brief mode
+        // is a single combined chord, so all held bits contribute.
+        let base = if held_word {
+            if scan::LEFT_MASK.test(cell_scan) {
+                held_mask & scan::LEFT_MASK
+            } else if scan::RIGHT_MASK.test(cell_scan) {
+                held_mask & scan::RIGHT_MASK
+            } else {
+                KeyMask::EMPTY
+            }
+        } else {
+            held_mask
+        };
+        let mut candidate = base;
+        candidate.set(cell_scan);
+        let chord = ChordKey::from_mask(candidate);
+        let raw = if held_word {
+            phonemes
+                .lookup(chord)
+                .map(|p| p.to_ipa().to_string())
+                .unwrap_or_default()
+        } else if let Some(entry) = briefs.lookup(chord) {
+            if let Some(suffix) = entry.strip_prefix('\x01') {
+                format!("-{}", suffix.trim_end())
+            } else {
+                entry.trim_end().to_string()
+            }
+        } else {
+            String::new()
+        };
+        trim(raw)
+    };
+
+    // Cell index → scancode for the 10 cells in display order
+    // (left pinky through right pinky).
+    const CELL_SCANS: [u8; 10] = [
+        scan::L_PINKY, scan::L_RING, scan::L_MID, scan::L_IDX, scan::L_IDX_INNER,
+        scan::R_IDX_INNER, scan::R_IDX, scan::R_MID, scan::R_RING, scan::R_PINKY,
+    ];
+    let cell_label = |global_idx: usize| -> String {
+        // Fallback when running without tables (bench mode): use static
+        // placeholders so the keyboard widget still looks right.
+        if label_tables.is_none() {
+            return match global_idx {
+                0..=3 => ["a", "s", "d", "f"][global_idx].to_string(),
+                6..=9 => ["j", "k", "l", ";"][global_idx - 6].to_string(),
+                _ => String::new(),
+            };
+        }
+        lookup_label(CELL_SCANS[global_idx])
+    };
+    // Widths match the old display: 4 left-box cells, L inner, R inner,
+    // 4 right-box cells — indexed via left_labels[0..=4] / right_labels[0..=4].
+    let left_labels: [String; 5] = [
+        cell_label(0),
+        cell_label(1),
+        cell_label(2),
+        cell_label(3),
+        cell_label(4),
+    ];
+    let right_labels: [String; 5] = [
+        cell_label(5),
+        cell_label(6),
+        cell_label(7),
+        cell_label(8),
+        cell_label(9),
+    ];
 
     // Cell → target bit mapping. None = inner-index placeholder (never lit yet).
     let left_bit = |i: usize| -> Option<u8> {
@@ -1009,8 +1136,10 @@ fn draw_keyboard(
     // Label row — 4 bordered cells, then two unbordered inner cells, then 4 more.
     let make_cell_style = |i: usize, target: bool| -> Style {
         if target {
-            let color = key_colors[i];
-            Style::default().fg(color).bg(color)
+            Style::default()
+                .fg(Color::Rgb(0, 0, 0))
+                .bg(key_colors[i])
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::Rgb(0x40, 0x40, 0x40))
         }
@@ -1087,13 +1216,15 @@ fn draw_keyboard(
     }
     lines.push(Line::from(row2));
 
-    // Thumbs target — word = purple filled block, mod = cyan filled block.
+    // Thumbs target — word = purple, mod = green, black bold label overlaid.
     let word_active = Style::default()
-        .fg(Color::Rgb(0x80, 0x00, 0xFF))
-        .bg(Color::Rgb(0x80, 0x00, 0xFF));
+        .fg(Color::Rgb(0, 0, 0))
+        .bg(Color::Rgb(0x80, 0x00, 0xFF))
+        .add_modifier(Modifier::BOLD);
     let mod_active = Style::default()
-        .fg(Color::Rgb(0, 255, 0))
-        .bg(Color::Rgb(0, 255, 0));
+        .fg(Color::Rgb(0, 0, 0))
+        .bg(Color::Rgb(0, 255, 0))
+        .add_modifier(Modifier::BOLD);
     let dim_style = Style::default().fg(Color::Rgb(0x40, 0x40, 0x40));
     let word_t = if target_word { word_active } else { dim_style };
     let mod_t = if target_right & (1 << 4) != 0 { mod_active } else { dim_style };
@@ -1103,7 +1234,7 @@ fn draw_keyboard(
         Span::raw(" ".repeat(38)),
         Span::styled(" word ", word_t),
         Span::raw(" ".repeat(22)),
-        Span::styled(" mod ", mod_t),
+        Span::styled("  ^  ", mod_t),
     ]));
 
     // Thumbs held at half brightness, matching the dot style.
@@ -1218,14 +1349,10 @@ pub fn run_bench() {
 
         // Accumulate bits on key-down for target hand
         if phase == BenchPhase::Timing && rhe_event.direction == KeyDirection::Down {
-            match (hand, rhe_event.key) {
-                ('R', PhysicalKey::Finger(Hand::Right, _)) => {
-                    accum |= key_state.right_bits();
-                }
-                ('L', PhysicalKey::Finger(Hand::Left, _)) => {
-                    accum |= key_state.left_bits();
-                }
-                _ => {}
+            if hand == 'R' && scan::right_bit(rhe_event.scan).is_some() {
+                accum |= key_state.right_bits();
+            } else if hand == 'L' && scan::left_bit(rhe_event.scan).is_some() {
+                accum |= key_state.left_bits();
             }
         }
 
@@ -1240,16 +1367,11 @@ pub fn run_bench() {
             }
             BenchPhase::WaitChord => {
                 // Clock is running. First key down → start accumulating.
-                if rhe_event.direction == KeyDirection::Down && rhe_event.key != PhysicalKey::Word {
-                    // Accumulate this first press
-                    match (hand, rhe_event.key) {
-                        ('R', PhysicalKey::Finger(Hand::Right, _)) => {
-                            accum |= key_state.right_bits();
-                        }
-                        ('L', PhysicalKey::Finger(Hand::Left, _)) => {
-                            accum |= key_state.left_bits();
-                        }
-                        _ => {}
+                if rhe_event.direction == KeyDirection::Down && rhe_event.scan != scan::WORD {
+                    if hand == 'R' && scan::right_bit(rhe_event.scan).is_some() {
+                        accum |= key_state.right_bits();
+                    } else if hand == 'L' && scan::left_bit(rhe_event.scan).is_some() {
+                        accum |= key_state.left_bits();
                     }
                     phase = BenchPhase::Timing;
                 }
@@ -1459,9 +1581,10 @@ fn draw_bench(
             key_state.right_bits(),
             key_state.left_bits(),
             key_state.word,
+            None,
         );
     } else {
-        draw_keyboard(frame, chunks[3], 0, 0, false, 0, 0, false);
+        draw_keyboard(frame, chunks[3], 0, 0, false, 0, 0, false, None);
     }
 
     // Recent results (bottom area)

@@ -4,7 +4,8 @@
 //! No OS key repeat. No rdev.
 
 use super::HidEvent;
-use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey};
+use crate::hand::{KeyDirection, KeyEvent};
+use crate::scan;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -314,11 +315,8 @@ extern "C" fn hid_callback(
             return;
         }
 
-        if let Some(physical) = hid_usage_to_physical(usage) {
-            let _ = ctx.tx.send(HidEvent::Key(KeyEvent {
-                key: physical,
-                direction,
-            }));
+        if let Some(scan) = hid_usage_to_scan(usage) {
+            let _ = ctx.tx.send(HidEvent::Key(KeyEvent { scan, direction }));
         } else {
             // Not our key — re-inject to OS so other apps see it
             if let Some(vk) = hid_usage_to_virtual_keycode(usage) {
@@ -497,24 +495,24 @@ fn hid_usage_to_virtual_keycode(usage: u32) -> Option<u16> {
     }
 }
 
-/// Map HID usage codes to our physical keys.
-fn hid_usage_to_physical(usage: u32) -> Option<PhysicalKey> {
+/// Map HID usage codes to rhe canonical scancodes (`src/scan.rs`).
+fn hid_usage_to_scan(usage: u32) -> Option<u8> {
     match usage {
         // Left hand home row (QWERTY A S D F)
-        ffi::kHIDUsage_KeyboardA => Some(PhysicalKey::Finger(Hand::Left, Finger::Pinky)),
-        ffi::kHIDUsage_KeyboardS => Some(PhysicalKey::Finger(Hand::Left, Finger::Ring)),
-        ffi::kHIDUsage_KeyboardD => Some(PhysicalKey::Finger(Hand::Left, Finger::Middle)),
-        ffi::kHIDUsage_KeyboardF => Some(PhysicalKey::Finger(Hand::Left, Finger::Index)),
+        ffi::kHIDUsage_KeyboardA => Some(scan::L_PINKY),
+        ffi::kHIDUsage_KeyboardS => Some(scan::L_RING),
+        ffi::kHIDUsage_KeyboardD => Some(scan::L_MID),
+        ffi::kHIDUsage_KeyboardF => Some(scan::L_IDX),
 
-        // Right hand home row (QWERTY J K L ;) + spacebar as 5th bit
-        ffi::kHIDUsage_KeyboardJ => Some(PhysicalKey::Finger(Hand::Right, Finger::Index)),
-        ffi::kHIDUsage_KeyboardK => Some(PhysicalKey::Finger(Hand::Right, Finger::Middle)),
-        ffi::kHIDUsage_KeyboardL => Some(PhysicalKey::Finger(Hand::Right, Finger::Ring)),
-        ffi::kHIDUsage_KeyboardSemicolon => Some(PhysicalKey::Finger(Hand::Right, Finger::Pinky)),
-        ffi::kHIDUsage_KeyboardSpacebar => Some(PhysicalKey::Finger(Hand::Right, Finger::Thumb)),
+        // Right hand home row (QWERTY J K L ;) + spacebar as thumb/mod bit
+        ffi::kHIDUsage_KeyboardJ => Some(scan::R_IDX),
+        ffi::kHIDUsage_KeyboardK => Some(scan::R_MID),
+        ffi::kHIDUsage_KeyboardL => Some(scan::R_RING),
+        ffi::kHIDUsage_KeyboardSemicolon => Some(scan::R_PINKY),
+        ffi::kHIDUsage_KeyboardSpacebar => Some(scan::R_THUMB),
 
         // Word boundary (left ⌘)
-        ffi::kHIDUsage_KeyboardLeftGUI => Some(PhysicalKey::Word),
+        ffi::kHIDUsage_KeyboardLeftGUI => Some(scan::WORD),
 
         _ => None,
     }

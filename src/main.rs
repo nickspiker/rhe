@@ -4,7 +4,6 @@ mod briefs;
 mod briefs_data;
 mod suffixes_data;
 mod chord_map;
-mod chord_state;
 mod data;
 mod hand;
 mod input;
@@ -205,13 +204,15 @@ fn listen() {
 
         for sm_event in sm.feed(event) {
             match &sm_event {
-                state_machine::Event::Chord(chord) => {
-                    let key = chord_map::ChordKey::from_chord(chord);
-                    let phoneme = phonemes.lookup(key);
+                state_machine::Event::Chord { key, .. } => {
+                    let phoneme = phonemes.lookup(*key);
                     let label = phoneme.map(|p| p.to_ipa()).unwrap_or("?");
                     println!(
                         "  >>> CHORD R:{:04b} L:{:04b} mod={} → {}",
-                        chord.right.0, chord.left.0, chord.modkey, label
+                        key.right_bits(),
+                        key.left_bits(),
+                        key.has_mod(),
+                        label
                     );
                 }
                 state_machine::Event::SpaceUp => println!("  >>> SPACE UP"),
@@ -276,11 +277,12 @@ fn run() {
 
             for sm_event in sm.feed(event) {
                 match &sm_event {
-                    state_machine::Event::Chord(chord) => {
-                        let key = chord_map::ChordKey::from_chord(chord);
+                    state_machine::Event::Chord { key, .. } => {
                         eprintln!(
                             "  chord: R:{:04b} L:{:04b} mod={}",
-                            chord.right.0, chord.left.0, chord.modkey
+                            key.right_bits(),
+                            key.left_bits(),
+                            key.has_mod()
                         );
                     }
                     state_machine::Event::SpaceUp => eprintln!("  space-up"),
@@ -415,7 +417,7 @@ fn run() {
 
 #[cfg(target_os = "macos")]
 fn rollover_test() {
-    use hand::{Finger, Hand, KeyDirection, PhysicalKey};
+    use hand::KeyDirection;
     use input::HidEvent;
     use input::iohid_backend::IoHidInput;
 
@@ -429,22 +431,6 @@ fn rollover_test() {
     let mut held: Vec<&str> = Vec::new();
     let mut max_held: usize = 0;
 
-    let key_name = |k: PhysicalKey| -> &'static str {
-        match k {
-            PhysicalKey::Finger(Hand::Left, Finger::Pinky) => "L-pinky",
-            PhysicalKey::Finger(Hand::Left, Finger::Ring) => "L-ring",
-            PhysicalKey::Finger(Hand::Left, Finger::Middle) => "L-mid",
-            PhysicalKey::Finger(Hand::Left, Finger::Index) => "L-idx",
-            PhysicalKey::Finger(Hand::Left, Finger::Thumb) => "L-thumb",
-            PhysicalKey::Finger(Hand::Right, Finger::Index) => "R-idx",
-            PhysicalKey::Finger(Hand::Right, Finger::Middle) => "R-mid",
-            PhysicalKey::Finger(Hand::Right, Finger::Ring) => "R-ring",
-            PhysicalKey::Finger(Hand::Right, Finger::Pinky) => "R-pinky",
-            PhysicalKey::Finger(Hand::Right, Finger::Thumb) => "R-thumb",
-            PhysicalKey::Word => "WORD",
-        }
-    };
-
     loop {
         let event = match input.rx.recv() {
             Ok(HidEvent::Quit) => break,
@@ -452,7 +438,7 @@ fn rollover_test() {
             Err(_) => break,
         };
 
-        let name = key_name(event.key);
+        let name = scan::label(event.scan);
         match event.direction {
             KeyDirection::Down => {
                 if !held.contains(&name) {

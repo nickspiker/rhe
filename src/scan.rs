@@ -9,6 +9,8 @@
 //! The macOS backend translates HID usage codes into these values
 //! before handing events to the state machine.
 
+use crate::key_mask::KeyMask;
+
 // Left hand home row
 pub const L_PINKY: u8 = 30; // KEY_A
 pub const L_RING: u8 = 31; // KEY_S
@@ -29,3 +31,66 @@ pub const R_PINKY: u8 = 39; // KEY_SEMICOLON
 // Thumb / modifier keys
 pub const R_THUMB: u8 = 57; // KEY_SPACE — the chord-level "mod" bit
 pub const WORD: u8 = 56; // KEY_LEFTALT (Linux) / KEY_LEFTGUI on Mac — mode selector
+
+/// Bits belonging to the left hand's chord keys.
+pub const LEFT_MASK: KeyMask = KeyMask::EMPTY
+    .with(L_PINKY)
+    .with(L_RING)
+    .with(L_MID)
+    .with(L_IDX);
+
+/// Bits belonging to the right hand's chord keys, including the thumb/mod bit.
+pub const RIGHT_MASK: KeyMask = KeyMask::EMPTY
+    .with(R_IDX)
+    .with(R_MID)
+    .with(R_RING)
+    .with(R_PINKY)
+    .with(R_THUMB);
+
+/// Packed-bit index for a left-hand finger, using the legacy 4-bit hand
+/// layout (index=0, middle=1, ring=2, pinky=3). Returns `None` for any
+/// scancode that isn't one of rhe's four left-hand finger keys.
+pub fn left_bit(scan: u8) -> Option<u8> {
+    match scan {
+        L_IDX => Some(0),
+        L_MID => Some(1),
+        L_RING => Some(2),
+        L_PINKY => Some(3),
+        _ => None,
+    }
+}
+
+/// Packed-bit index for a right-hand finger, using the legacy 5-bit hand
+/// layout (index=0, middle=1, ring=2, pinky=3, thumb=4). Returns `None`
+/// for any scancode that isn't a right-hand chord key.
+pub fn right_bit(scan: u8) -> Option<u8> {
+    match scan {
+        R_IDX => Some(0),
+        R_MID => Some(1),
+        R_RING => Some(2),
+        R_PINKY => Some(3),
+        R_THUMB => Some(4),
+        _ => None,
+    }
+}
+
+/// Human-readable label for a chord-key scancode. Used by debug UIs
+/// (rollover test, listen output) that want more than a raw number.
+#[allow(dead_code)] // only used by macOS rollover_test for now
+pub fn label(scan: u8) -> &'static str {
+    match scan {
+        L_PINKY => "L-pinky",
+        L_RING => "L-ring",
+        L_MID => "L-mid",
+        L_IDX => "L-idx",
+        L_IDX_INNER => "L-idx-inner",
+        R_IDX_INNER => "R-idx-inner",
+        R_IDX => "R-idx",
+        R_MID => "R-mid",
+        R_RING => "R-ring",
+        R_PINKY => "R-pinky",
+        R_THUMB => "R-thumb",
+        WORD => "WORD",
+        _ => "?",
+    }
+}

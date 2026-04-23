@@ -1,6 +1,5 @@
 //! Phoneme-to-chord mapping, `ChordKey` encoding, `PhonemeTable` and `BriefTable`.
 
-use crate::chord_state::Chord;
 use crate::key_mask::KeyMask;
 use crate::scan;
 
@@ -22,9 +21,10 @@ impl ChordKey {
     /// Empty chord (no keys pressed).
     pub const EMPTY: Self = Self(KeyMask::EMPTY);
 
-    /// Build from a state-machine-level `Chord`.
-    pub fn from_chord(chord: &Chord) -> Self {
-        Self::from_packed(chord.right.0 & 0xF, chord.left.0 & 0xF, chord.modkey)
+    /// Build directly from a `KeyMask`. This is the path the state
+    /// machine uses — no packed-bit round-trip, no hand/finger detour.
+    pub fn from_mask(mask: KeyMask) -> Self {
+        Self(mask)
     }
 
     /// Build from the legacy packed representation: 4 right-finger bits,
@@ -380,17 +380,10 @@ impl BriefTable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chord_state::FingerChord;
 
     #[test]
     fn chord_key_roundtrip() {
-        let chord = Chord {
-            right: FingerChord(0b0101),
-            left: FingerChord(0b0011),
-            modkey: true,
-            space_held: false,
-        };
-        let key = ChordKey::from_chord(&chord);
+        let key = ChordKey::from_packed(0b0101, 0b0011, true);
         assert_eq!(key.right_bits(), 0b0101);
         assert_eq!(key.left_bits(), 0b0011);
         assert!(key.has_mod());

@@ -1,6 +1,7 @@
 //! rdev-based keyboard input backend (legacy, macOS/Linux).
 
-use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey};
+use crate::hand::{KeyDirection, KeyEvent};
+use crate::scan;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -77,38 +78,35 @@ impl super::KeyInput for RdevInput {
 
 /// Convert an rdev event to our KeyEvent, if it's a key we care about.
 fn convert(event: &rdev::Event) -> Option<KeyEvent> {
-    let (rdev_key, dir) = match event.event_type {
+    let (rdev_key, direction) = match event.event_type {
         rdev::EventType::KeyPress(key) => (key, KeyDirection::Down),
         rdev::EventType::KeyRelease(key) => (key, KeyDirection::Up),
         _ => return None,
     };
 
-    let physical = rdev_to_physical(rdev_key)?;
-    Some(KeyEvent {
-        key: physical,
-        direction: dir,
-    })
+    let scan = rdev_to_scan(rdev_key)?;
+    Some(KeyEvent { scan, direction })
 }
 
-/// Map rdev keys to our physical key model.
-fn rdev_to_physical(key: rdev::Key) -> Option<PhysicalKey> {
+/// Map rdev keys to rhe canonical scancodes (`src/scan.rs`).
+fn rdev_to_scan(key: rdev::Key) -> Option<u8> {
     match key {
         // Left hand home row (QWERTY positions A S D F)
-        rdev::Key::KeyA => Some(PhysicalKey::Finger(Hand::Left, Finger::Pinky)),
-        rdev::Key::KeyS => Some(PhysicalKey::Finger(Hand::Left, Finger::Ring)),
-        rdev::Key::KeyD => Some(PhysicalKey::Finger(Hand::Left, Finger::Middle)),
-        rdev::Key::KeyF => Some(PhysicalKey::Finger(Hand::Left, Finger::Index)),
+        rdev::Key::KeyA => Some(scan::L_PINKY),
+        rdev::Key::KeyS => Some(scan::L_RING),
+        rdev::Key::KeyD => Some(scan::L_MID),
+        rdev::Key::KeyF => Some(scan::L_IDX),
 
         // Right hand home row (QWERTY positions J K L ;)
-        rdev::Key::KeyJ => Some(PhysicalKey::Finger(Hand::Right, Finger::Index)),
-        rdev::Key::KeyK => Some(PhysicalKey::Finger(Hand::Right, Finger::Middle)),
-        rdev::Key::KeyL => Some(PhysicalKey::Finger(Hand::Right, Finger::Ring)),
-        rdev::Key::SemiColon => Some(PhysicalKey::Finger(Hand::Right, Finger::Pinky)),
+        rdev::Key::KeyJ => Some(scan::R_IDX),
+        rdev::Key::KeyK => Some(scan::R_MID),
+        rdev::Key::KeyL => Some(scan::R_RING),
+        rdev::Key::SemiColon => Some(scan::R_PINKY),
 
-        // Spacebar = right hand thumb (5th bit)
-        rdev::Key::Space => Some(PhysicalKey::Finger(Hand::Right, Finger::Thumb)),
+        // Spacebar = right hand thumb / mod bit
+        rdev::Key::Space => Some(scan::R_THUMB),
         // Left ⌘ = word boundary
-        rdev::Key::MetaLeft => Some(PhysicalKey::Word),
+        rdev::Key::MetaLeft => Some(scan::WORD),
 
         _ => None,
     }

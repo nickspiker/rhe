@@ -1,33 +1,10 @@
-//! Physical key model: fingers, hands, word key, key events.
+//! Raw key events for the chord pipeline.
+//!
+//! Input backends translate their platform-specific key identifiers into
+//! canonical scancodes (see `src/scan.rs`) and emit `KeyEvent { scan, direction }`.
+//! From that point on, the pipeline never sees hand/finger or OS keycodes
+//! again — everything speaks in scancode-space.
 
-/// Which hand a physical key belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Hand {
-    Left,
-    Right,
-}
-
-/// Which finger within a hand.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Finger {
-    Index,
-    Middle,
-    Ring,
-    Pinky,
-    /// Right thumb (spacebar) — the 5th bit for right hand.
-    Thumb,
-}
-
-/// A physical key on the keyboard.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PhysicalKey {
-    /// A finger key (left or right hand). Right hand includes thumb/spacebar.
-    Finger(Hand, Finger),
-    /// Word boundary key (left ⌘). Not part of any chord.
-    Word,
-}
-
-/// Raw key event from the OS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyDirection {
     Down,
@@ -36,6 +13,7 @@ pub enum KeyDirection {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeyEvent {
-    pub key: PhysicalKey,
+    /// Canonical scancode — bit index into `KeyMask`. See `src/scan.rs`.
+    pub scan: u8,
     pub direction: KeyDirection,
 }

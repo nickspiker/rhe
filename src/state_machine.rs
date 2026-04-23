@@ -1,14 +1,18 @@
 //! Chord detection: accumulates keys, fires on all-zero.
 //! Dual mode: per-hand (word held) vs all-zero (rolls).
 
-use crate::chord_state::{Chord, FingerChord};
-use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey};
+use crate::chord_map::ChordKey;
+use crate::hand::{KeyDirection, KeyEvent};
+use crate::key_mask::KeyMask;
+use crate::scan;
 
 /// Events emitted by the state machine.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
-    /// A single-hand chord fired (hand released). Phoneme lookup.
-    Chord(Chord),
+    /// A chord fired. `space_held` is true when the word key was held
+    /// while the chord was being accumulated (→ phoneme lookup);
+    /// false for a free-standing chord (→ brief lookup).
+    Chord { key: ChordKey, space_held: bool },
     /// Word key released — commit buffered word.
     SpaceUp,
     /// Solo word tap (no fingers during tap) = backspace.
@@ -17,47 +21,49 @@ pub enum Event {
     UndoPhoneme,
 }
 
-/// Per-hand firing state machine.
+// Hand partitions of the chord keyspace live in `scan::LEFT_MASK` and
+// `scan::RIGHT_MASK`. Right-thumb counts as right hand — it's the mod
+// bit and it participates in the right-hand "has this hand released
+// all its keys" check.
+use scan::{LEFT_MASK, RIGHT_MASK};
+
+/// State machine for rhe's chord pipeline.
 ///
-/// Right hand = 5 bits (4 fingers + thumb/spacebar).
-/// Left hand = 4 bits (4 fingers).
-/// Word key (left ⌘) = word boundary, not part of any chord.
+/// `live` = keys currently held (chord keys only; word is tracked by
+/// `word_held` since it has distinct firing semantics).
+/// `accum` = union of every key that went down since the last fire.
+/// Firing flushes the relevant bits from `accum`.
 ///
-/// Each hand accumulates independently. When a hand's keys all release,
-/// that hand's chord fires. Word up = commit.
+/// When `word_held` is true, each hand fires independently the moment
+/// that hand's `live` portion drops to zero (phoneme-per-hand).
+/// When `word_held` is false, both hands accumulate into a single chord
+/// that fires only when all chord keys release (rolls / briefs).
 #[derive(Debug)]
 pub struct StateMachine {
-    // Live key state
-    left: FingerChord,
-    right: FingerChord, // 4 finger bits
-    right_thumb: bool,  // spacebar = 5th bit
+    live: KeyMask,
+    accum: KeyMask,
     word_held: bool,
-
-    // Per-hand accumulators
-    left_accum: FingerChord,
-    right_accum: u8, // 5 bits accumulated
-
-    // For detecting solo word tap
+    /// Set whenever any chord key is pressed during a word-held session.
+    /// A word key that goes down and up with this still false = solo tap
+    /// = backspace gesture.
     fingers_during_word: bool,
 }
 
 impl StateMachine {
     pub fn new() -> Self {
         Self {
-            left: FingerChord::NONE,
-            right: FingerChord::NONE,
-            right_thumb: false,
+            live: KeyMask::EMPTY,
+            accum: KeyMask::EMPTY,
             word_held: false,
-            left_accum: FingerChord::NONE,
-            right_accum: 0,
             fingers_during_word: false,
         }
     }
 
     pub fn feed(&mut self, event: KeyEvent) -> Vec<Event> {
-        match event.key {
-            PhysicalKey::Word => self.handle_word(event.direction),
-            PhysicalKey::Finger(hand, finger) => self.handle_finger(hand, finger, event.direction),
+        if event.scan == scan::WORD {
+            self.handle_word(event.direction)
+        } else {
+            self.handle_chord_key(event.scan, event.direction)
         }
     }
 
@@ -65,15 +71,13 @@ impl StateMachine {
         match direction {
             KeyDirection::Down => {
                 self.word_held = true;
-                self.fingers_during_word = self.has_any_fingers();
-                // New word — reset accumulators
-                self.left_accum = FingerChord::NONE;
-                self.right_accum = 0;
+                self.fingers_during_word = !(self.live & BOTH_HANDS).is_empty();
+                self.accum = KeyMask::EMPTY;
                 vec![]
             }
             KeyDirection::Up => {
                 self.word_held = false;
-                if !self.fingers_during_word && !self.has_any_fingers() {
+                if !self.fingers_during_word && (self.live & BOTH_HANDS).is_empty() {
                     vec![Event::Backspace]
                 } else {
                     vec![Event::SpaceUp]
@@ -82,111 +86,76 @@ impl StateMachine {
         }
     }
 
-    fn handle_finger(&mut self, hand: Hand, finger: Finger, direction: KeyDirection) -> Vec<Event> {
+    fn handle_chord_key(&mut self, scan: u8, direction: KeyDirection) -> Vec<Event> {
         self.fingers_during_word = true;
-
         match direction {
             KeyDirection::Down => {
-                match hand {
-                    Hand::Left => {
-                        self.left.set(finger);
-                        self.left_accum.0 |= self.left.0;
-                    }
-                    Hand::Right => {
-                        if finger == Finger::Thumb {
-                            self.right_thumb = true;
-                            self.right_accum |= 1 << 4;
-                        } else {
-                            self.right.set(finger);
-                            self.right_accum |= self.right.0;
-                        }
-                    }
-                }
+                self.live.set(scan);
+                self.accum.set(scan);
                 vec![]
             }
             KeyDirection::Up => {
-                match hand {
-                    Hand::Left => self.left.clear(finger),
-                    Hand::Right => {
-                        if finger == Finger::Thumb {
-                            self.right_thumb = false;
-                        } else {
-                            self.right.clear(finger);
-                        }
-                    }
-                }
-                self.try_fire(hand)
+                self.live.clear(scan);
+                self.try_fire(scan)
             }
         }
     }
 
-    /// Fire logic depends on mode:
-    /// - Word held (phoneme mode): fire per-hand when that hand goes to zero.
-    /// - Word not held (brief mode): fire when ALL keys go to zero.
-    fn try_fire(&mut self, hand: Hand) -> Vec<Event> {
+    /// Fire logic:
+    /// - Word held → fire this hand the moment its live portion drops to
+    ///   zero, carrying just that hand's accumulated bits.
+    /// - Word not held → fire a single combined chord when both hands go
+    ///   to zero, carrying everything accumulated since the last fire.
+    fn try_fire(&mut self, released_scan: u8) -> Vec<Event> {
         if self.word_held {
-            // Per-hand firing: each hand fires independently
-            match hand {
-                Hand::Left => {
-                    if self.left.is_empty() && !self.left_accum.is_empty() {
-                        let chord = Chord {
-                            left: self.left_accum,
-                            right: FingerChord::NONE,
-                            modkey: false,
-                            space_held: true,
-                        };
-                        self.left_accum = FingerChord::NONE;
-                        return vec![Event::Chord(chord)];
-                    }
-                }
-                Hand::Right => {
-                    if self.right.is_empty() && !self.right_thumb && self.right_accum != 0 {
-                        let has_mod = self.right_accum & (1 << 4) != 0;
-                        let fingers = self.right_accum & 0xF;
-                        let chord = Chord {
-                            left: FingerChord::NONE,
-                            right: FingerChord(fingers),
-                            modkey: has_mod,
-                            space_held: true,
-                        };
-                        self.right_accum = 0;
-                        return vec![Event::Chord(chord)];
-                    }
+            let hand_mask = match scan_hand_mask(released_scan) {
+                Some(m) => m,
+                None => return vec![],
+            };
+            if (self.live & hand_mask).is_empty() {
+                let hand_accum = self.accum & hand_mask;
+                if !hand_accum.is_empty() {
+                    self.accum &= !hand_mask;
+                    return vec![Event::Chord {
+                        key: ChordKey::from_mask(hand_accum),
+                        space_held: true,
+                    }];
                 }
             }
             vec![]
         } else {
-            // All-zero firing: both hands accumulate, fire when everything released
-            if !self.left.is_empty() || !self.right.is_empty() || self.right_thumb {
+            if !(self.live & BOTH_HANDS).is_empty() {
                 return vec![];
             }
-
-            let has_left = !self.left_accum.is_empty();
-            let has_right = self.right_accum != 0;
-
-            if !has_left && !has_right {
+            if self.accum.is_empty() {
                 return vec![];
             }
-
-            let has_mod = self.right_accum & (1 << 4) != 0;
-            let right_fingers = self.right_accum & 0xF;
-
-            let chord = Chord {
-                left: self.left_accum,
-                right: FingerChord(right_fingers),
-                modkey: has_mod,
+            let key = ChordKey::from_mask(self.accum);
+            self.accum = KeyMask::EMPTY;
+            vec![Event::Chord {
+                key,
                 space_held: false,
-            };
-
-            self.left_accum = FingerChord::NONE;
-            self.right_accum = 0;
-
-            vec![Event::Chord(chord)]
+            }]
         }
     }
+}
 
-    fn has_any_fingers(&self) -> bool {
-        !self.left.is_empty() || !self.right.is_empty() || self.right_thumb
+const BOTH_HANDS: KeyMask = KeyMask::from_raw([
+    LEFT_MASK.as_raw()[0] | RIGHT_MASK.as_raw()[0],
+    LEFT_MASK.as_raw()[1] | RIGHT_MASK.as_raw()[1],
+    LEFT_MASK.as_raw()[2] | RIGHT_MASK.as_raw()[2],
+    LEFT_MASK.as_raw()[3] | RIGHT_MASK.as_raw()[3],
+]);
+
+/// Which hand mask owns this scancode? `None` for anything outside the
+/// chord keyspace.
+fn scan_hand_mask(scan: u8) -> Option<KeyMask> {
+    if LEFT_MASK.test(scan) {
+        Some(LEFT_MASK)
+    } else if RIGHT_MASK.test(scan) {
+        Some(RIGHT_MASK)
+    } else {
+        None
     }
 }
 
@@ -194,19 +163,14 @@ impl StateMachine {
 mod tests {
     use super::*;
 
-    fn finger(hand: Hand, finger: Finger, dir: KeyDirection) -> KeyEvent {
-        KeyEvent {
-            key: PhysicalKey::Finger(hand, finger),
-            direction: dir,
-        }
+    fn ev(scan: u8, dir: KeyDirection) -> KeyEvent {
+        KeyEvent { scan, direction: dir }
     }
-
-    fn word(dir: KeyDirection) -> KeyEvent {
-        KeyEvent {
-            key: PhysicalKey::Word,
-            direction: dir,
-        }
-    }
+    fn word(dir: KeyDirection) -> KeyEvent { ev(scan::WORD, dir) }
+    fn l_pinky(dir: KeyDirection) -> KeyEvent { ev(scan::L_PINKY, dir) }
+    fn r_idx(dir: KeyDirection) -> KeyEvent { ev(scan::R_IDX, dir) }
+    fn r_mid(dir: KeyDirection) -> KeyEvent { ev(scan::R_MID, dir) }
+    fn r_thumb(dir: KeyDirection) -> KeyEvent { ev(scan::R_THUMB, dir) }
 
     fn feed_all(sm: &mut StateMachine, events: &[KeyEvent]) -> Vec<Event> {
         events.iter().flat_map(|e| sm.feed(*e)).collect()
@@ -217,17 +181,14 @@ mod tests {
         let mut sm = StateMachine::new();
         let events = feed_all(
             &mut sm,
-            &[
-                finger(Hand::Right, Finger::Index, KeyDirection::Down),
-                finger(Hand::Right, Finger::Index, KeyDirection::Up),
-            ],
+            &[r_idx(KeyDirection::Down), r_idx(KeyDirection::Up)],
         );
         assert_eq!(events.len(), 1);
-        let Event::Chord(chord) = &events[0] else {
+        let Event::Chord { key, .. } = &events[0] else {
             panic!()
         };
-        assert_eq!(chord.right.0, 0b0001);
-        assert!(!chord.modkey);
+        assert_eq!(key.right_bits(), 0b0001);
+        assert!(!key.has_mod());
     }
 
     #[test]
@@ -236,18 +197,18 @@ mod tests {
         let events = feed_all(
             &mut sm,
             &[
-                finger(Hand::Right, Finger::Index, KeyDirection::Down),
-                finger(Hand::Right, Finger::Thumb, KeyDirection::Down),
-                finger(Hand::Right, Finger::Index, KeyDirection::Up),
-                finger(Hand::Right, Finger::Thumb, KeyDirection::Up),
+                r_idx(KeyDirection::Down),
+                r_thumb(KeyDirection::Down),
+                r_idx(KeyDirection::Up),
+                r_thumb(KeyDirection::Up),
             ],
         );
         assert_eq!(events.len(), 1);
-        let Event::Chord(chord) = &events[0] else {
+        let Event::Chord { key, .. } = &events[0] else {
             panic!()
         };
-        assert_eq!(chord.right.0, 0b0001);
-        assert!(chord.modkey); // thumb = mod = 5th bit
+        assert_eq!(key.right_bits(), 0b0001);
+        assert!(key.has_mod()); // thumb = mod bit
     }
 
     #[test]
@@ -255,17 +216,14 @@ mod tests {
         let mut sm = StateMachine::new();
         let events = feed_all(
             &mut sm,
-            &[
-                finger(Hand::Left, Finger::Pinky, KeyDirection::Down),
-                finger(Hand::Left, Finger::Pinky, KeyDirection::Up),
-            ],
+            &[l_pinky(KeyDirection::Down), l_pinky(KeyDirection::Up)],
         );
         assert_eq!(events.len(), 1);
-        let Event::Chord(chord) = &events[0] else {
+        let Event::Chord { key, .. } = &events[0] else {
             panic!()
         };
-        assert_eq!(chord.left.0, 0b1000);
-        assert!(!chord.modkey);
+        assert_eq!(key.left_bits(), 0b1000);
+        assert!(!key.has_mod());
     }
 
     #[test]
@@ -275,18 +233,18 @@ mod tests {
         let events = feed_all(
             &mut sm,
             &[
-                finger(Hand::Left, Finger::Pinky, KeyDirection::Down),
-                finger(Hand::Right, Finger::Index, KeyDirection::Down),
-                finger(Hand::Left, Finger::Pinky, KeyDirection::Up),
-                finger(Hand::Right, Finger::Index, KeyDirection::Up),
+                l_pinky(KeyDirection::Down),
+                r_idx(KeyDirection::Down),
+                l_pinky(KeyDirection::Up),
+                r_idx(KeyDirection::Up),
             ],
         );
         assert_eq!(events.len(), 1);
-        let Event::Chord(chord) = &events[0] else {
+        let Event::Chord { key, .. } = &events[0] else {
             panic!()
         };
-        assert_eq!(chord.left.0, 0b1000);
-        assert_eq!(chord.right.0, 0b0001);
+        assert_eq!(key.left_bits(), 0b1000);
+        assert_eq!(key.right_bits(), 0b0001);
     }
 
     #[test]
@@ -296,21 +254,21 @@ mod tests {
         let events = feed_all(
             &mut sm,
             &[
-                finger(Hand::Right, Finger::Thumb, KeyDirection::Down),
-                finger(Hand::Left, Finger::Pinky, KeyDirection::Down),
-                finger(Hand::Right, Finger::Index, KeyDirection::Down),
-                finger(Hand::Left, Finger::Pinky, KeyDirection::Up),
-                finger(Hand::Right, Finger::Index, KeyDirection::Up),
-                finger(Hand::Right, Finger::Thumb, KeyDirection::Up),
+                r_thumb(KeyDirection::Down),
+                l_pinky(KeyDirection::Down),
+                r_idx(KeyDirection::Down),
+                l_pinky(KeyDirection::Up),
+                r_idx(KeyDirection::Up),
+                r_thumb(KeyDirection::Up),
             ],
         );
         assert_eq!(events.len(), 1);
-        let Event::Chord(chord) = &events[0] else {
+        let Event::Chord { key, .. } = &events[0] else {
             panic!()
         };
-        assert_eq!(chord.left.0, 0b1000);
-        assert_eq!(chord.right.0, 0b0001);
-        assert!(chord.modkey);
+        assert_eq!(key.left_bits(), 0b1000);
+        assert_eq!(key.right_bits(), 0b0001);
+        assert!(key.has_mod());
     }
 
     #[test]
@@ -319,10 +277,7 @@ mod tests {
         sm.feed(word(KeyDirection::Down));
         feed_all(
             &mut sm,
-            &[
-                finger(Hand::Right, Finger::Index, KeyDirection::Down),
-                finger(Hand::Right, Finger::Index, KeyDirection::Up),
-            ],
+            &[r_idx(KeyDirection::Down), r_idx(KeyDirection::Up)],
         );
         let events = feed_all(&mut sm, &[word(KeyDirection::Up)]);
         assert!(events.contains(&Event::SpaceUp));
@@ -336,22 +291,44 @@ mod tests {
     }
 
     #[test]
+    fn backspace_after_word_commit() {
+        let mut sm = StateMachine::new();
+        // Type a word: word + finger chord + word-up.
+        feed_all(
+            &mut sm,
+            &[
+                word(KeyDirection::Down),
+                r_idx(KeyDirection::Down),
+                r_idx(KeyDirection::Up),
+                word(KeyDirection::Up),
+            ],
+        );
+        // Now a solo word tap — should fire Backspace.
+        let events = feed_all(&mut sm, &[word(KeyDirection::Down), word(KeyDirection::Up)]);
+        assert!(
+            events.contains(&Event::Backspace),
+            "expected Backspace after word commit, got {:?}",
+            events
+        );
+    }
+
+    #[test]
     fn multi_finger_accumulates() {
         let mut sm = StateMachine::new();
         let events = feed_all(
             &mut sm,
             &[
-                finger(Hand::Right, Finger::Index, KeyDirection::Down),
-                finger(Hand::Right, Finger::Middle, KeyDirection::Down),
-                finger(Hand::Right, Finger::Index, KeyDirection::Up),
-                finger(Hand::Right, Finger::Middle, KeyDirection::Up),
+                r_idx(KeyDirection::Down),
+                r_mid(KeyDirection::Down),
+                r_idx(KeyDirection::Up),
+                r_mid(KeyDirection::Up),
             ],
         );
         assert_eq!(events.len(), 1);
-        let Event::Chord(chord) = &events[0] else {
+        let Event::Chord { key, .. } = &events[0] else {
             panic!()
         };
-        assert_eq!(chord.right.0, 0b0011);
+        assert_eq!(key.right_bits(), 0b0011);
     }
 
     #[test]
@@ -360,14 +337,10 @@ mod tests {
         sm.feed(word(KeyDirection::Down));
         feed_all(
             &mut sm,
-            &[
-                finger(Hand::Right, Finger::Index, KeyDirection::Down),
-                finger(Hand::Right, Finger::Index, KeyDirection::Up),
-            ],
+            &[r_idx(KeyDirection::Down), r_idx(KeyDirection::Up)],
         );
         sm.feed(word(KeyDirection::Up));
         sm.feed(word(KeyDirection::Down));
-        assert_eq!(sm.right_accum, 0);
-        assert!(sm.left_accum.is_empty());
+        assert!(sm.accum.is_empty());
     }
 }

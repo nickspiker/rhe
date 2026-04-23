@@ -11,7 +11,8 @@
 //! (typically membership in the `input` group).
 
 use super::HidEvent;
-use crate::hand::{Finger, Hand, KeyDirection, KeyEvent, PhysicalKey};
+use crate::hand::{KeyDirection, KeyEvent};
+use crate::scan;
 use std::ffi::CString;
 use std::fs;
 use std::os::unix::io::RawFd;
@@ -250,7 +251,7 @@ fn reader_loop(
                 caps_solo = false;
             }
 
-            let rhe_key = linux_to_physical(ev.code);
+            let rhe_scan = linux_to_scan(ev.code);
             let active = enabled.load(Ordering::Relaxed);
 
             // Quit gesture. Esc down only; Esc up + autorepeat ignored.
@@ -272,13 +273,13 @@ fn reader_loop(
 
             // rhe's own keys, when active: consume, don't forward.
             if active {
-                if let Some(key) = rhe_key {
+                if let Some(scan) = rhe_scan {
                     let dir = match ev.value {
                         0 => KeyDirection::Up,
                         1 => KeyDirection::Down,
                         _ => continue, // skip autorepeat on chord keys
                     };
-                    let _ = tx.send(HidEvent::Key(KeyEvent { key, direction: dir }));
+                    let _ = tx.send(HidEvent::Key(KeyEvent { scan, direction: dir }));
                     continue;
                 }
             }
@@ -388,18 +389,22 @@ fn open_uinput() -> Result<RawFd, String> {
     Ok(fd)
 }
 
-fn linux_to_physical(code: u16) -> Option<PhysicalKey> {
+/// Map a Linux evdev scancode to rhe's canonical scancode space
+/// (`src/scan.rs`). The two happen to share values for the home row
+/// since `scan::*` is modeled on evdev; this function just filters for
+/// keys rhe cares about.
+fn linux_to_scan(code: u16) -> Option<u8> {
     Some(match code {
-        KEY_A => PhysicalKey::Finger(Hand::Left, Finger::Pinky),
-        KEY_S => PhysicalKey::Finger(Hand::Left, Finger::Ring),
-        KEY_D => PhysicalKey::Finger(Hand::Left, Finger::Middle),
-        KEY_F => PhysicalKey::Finger(Hand::Left, Finger::Index),
-        KEY_J => PhysicalKey::Finger(Hand::Right, Finger::Index),
-        KEY_K => PhysicalKey::Finger(Hand::Right, Finger::Middle),
-        KEY_L => PhysicalKey::Finger(Hand::Right, Finger::Ring),
-        KEY_SEMICOLON => PhysicalKey::Finger(Hand::Right, Finger::Pinky),
-        KEY_SPACE => PhysicalKey::Finger(Hand::Right, Finger::Thumb),
-        KEY_LEFTALT => PhysicalKey::Word,
+        KEY_A => scan::L_PINKY,
+        KEY_S => scan::L_RING,
+        KEY_D => scan::L_MID,
+        KEY_F => scan::L_IDX,
+        KEY_J => scan::R_IDX,
+        KEY_K => scan::R_MID,
+        KEY_L => scan::R_RING,
+        KEY_SEMICOLON => scan::R_PINKY,
+        KEY_SPACE => scan::R_THUMB,
+        KEY_LEFTALT => scan::WORD,
         _ => return None,
     })
 }
