@@ -309,6 +309,18 @@ extern "C" fn hid_callback(
             return;
         }
 
+        // Wide layouts put a chord key on Return, so one shift key
+        // gets remapped to synthesize Return (otherwise the user
+        // loses newline). Runs before everything else — it's just a
+        // passthrough with a rewritten code, not a rhe event.
+        if let Some(synth_usage) = crate::layout::hid_enter_synth_usage() {
+            if usage == synth_usage {
+                // HID 0x28 = Return, virtual keycode 0x24.
+                reinject_key(0x24, 0x28, pressed != 0, &ctx.modifier_flags);
+                return;
+            }
+        }
+
         // If rhe is disabled (caps lock toggled off), pass everything through
         if !ctx.enabled.load(Ordering::Relaxed) {
             if let Some(vk) = hid_usage_to_virtual_keycode(usage) {
@@ -497,29 +509,11 @@ fn hid_usage_to_virtual_keycode(usage: u32) -> Option<u16> {
     }
 }
 
-/// Map HID usage codes to rhe canonical scancodes (`src/scan.rs`).
+/// Map HID usage codes to rhe canonical scancodes. The per-layout
+/// table lives in `crate::layout`; this is just a thin wrapper so the
+/// callers can stay in HID-land.
 fn hid_usage_to_scan(usage: u32) -> Option<u8> {
-    match usage {
-        // Left hand home row (QWERTY A S D F)
-        ffi::kHIDUsage_KeyboardA => Some(scan::L_PINKY),
-        ffi::kHIDUsage_KeyboardS => Some(scan::L_RING),
-        ffi::kHIDUsage_KeyboardD => Some(scan::L_MID),
-        ffi::kHIDUsage_KeyboardF => Some(scan::L_IDX),
-        ffi::kHIDUsage_KeyboardG => Some(scan::L_IDX_INNER),
-        ffi::kHIDUsage_KeyboardH => Some(scan::R_IDX_INNER),
-
-        // Right hand home row (QWERTY J K L ;) + spacebar as thumb/mod bit
-        ffi::kHIDUsage_KeyboardJ => Some(scan::R_IDX),
-        ffi::kHIDUsage_KeyboardK => Some(scan::R_MID),
-        ffi::kHIDUsage_KeyboardL => Some(scan::R_RING),
-        ffi::kHIDUsage_KeyboardSemicolon => Some(scan::R_PINKY),
-        ffi::kHIDUsage_KeyboardSpacebar => Some(scan::R_THUMB),
-
-        // Word boundary (left ⌘)
-        ffi::kHIDUsage_KeyboardLeftGUI => Some(scan::WORD),
-
-        _ => None,
-    }
+    crate::layout::hid_to_role(usage)
 }
 
 /// Build a matching dictionary for keyboard devices.

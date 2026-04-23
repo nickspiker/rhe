@@ -10,6 +10,7 @@ mod data;
 mod hand;
 mod input;
 mod key_mask;
+mod layout;
 mod scan;
 mod interpreter;
 mod output;

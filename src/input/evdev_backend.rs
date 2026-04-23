@@ -12,7 +12,7 @@
 
 use super::HidEvent;
 use crate::hand::{KeyDirection, KeyEvent};
-use crate::scan;
+use crate::layout;
 use std::ffi::CString;
 use std::fs;
 use std::os::unix::io::RawFd;
@@ -33,24 +33,15 @@ const BUS_VIRTUAL: u16 = 0x06;
 
 // Positional scancodes from linux/input-event-codes.h — these are
 // pre-xkb hardware positions, identical whether the user is on QWERTY,
-// Dvorak, Colemak, or anything else.
+// Dvorak, Colemak, or anything else. The layout-specific chord key
+// mappings live in `crate::layout`; only non-layout keys are kept here.
 const KEY_ESC: u16 = 1;
 const KEY_CAPSLOCK: u16 = 58;
+/// Keyboard-detection probe. Any standard keyboard advertises KEY_A in
+/// its EV_KEY bitmap; mice don't. The role this position plays in rhe
+/// depends on the layout — see `layout::linux_to_role`.
 const KEY_A: u16 = 30;
-const KEY_S: u16 = 31;
-const KEY_D: u16 = 32;
-const KEY_F: u16 = 33;
-const KEY_G: u16 = 34;
-const KEY_H: u16 = 35;
-const KEY_J: u16 = 36;
-const KEY_K: u16 = 37;
-const KEY_L: u16 = 38;
-const KEY_SEMICOLON: u16 = 39;
-const KEY_SPACE: u16 = 57;
-// PC keyboards put LEFTALT directly under the left thumb next to space
-// (the Mac Command/⌘ position is LEFTMETA on those boards, but on a PC
-// keyboard LEFTMETA is the Super/Win key one slot further out).
-const KEY_LEFTALT: u16 = 56;
+const KEY_ENTER: u16 = 28;
 
 // EVIOCGRAB = _IOW('E', 0x90, int) — stable Linux ABI, x86-64 generic _IOC layout.
 const EVIOCGRAB: libc::c_ulong = 0x40044590;
@@ -253,7 +244,21 @@ fn reader_loop(
                 caps_solo = false;
             }
 
-            let rhe_scan = linux_to_scan(ev.code);
+            // Wide layouts put a chord key on physical Enter, so one
+            // of the shift keys is remapped to synthesize Enter (else
+            // the user loses newline). Runs before everything else —
+            // the synth is a passthrough with a rewritten code, not a
+            // chord event, and it bypasses both rhe and caps-lock.
+            if let Some(synth_key) = layout::linux_enter_synth_key() {
+                if ev.code == synth_key {
+                    if let Some(ufd) = uinput_fd {
+                        forward_key(ufd, KEY_ENTER, ev.value);
+                    }
+                    continue;
+                }
+            }
+
+            let rhe_scan = layout::linux_to_role(ev.code);
             let active = enabled.load(Ordering::Relaxed);
 
             // Quit gesture. Esc down only; Esc up + autorepeat ignored.
@@ -391,27 +396,6 @@ fn open_uinput() -> Result<RawFd, String> {
     Ok(fd)
 }
 
-/// Map a Linux evdev scancode to rhe's canonical scancode space
-/// (`src/scan.rs`). The two happen to share values for the home row
-/// since `scan::*` is modeled on evdev; this function just filters for
-/// keys rhe cares about.
-fn linux_to_scan(code: u16) -> Option<u8> {
-    Some(match code {
-        KEY_A => scan::L_PINKY,
-        KEY_S => scan::L_RING,
-        KEY_D => scan::L_MID,
-        KEY_F => scan::L_IDX,
-        KEY_G => scan::L_IDX_INNER,
-        KEY_H => scan::R_IDX_INNER,
-        KEY_J => scan::R_IDX,
-        KEY_K => scan::R_MID,
-        KEY_L => scan::R_RING,
-        KEY_SEMICOLON => scan::R_PINKY,
-        KEY_SPACE => scan::R_THUMB,
-        KEY_LEFTALT => scan::WORD,
-        _ => return None,
-    })
-}
 
 fn find_keyboards() -> std::io::Result<Vec<String>> {
     let mut out = Vec::new();
