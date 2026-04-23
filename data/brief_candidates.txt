@@ -49,7 +49,7 @@
    33         4938948    2  my
    34         4862118    3  him
    35         4821861    2  on
-   36         4527912    3  one
+# 36         4527912    3  one   # typed via number-mode finger-first-mod gesture
    37         4419883    2  do
    38         4407838    3  come
    39         4374975    2  no
@@ -259,7 +259,7 @@
   245          739992    3  bad
   246          734515    6  anymore
   247          734290    3  might
-  248          733252    3  three
+# 248          733252    3  three # typed via number-mode finger-first-mod gesture
   249          730320    5  drink
   250          729327    4  wanna
   251          728613    4  hard
@@ -438,13 +438,13 @@
   430          374689    8  obviously
   432          373526    2  may
   433          372460    6  building
-  434          372261    4  six
+# 434          372261    4  six   # typed via number-mode finger-first-mod gesture
   435          371772    4  funny
   436          371154    4  black
   437          368499    4  alive
   438          368456    3  damn
   439          368390    6  system
-  440          367252    3  five
+# 440          367252    3  five  # typed via number-mode finger-first-mod gesture
   441          364574    3  far
   442          362390    6  totally
   443          362286    7  personal
@@ -540,7 +540,7 @@
   534          285267    4  dream
   535          284110    3  walk
   536          283916    5  unless
-  537          283872    5  seven
+# 537          283872    5  seven # typed via number-mode finger-first-mod gesture
   538          283716    5  clothes
   539          283670    3  town
   540          282636    5  hotel
@@ -647,7 +647,7 @@
   646          203168    5  village
   647          202604    3  bitch
   648          202456    3  luck
-  649          200266    3  ten
+# 649          200266    3  ten   # (no number-mode gesture, but still rare enough to spell phonetically)
   650          200154    4  buddy
   651          199368    4  floor
   652          198471    4  swear
@@ -803,7 +803,7 @@
   809           76658    2  ya
   810           74262    2  age
   813           62153    2  key
-  814           61400    2  eight
+# 814           61400    2  eight # typed via number-mode finger-first-mod gesture
   815           60812    2  sea
   816           59277    2  tea
   817           57545    2  ice

@@ -27,6 +27,12 @@
 //! separators. The matched parentheses sit on the two inner-index
 //! positions, mirrored visually across the keyboard's centerline.
 //!
+//! The mod bit can arrive two ways, distinguished by `first_down`:
+//! - mod pressed *first*, then the finger → symbol (above table).
+//! - finger pressed *first*, then mod → **spelled** digit ("five"),
+//!   useful for prose where you want the word form without leaving
+//!   number mode.
+//!
 //! Multi-finger chords, chords with no fingers (mod alone), and any
 //! scancode outside the ten positions return `None`. The interpreter
 //! treats a `None` as a silent no-op in number mode.
@@ -86,8 +92,24 @@ pub fn chord_to_symbol(key: ChordKey) -> Option<char> {
     Some(SYMBOLS[pos as usize])
 }
 
+/// Spelled word for a single-finger chord with mod held. Same position
+/// map as `chord_to_digit`; the caller discriminates symbol vs word by
+/// inspecting `first_down` on the incoming Chord event (mod-first =
+/// symbol, finger-first = word).
+pub fn chord_to_digit_word(key: ChordKey) -> Option<&'static str> {
+    if !key.has_mod() {
+        return None;
+    }
+    let pos = position(key, true)?;
+    Some(DIGIT_WORDS[pos as usize])
+}
+
 const DIGITS: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 const SYMBOLS: [char; 10] = ['-', '/', '*', '+', ')', '(', '=', '%', '^', ','];
+const DIGIT_WORDS: [&str; 10] = [
+    "zero", "one", "two", "three", "four",
+    "five", "six", "seven", "eight", "nine",
+];
 
 #[cfg(test)]
 mod tests {
@@ -168,5 +190,29 @@ mod tests {
         m.set(scan::R_IDX);
         m.set(scan::R_MID);
         assert_eq!(chord_to_symbol(ChordKey::from_mask(m)), None);
+    }
+
+    #[test]
+    fn digit_word_all_ten_positions() {
+        assert_eq!(chord_to_digit_word(with_mod(scan::R_PINKY)), Some("zero"));
+        assert_eq!(chord_to_digit_word(with_mod(scan::R_RING)), Some("one"));
+        assert_eq!(chord_to_digit_word(with_mod(scan::R_MID)), Some("two"));
+        assert_eq!(chord_to_digit_word(with_mod(scan::R_IDX)), Some("three"));
+        assert_eq!(chord_to_digit_word(with_mod(scan::R_IDX_INNER)), Some("four"));
+        assert_eq!(chord_to_digit_word(with_mod(scan::L_IDX_INNER)), Some("five"));
+        assert_eq!(chord_to_digit_word(with_mod(scan::L_IDX)), Some("six"));
+        assert_eq!(chord_to_digit_word(with_mod(scan::L_MID)), Some("seven"));
+        assert_eq!(chord_to_digit_word(with_mod(scan::L_RING)), Some("eight"));
+        assert_eq!(chord_to_digit_word(with_mod(scan::L_PINKY)), Some("nine"));
+    }
+
+    #[test]
+    fn digit_word_without_mod_none() {
+        assert_eq!(chord_to_digit_word(single(scan::R_IDX)), None);
+    }
+
+    #[test]
+    fn digit_word_thumb_only_none() {
+        assert_eq!(chord_to_digit_word(single(scan::R_THUMB)), None);
     }
 }

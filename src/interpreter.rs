@@ -123,16 +123,27 @@ impl Interpreter {
         match event {
             Event::Chord { key, space_held, first_down } => {
                 if self.mode == Mode::Number {
-                    // Number mode dispatch: mod-held chord → symbol,
-                    // plain finger chord → digit, anything else → no-op.
-                    let emitted = if key.has_mod() {
-                        crate::number_data::chord_to_symbol(*key)
-                    } else {
+                    // Number mode dispatch:
+                    //   no mod → digit ("5")
+                    //   mod, first_down = thumb → symbol ("+")
+                    //   mod, first_down = finger → spelled word ("five")
+                    // The gesture-order split gives three distinct
+                    // outputs from the same ten-finger layout without
+                    // forcing the user to leave number mode for prose.
+                    let emitted = if !key.has_mod() {
                         crate::number_data::chord_to_digit(*key)
+                            .map(|c| c.to_string())
+                    } else if *first_down == Some(crate::scan::R_THUMB) {
+                        crate::number_data::chord_to_symbol(*key)
+                            .map(|c| c.to_string())
+                    } else {
+                        crate::number_data::chord_to_digit_word(*key)
+                            .map(|s| s.to_string())
                     };
-                    return emitted.map(|c| {
-                        self.emit_history.push(1);
-                        Action::Emit(c.to_string())
+                    return emitted.map(|s| {
+                        let n = s.chars().count();
+                        self.emit_history.push(n);
+                        Action::Emit(s)
                     });
                 }
                 if *space_held {
@@ -307,14 +318,36 @@ mod tests {
     fn number_mode_symbol_with_mod() {
         let mut interp = setup();
         interp.process(&Event::ModTap); // enter
-        // R_IDX + thumb → "+"
+        // R_IDX + thumb, first_down = thumb → "+"
         use crate::key_mask::KeyMask;
         let key = ChordKey::from_mask(
             KeyMask::EMPTY.with(crate::scan::R_IDX).with(crate::scan::R_THUMB),
         );
-        let event = Event::Chord { key, space_held: true, first_down: None };
+        let event = Event::Chord {
+            key,
+            space_held: true,
+            first_down: Some(crate::scan::R_THUMB),
+        };
         let action = interp.process(&event).unwrap();
         assert_eq!(action, Action::Emit("+".to_string()));
+    }
+
+    #[test]
+    fn number_mode_finger_first_emits_spelled_word() {
+        let mut interp = setup();
+        interp.process(&Event::ModTap); // enter
+        // R_IDX + thumb, first_down = R_IDX → "three"
+        use crate::key_mask::KeyMask;
+        let key = ChordKey::from_mask(
+            KeyMask::EMPTY.with(crate::scan::R_IDX).with(crate::scan::R_THUMB),
+        );
+        let event = Event::Chord {
+            key,
+            space_held: true,
+            first_down: Some(crate::scan::R_IDX),
+        };
+        let action = interp.process(&event).unwrap();
+        assert_eq!(action, Action::Emit("three".to_string()));
     }
 
     #[test]

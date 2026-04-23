@@ -1865,11 +1865,18 @@ fn draw_keyboard(
     // point to, so it only has active/inactive — no primary/secondary.
     let word_t = if target_word { word_active } else { dim_style };
     let thumb_held = held_right & (1 << 4) != 0;
-    let mod_t = if target_right & (1 << 4) != 0 && !thumb_held {
-        // Bright while thumb is NOT yet pressed. Once down, the cell
-        // goes fully dark — the press has been registered, release
-        // fires the gesture. Matches the finger-cell convention:
-        // bright = "press this", dark = "done".
+    // A "mod-tap only" target has just the thumb bit set — that's the
+    // number-mode entry / decimal step, which advances on key-UP, so
+    // the cell should go dark once the thumb is held ("got it, release
+    // to fire"). A chord target that includes mod alongside finger
+    // bits is different: the chord matches on full-chord key-down, so
+    // mod must stay bright until the user finishes pressing the other
+    // keys. Without this split, finger-first-then-mod chords told the
+    // user "release mod" mid-gesture — which would break the chord.
+    let is_mod_tap_only_target = target_right == (1 << 4) && target_left == 0;
+    let mod_t = if is_mod_tap_only_target {
+        if thumb_held { dim_style } else { mod_active }
+    } else if target_right & (1 << 4) != 0 {
         if target_accepted_leads.is_empty()
             || user_first_down.is_some()
             || target_accepted_leads.test(scan::R_THUMB)
