@@ -2,6 +2,7 @@
 
 mod briefs;
 mod briefs_data;
+mod ordered_briefs_data;
 mod suffixes_data;
 mod chord_map;
 mod data;

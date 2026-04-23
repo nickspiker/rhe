@@ -350,30 +350,72 @@ impl PhonemeTable {
     }
 }
 
-/// Brief table: maps ChordKey → word string (for instant output without space).
+/// Brief table: maps `ChordKey` → word string.
+///
+/// Two flavours coexist:
+/// - **Unordered briefs**: any down-order fires the entry. Default case,
+///   produced by `gen_briefs` from frequency × savings ranking.
+/// - **Ordered briefs**: `(ChordKey, first_down_scancode)` → word. When
+///   a chord has any ordered entry, the chord becomes "claimed" and its
+///   unordered entry is suppressed. Only the scancode that goes down
+///   first decides which word fires. Used for homophone splits
+///   (to/too) and deliberate gesture vocabulary.
 pub struct BriefTable {
-    entries: std::collections::HashMap<ChordKey, String>,
+    unordered: std::collections::HashMap<ChordKey, String>,
+    ordered: std::collections::HashMap<(ChordKey, u8), String>,
+    /// Chords with at least one ordered entry. Insertions to these
+    /// chords via the unordered path are dropped.
+    claimed: std::collections::HashSet<ChordKey>,
 }
 
 impl BriefTable {
     pub fn new() -> Self {
         Self {
-            entries: std::collections::HashMap::new(),
+            unordered: std::collections::HashMap::new(),
+            ordered: std::collections::HashMap::new(),
+            claimed: std::collections::HashSet::new(),
         }
     }
 
+    /// Insert an unordered brief. Silently dropped if the chord is
+    /// already claimed by an ordered entry — the ordered-first load
+    /// order makes this a lockout.
     pub fn insert(&mut self, key: ChordKey, word: String) {
-        self.entries.insert(key, word);
+        if self.claimed.contains(&key) {
+            return;
+        }
+        self.unordered.insert(key, word);
     }
 
-    pub fn lookup(&self, key: ChordKey) -> Option<&str> {
-        self.entries.get(&key).map(String::as_str)
+    /// Insert an ordered brief. Claims the chord — future unordered
+    /// inserts at the same key are dropped, and any already-inserted
+    /// unordered entry is removed so lookup stays consistent.
+    pub fn insert_ordered(&mut self, key: ChordKey, first_down: u8, word: String) {
+        self.claimed.insert(key);
+        self.unordered.remove(&key);
+        self.ordered.insert((key, first_down), word);
     }
 
-    /// Iterate over all (chord, word) entries. Used by the tutor to find
-    /// which chord produces a given word (reverse lookup).
+    /// Lookup the word for a chord.
+    ///
+    /// Claimed chords require `first_down` to match a registered ordered
+    /// entry — any other starting finger returns `None`. Unclaimed
+    /// chords fall through to the unordered table and ignore `first_down`.
+    pub fn lookup(&self, key: ChordKey, first_down: Option<u8>) -> Option<&str> {
+        if self.claimed.contains(&key) {
+            let first = first_down?;
+            return self.ordered.get(&(key, first)).map(String::as_str);
+        }
+        self.unordered.get(&key).map(String::as_str)
+    }
+
+    /// Iterate over every (chord, word) pair, ordered or not. Ordered
+    /// entries appear once per (chord, first_down) variant. Used by the
+    /// tutor for reverse word→chord lookup, by `rhe briefs` for display.
     pub fn iter(&self) -> impl Iterator<Item = (&ChordKey, &String)> {
-        self.entries.iter()
+        self.unordered
+            .iter()
+            .chain(self.ordered.iter().map(|((k, _), v)| (k, v)))
     }
 }
 
@@ -403,6 +445,31 @@ mod tests {
     fn no_phoneme_collisions() {
         let table = PhonemeTable::new();
         assert_eq!(table.entries.len(), 39);
+    }
+
+    #[test]
+    fn brief_table_ordered_semantics() {
+        let mut table = BriefTable::new();
+        let ab = ChordKey::from_packed(0b0001, 0b0001, false);
+
+        // Ordered entries claim the chord. Two orderings → two words.
+        table.insert_ordered(ab, crate::scan::R_IDX, "to ".to_string());
+        table.insert_ordered(ab, crate::scan::L_IDX, "too ".to_string());
+
+        // Unordered insert at a claimed chord is silently dropped.
+        table.insert(ab, "zzz ".to_string());
+
+        assert_eq!(table.lookup(ab, Some(crate::scan::R_IDX)), Some("to "));
+        assert_eq!(table.lookup(ab, Some(crate::scan::L_IDX)), Some("too "));
+        // Claimed chord + unrecognized first_down → nothing.
+        assert_eq!(table.lookup(ab, Some(crate::scan::R_MID)), None);
+        assert_eq!(table.lookup(ab, None), None);
+
+        // Unclaimed chord still works the old way.
+        let other = ChordKey::from_packed(0b0010, 0, false);
+        table.insert(other, "and ".to_string());
+        assert_eq!(table.lookup(other, None), Some("and "));
+        assert_eq!(table.lookup(other, Some(crate::scan::R_MID)), Some("and "));
     }
 
     #[test]

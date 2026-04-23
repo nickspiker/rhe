@@ -263,6 +263,8 @@ fn main() {
     let project = Path::new(env!("CARGO_MANIFEST_DIR"));
     let cmu_path = project.join("data/cmudict.dict");
     let freq_path = project.join("data/en_freq.txt");
+    let candidates_path = project.join("data/brief_candidates.txt");
+    let homophones_path = project.join("data/homophones.txt");
     let out_path = project.join("src/briefs_data.rs");
 
     // 1. Load CMU dict (word → phoneme list)
@@ -377,31 +379,41 @@ fn main() {
         top_words.len()
     );
 
+    // 3c. Candidate curation.
+    //
+    // If `data/brief_candidates.txt` exists, treat it as the user-curated
+    // source of truth: only words listed in it get assigned briefs. That
+    // file is what the user edits — deleting a line blacklists the word.
+    //
+    // If it doesn't exist, write the current default list out so the user
+    // can pick it up and prune. To regenerate defaults, delete the file.
+    top_words = load_or_write_candidates(&candidates_path, &top_words, &cmu);
+    eprintln!("Using {} candidate words from {}", top_words.len(), candidates_path.display());
+
+    // 3d. Write a homophone-collision report. Helps the user decide
+    // which pairs/sets deserve ordered-brief entries. Scope: any CMU
+    // word sharing a phoneme sequence with a candidate word, restricted
+    // to words that also appear in the frequency list (drops obscure
+    // CMU entries that would otherwise pollute the report).
+    write_homophone_report(&homophones_path, &top_words, &cmu, &freq_words);
+
     // 4. Compute natural brief for each word
     struct WordInfo {
         word: String,
-        #[allow(dead_code)]
-        rank: usize,
-        natural_right: u8,
-        natural_left: u8,
         first_consonant: String,
         first_vowel: String,
         phoneme_count: usize,
-        value_right_only: f64, // frequency * (phonemes - 1)
-        value_two_hand: f64,   // frequency * (phonemes - 2)
+        /// Savings-weighted value: `frequency × (phonemes - 1)`.
+        /// Actual keystroke savings regardless of slot type.
+        value: f64,
     }
 
     let mut words: Vec<WordInfo> = Vec::new();
-    for (rank, (word, count, phs)) in top_words.iter().enumerate() {
+    for (word, count, phs) in top_words.iter() {
         let stripped: Vec<&str> = phs.iter().map(|p| strip_stress(p)).collect();
 
         let first_cons = stripped.iter().find(|p| is_consonant_phoneme(p)).copied();
         let first_vow = stripped.iter().find(|p| is_vowel_phoneme(p)).copied();
-
-        let right = first_cons
-            .and_then(cmu_consonant_to_right)
-            .unwrap_or(0);
-        let left = first_vow.and_then(cmu_vowel_to_left).unwrap_or(0);
 
         // Count phonemes (consonants + vowels that map to our system)
         let phoneme_count = stripped
@@ -409,36 +421,39 @@ fn main() {
             .filter(|p| is_consonant_phoneme(p) || is_vowel_phoneme(p))
             .count();
 
-        // Value depends on slot type:
-        //   right-only slot: saved = phoneme_count - 1
-        //   two-hand slot:   saved = phoneme_count - 2
-        // We compute both; assignment phase picks the right one.
-        let value_right_only = *count as f64 * (phoneme_count.saturating_sub(1) as f64);
-        let value_two_hand = *count as f64 * (phoneme_count.saturating_sub(2) as f64);
+        let value = *count as f64 * (phoneme_count.saturating_sub(1) as f64);
 
         words.push(WordInfo {
             word: word.clone(),
-            rank,
-            natural_right: right,
-            natural_left: left,
             first_consonant: first_cons.unwrap_or("-").to_string(),
             first_vowel: first_vow.unwrap_or("-").to_string(),
             phoneme_count,
-            value_right_only,
-            value_two_hand,
+            value,
         });
     }
 
     // 5. Assignment
     //
-    // Phase 0: Pinned overrides.
-    // Phase A: Right-only slots (left=0) for words with 2+ phonemes, by value_right_only.
-    // Phase B: Two-hand slots for words with 3+ phonemes, by value_two_hand.
-    // Words with value=0 are skipped (no savings from a brief).
+    // Pinned / ordered-claimed slots first, then one greedy pass:
+    // words sorted by savings-weighted value descending, slots sorted
+    // by ergonomic effort ascending, zip them. Highest-value word
+    // gets the easiest free slot.
 
-    // ─── PINNED OVERRIDES ───
-    let pinned: &[(u8, u8, &str)] = &[
-        (0b10000, 0b0000, "the"),   // fastest slot (mod only) for most common word
+    let pinned: &[(u8, u8, &str)] = &[];
+
+    // Mirror of `ORDERED_BRIEFS` in src/ordered_briefs_data.rs. Used here
+    // for two things:
+    //   1. Mark the (right, left) slots as occupied so unordered briefs
+    //      don't collide with them.
+    //   2. Exclude the listed words from the unordered candidate pool so
+    //      they don't get a second brief somewhere else (ordered brief
+    //      is already their home).
+    // KEEP IN SYNC when ordered_briefs_data.rs changes.
+    // Format: (right_5bits, left_4bits, word).
+    const ORDERED_CLAIMED: &[(u8, u8, &str)] = &[
+        (0b00001, 0b0001, "to"),
+        (0b00001, 0b0001, "too"),
+        (0b00111, 0b0000, "four"),
     ];
 
     let all_slots = all_slots_by_effort();
@@ -453,92 +468,42 @@ fn main() {
         assignments.push((right, left, word.to_string(), "pinned".into()));
     }
 
-    // Phase A: right-only slots (left=0) — 2+ phoneme words, sorted by value_right_only
-    let right_only_slots: Vec<(u8, u8)> = all_slots
+    // Ordered-brief slots are occupied; those words live in
+    // `ORDERED_BRIEFS` directly and shouldn't also land in BRIEFS.
+    for &(right, left, word) in ORDERED_CLAIMED {
+        occupied.insert((right, left));
+        assigned_words.insert(word.to_string());
+    }
+
+    // Greedy assignment: highest-value word gets the easiest free slot.
+    let mut unassigned: Vec<&WordInfo> = words
         .iter()
-        .filter(|&&(r, l)| r != 0 && l == 0 && !occupied.contains(&(r, l)))
+        .filter(|w| w.value > 0.0 && !assigned_words.contains(&w.word))
+        .collect();
+    unassigned.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap());
+
+    let free_slots: Vec<(u8, u8)> = all_slots
+        .iter()
+        .filter(|s| !occupied.contains(s))
         .copied()
         .collect();
 
-    let mut words_for_right: Vec<&WordInfo> = words
-        .iter()
-        .filter(|w| w.value_right_only > 0.0 && !assigned_words.contains(&w.word))
-        .collect();
-    words_for_right.sort_by(|a, b| b.value_right_only.partial_cmp(&a.value_right_only).unwrap());
-
-    for (slot, w) in right_only_slots.iter().zip(words_for_right.iter()) {
+    let assigned_at_start = assignments.len();
+    for (slot, w) in free_slots.iter().zip(unassigned.iter()) {
         occupied.insert(*slot);
         assigned_words.insert(w.word.clone());
+        let slot_kind = if slot.1 == 0 { "R-only" } else { "2-hand" };
         let comment = format!(
-            "R-only val={:.0} {}ph ({}+{})",
-            w.value_right_only, w.phoneme_count, w.first_consonant, w.first_vowel
+            "{} val={:.0} {}ph ({}+{})",
+            slot_kind, w.value, w.phoneme_count, w.first_consonant, w.first_vowel
         );
         assignments.push((slot.0, slot.1, w.word.clone(), comment));
     }
 
-    eprintln!("  Phase A: {} right-only briefs", assignments.len() - 1); // minus pinned
-
-    // Phase B: two-hand slots (left!=0, right!=0) — 3+ phoneme words, sorted by value_two_hand
-    // Then fill remaining slots with 2-phoneme words that didn't get right-only slots
-    let two_hand_slots: Vec<(u8, u8)> = all_slots
-        .iter()
-        .filter(|&&(r, l)| r != 0 && l != 0 && !occupied.contains(&(r, l)))
-        .copied()
-        .collect();
-
-    let mut words_for_two: Vec<&WordInfo> = words
-        .iter()
-        .filter(|w| !assigned_words.contains(&w.word))
-        .collect();
-    // Sort: 3+ phoneme words by value_two_hand first, then remaining by value_right_only
-    words_for_two.sort_by(|a, b| {
-        let a_val = if a.phoneme_count >= 3 { a.value_two_hand } else { 0.0 };
-        let b_val = if b.phoneme_count >= 3 { b.value_two_hand } else { 0.0 };
-        b_val.partial_cmp(&a_val).unwrap()
-    });
-
-    let phase_b_start = assignments.len();
-    for (slot, w) in two_hand_slots.iter().zip(words_for_two.iter()) {
-        if w.phoneme_count < 3 && w.value_two_hand <= 0.0 {
-            break; // no more words worth assigning to two-hand slots
-        }
-        occupied.insert(*slot);
-        assigned_words.insert(w.word.clone());
-        let saved = w.phoneme_count.saturating_sub(2);
-        let comment = format!(
-            "val={:.0} {}ph save={} ({}+{})",
-            w.value_two_hand, w.phoneme_count, saved, w.first_consonant, w.first_vowel
-        );
-        assignments.push((slot.0, slot.1, w.word.clone(), comment));
-    }
-
-    eprintln!("  Phase B: {} two-hand briefs", assignments.len() - phase_b_start);
-
-    // Phase C: fill remaining two-hand slots with leftover words (value > 0)
-    let remaining_slots: Vec<(u8, u8)> = all_slots
-        .iter()
-        .filter(|s| !occupied.contains(s) && s.0 != 0 && s.1 != 0)
-        .copied()
-        .collect();
-
-    let mut leftover_words: Vec<&WordInfo> = words
-        .iter()
-        .filter(|w| !assigned_words.contains(&w.word) && w.phoneme_count >= 2)
-        .collect();
-    leftover_words.sort_by(|a, b| b.value_right_only.partial_cmp(&a.value_right_only).unwrap());
-
-    let phase_c_start = assignments.len();
-    for (slot, w) in remaining_slots.iter().zip(leftover_words.iter()) {
-        occupied.insert(*slot);
-        assigned_words.insert(w.word.clone());
-        let comment = format!(
-            "fill val={:.0} {}ph ({}+{})",
-            w.value_right_only, w.phoneme_count, w.first_consonant, w.first_vowel
-        );
-        assignments.push((slot.0, slot.1, w.word.clone(), comment));
-    }
-
-    eprintln!("  Phase C: {} fill briefs", assignments.len() - phase_c_start);
+    eprintln!(
+        "  Assigned {} briefs by value × slot-effort ranking",
+        assignments.len() - assigned_at_start
+    );
 
     // Sort: pinned first, then right-only by effort, then two-hand by effort
     assignments.sort_by_key(|(r, l, _, comment)| {
@@ -824,6 +789,198 @@ fn stem_candidates(word: &str) -> Vec<String> {
     }
 
     stems
+}
+
+/// Group CMU words by phoneme sequence and report collisions where at
+/// least one member is in the candidate pool. Output goes to
+/// `data/homophones.txt` for the user to browse and decide which pairs
+/// warrant ordered-brief entries in `src/ordered_briefs_data.rs`.
+///
+/// Only words that appear in `en_freq.txt` are included (filters out
+/// obscure CMU entries that would otherwise dominate the report).
+/// Groups are sorted by max member frequency descending.
+fn write_homophone_report(
+    path: &Path,
+    candidates: &[(String, u64, Vec<String>)],
+    cmu: &HashMap<String, Vec<String>>,
+    freq_words: &[(String, u64)],
+) {
+    let seq_of = |phs: &[String]| -> String {
+        phs.iter().map(|p| strip_stress(p)).collect::<Vec<_>>().join(" ")
+    };
+
+    let freq_lookup: HashMap<&str, u64> =
+        freq_words.iter().map(|(w, c)| (w.as_str(), *c)).collect();
+
+    // Candidate phoneme sequences — we only report groups whose
+    // phoneme sequence is reachable via a candidate word (so the report
+    // is useful to curation, not noisy).
+    let candidate_seqs: HashSet<String> =
+        candidates.iter().map(|(_, _, phs)| seq_of(phs)).collect();
+
+    // Group all frequency-listed CMU words by phoneme sequence.
+    let mut groups: HashMap<String, Vec<(String, u64)>> = HashMap::new();
+    for (word, phs) in cmu {
+        let Some(&freq) = freq_lookup.get(word.as_str()) else {
+            continue;
+        };
+        let seq = seq_of(phs);
+        if !candidate_seqs.contains(&seq) {
+            continue;
+        }
+        groups.entry(seq).or_default().push((word.clone(), freq));
+    }
+
+    // Only report groups with >1 member.
+    let mut reportable: Vec<(String, Vec<(String, u64)>)> = groups
+        .into_iter()
+        .filter(|(_, ws)| ws.len() >= 2)
+        .collect();
+    for (_, ws) in &mut reportable {
+        ws.sort_by_key(|(_, f)| std::cmp::Reverse(*f));
+    }
+    reportable.sort_by_key(|(_, ws)| std::cmp::Reverse(ws[0].1));
+
+    let mut text = String::new();
+    text.push_str(
+        "# Homophone collision report.\n\
+         #\n\
+         # Each line is a phoneme sequence followed by every CMU word\n\
+         # that pronounces to it (with frequency). Use this list to\n\
+         # pick candidates for ordered briefs (src/ordered_briefs_data.rs).\n\
+         #\n\
+         # Phoneme path can only reach the most-frequent word of each\n\
+         # set — the others require a brief (ordered or unordered).\n\
+         # Auto-regenerated each gen_briefs run from cmudict × en_freq.\n\
+         #\n",
+    );
+    for (seq, words) in &reportable {
+        let list = words
+            .iter()
+            .map(|(w, f)| format!("{} ({})", w, f))
+            .collect::<Vec<_>>()
+            .join(", ");
+        text.push_str(&format!("{:<16}  {}\n", seq, list));
+    }
+
+    fs::write(path, text).expect("cannot write homophones.txt");
+    eprintln!(
+        "Wrote {} homophone sets to {}",
+        reportable.len(),
+        path.display()
+    );
+}
+
+/// Read `data/brief_candidates.txt` if it exists, else write the current
+/// defaults to it. Returns the candidate list to use for assignment
+/// (freq-ordered, with CMU phonemes attached).
+///
+/// File format: one word per line, blank lines and `#`-comment lines
+/// ignored. The word is the last whitespace-separated token on the line,
+/// so the auto-generated annotations (`rank  frequency  phonemes  word`)
+/// parse cleanly without needing the user to strip columns.
+fn load_or_write_candidates(
+    path: &Path,
+    defaults: &[(String, u64, Vec<String>)],
+    cmu: &HashMap<String, Vec<String>>,
+) -> Vec<(String, u64, Vec<String>)> {
+    if path.exists() {
+        let freq_by_word: HashMap<&str, u64> = defaults
+            .iter()
+            .map(|(w, c, _)| (w.as_str(), *c))
+            .collect();
+        let mut out = Vec::new();
+        let mut seen = HashSet::new();
+        let content = fs::read_to_string(path).expect("cannot read brief_candidates.txt");
+        for (lineno, line) in content.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            let Some(word) = trimmed.split_whitespace().last() else {
+                continue;
+            };
+            let word = word.to_lowercase();
+            if !seen.insert(word.clone()) {
+                continue;
+            }
+            let Some(phs) = cmu.get(&word) else {
+                eprintln!(
+                    "  warning: {}:{}: {} not in CMU dict — skipping",
+                    path.display(),
+                    lineno + 1,
+                    word
+                );
+                continue;
+            };
+            // Use freq from the default list if we can, else 0 (user-added
+            // words can still be assigned, just with lower value).
+            let count = freq_by_word.get(word.as_str()).copied().unwrap_or(0);
+            out.push((word, count, phs.clone()));
+        }
+        out
+    } else {
+        // Rank by keystroke-savings value, not raw frequency. A brief
+        // replaces phc phoneme chords with 1 chord, so a word's value is
+        // approximately `frequency × (phonemes - 1)`. Single-phoneme
+        // words have value 0 — a brief saves nothing and they're dropped
+        // from the list entirely. Users can add them back by hand if
+        // they really want.
+        let mut scored: Vec<(&(String, u64, Vec<String>), u64, usize)> = defaults
+            .iter()
+            .filter_map(|entry| {
+                let (_, count, phs) = entry;
+                let phc = phs
+                    .iter()
+                    .map(|p| strip_stress(p))
+                    .filter(|p| is_consonant_phoneme(p) || is_vowel_phoneme(p))
+                    .count();
+                if phc < 2 {
+                    return None;
+                }
+                let savings = (phc - 1) as u64;
+                let value = *count * savings;
+                Some((entry, value, phc))
+            })
+            .collect();
+        scored.sort_by(|a, b| b.1.cmp(&a.1));
+
+        let mut text = String::new();
+        text.push_str(
+            "# Brief candidates for rhe, ranked by savings-weighted value.\n\
+             #\n\
+             # value = frequency × (phonemes - 1). Single-phoneme words are\n\
+             # omitted because a brief chord saves nothing over typing the\n\
+             # one phoneme directly.\n\
+             #\n\
+             # One word per line. Delete any line to exclude that word from\n\
+             # brief assignment. Lines starting with '#' are ignored. Delete\n\
+             # the whole file to regenerate from defaults.\n\
+             #\n\
+             # Adding a word not in this list is fine — give it its own line\n\
+             # with any annotations you like, as long as the word is the\n\
+             # last whitespace-separated token.\n\
+             #\n\
+             # Fields: rank  value  phonemes  word\n\
+             #\n",
+        );
+        for (i, (entry, value, phc)) in scored.iter().enumerate() {
+            text.push_str(&format!(
+                "{:>5}  {:>14}  {:>3}  {}\n",
+                i + 1,
+                value,
+                phc,
+                entry.0
+            ));
+        }
+        fs::write(path, text).expect("cannot write brief_candidates.txt");
+        eprintln!(
+            "Wrote default candidate list to {} ({} words, 1-phoneme filtered). Edit it and rerun.",
+            path.display(),
+            scored.len()
+        );
+        scored.into_iter().map(|(e, _, _)| e.clone()).collect()
+    }
 }
 
 /// Find the nearest unoccupied slot to `target`.

@@ -12,7 +12,15 @@ pub enum Event {
     /// A chord fired. `space_held` is true when the word key was held
     /// while the chord was being accumulated (→ phoneme lookup);
     /// false for a free-standing chord (→ brief lookup).
-    Chord { key: ChordKey, space_held: bool },
+    /// `first_down` is the scancode that started this accumulation
+    /// cycle — used by the brief lookup to resolve ordered entries
+    /// (homophone splits etc.). `None` only when the accumulation
+    /// somehow fires with an empty record, which shouldn't happen.
+    Chord {
+        key: ChordKey,
+        space_held: bool,
+        first_down: Option<u8>,
+    },
     /// Word key released — commit buffered word.
     SpaceUp,
     /// Solo word tap (no fingers during tap) = backspace.
@@ -47,6 +55,9 @@ pub struct StateMachine {
     /// A word key that goes down and up with this still false = solo tap
     /// = backspace gesture.
     fingers_during_word: bool,
+    /// Scancode of the first key pressed since the last fire. Used to
+    /// disambiguate ordered briefs. Reset when the accumulator clears.
+    first_down: Option<u8>,
 }
 
 impl StateMachine {
@@ -56,6 +67,7 @@ impl StateMachine {
             accum: KeyMask::EMPTY,
             word_held: false,
             fingers_during_word: false,
+            first_down: None,
         }
     }
 
@@ -73,6 +85,7 @@ impl StateMachine {
                 self.word_held = true;
                 self.fingers_during_word = !(self.live & BOTH_HANDS).is_empty();
                 self.accum = KeyMask::EMPTY;
+                self.first_down = None;
                 vec![]
             }
             KeyDirection::Up => {
@@ -90,6 +103,11 @@ impl StateMachine {
         self.fingers_during_word = true;
         match direction {
             KeyDirection::Down => {
+                // Record the first chord key of this accumulation cycle.
+                // Cleared by `try_fire` after the chord emits.
+                if self.accum.is_empty() {
+                    self.first_down = Some(scan);
+                }
                 self.live.set(scan);
                 self.accum.set(scan);
                 vec![]
@@ -116,9 +134,17 @@ impl StateMachine {
                 let hand_accum = self.accum & hand_mask;
                 if !hand_accum.is_empty() {
                     self.accum &= !hand_mask;
+                    // Per-hand phoneme fire — `first_down` is preserved
+                    // for a possible later all-zero brief fire but
+                    // passed along here too (phoneme lookup ignores it).
+                    let first_down = self.first_down;
+                    if self.accum.is_empty() {
+                        self.first_down = None;
+                    }
                     return vec![Event::Chord {
                         key: ChordKey::from_mask(hand_accum),
                         space_held: true,
+                        first_down,
                     }];
                 }
             }
@@ -131,10 +157,13 @@ impl StateMachine {
                 return vec![];
             }
             let key = ChordKey::from_mask(self.accum);
+            let first_down = self.first_down;
             self.accum = KeyMask::EMPTY;
+            self.first_down = None;
             vec![Event::Chord {
                 key,
                 space_held: false,
+                first_down,
             }]
         }
     }

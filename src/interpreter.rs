@@ -99,14 +99,14 @@ impl Interpreter {
 
     pub fn process(&mut self, event: &Event) -> Option<Action> {
         match event {
-            Event::Chord { key, space_held } => {
+            Event::Chord { key, space_held, first_down } => {
                 if *space_held {
                     if let Some(phoneme) = self.phonemes.lookup(*key) {
                         self.buffer.push(phoneme);
                     }
                     None
                 } else {
-                    self.briefs.lookup(*key).map(|s| {
+                    self.briefs.lookup(*key, *first_down).map(|s| {
                         if s.starts_with('\x01') {
                             // Suffix: backspace trailing space, then emit suffix
                             let suffix = &s[1..];
@@ -170,6 +170,7 @@ mod tests {
         Event::Chord {
             key: ChordKey::from_packed(right, left, modkey),
             space_held: space,
+            first_down: None,
         }
     }
 

@@ -1062,7 +1062,7 @@ fn draw_keyboard(
                 .lookup(chord)
                 .map(|p| p.to_ipa().to_string())
                 .unwrap_or_default()
-        } else if let Some(entry) = briefs.lookup(chord) {
+        } else if let Some(entry) = briefs.lookup(chord, None) {
             if let Some(suffix) = entry.strip_prefix('\x01') {
                 format!("-{}", suffix.trim_end())
             } else {
