@@ -98,8 +98,8 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     (0b0010, 0b10010, scan::R_THUMB, "wait"),
     (0b0010, 0b10010, scan::L_MID, "weight"),
     (0b0010, 0b10010, scan::R_MID, "weight"),
-    // through / threw — L-idx+ring + R-idx + thumb (ring = rare)
-    (0b0101, 0b10001, scan::R_THUMB, "through"),
+    // thru / through / threw — L-idx+ring + R-idx + thumb
+    (0b0101, 0b10001, scan::R_THUMB, "thru"),
     (0b0101, 0b10001, scan::L_IDX, "through"),
     (0b0101, 0b10001, scan::R_IDX, "through"),
     (0b0101, 0b10001, scan::L_RING, "threw"),

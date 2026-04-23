@@ -2,6 +2,7 @@
 
 mod briefs;
 mod briefs_data;
+mod number_data;
 mod ordered_briefs_data;
 mod suffixes_data;
 mod chord_map;
@@ -220,6 +221,7 @@ fn listen() {
                 }
                 state_machine::Event::SpaceUp => println!("  >>> SPACE UP"),
                 state_machine::Event::Backspace => println!("  >>> BACKSPACE"),
+                state_machine::Event::ModTap => println!("  >>> MOD TAP"),
                 state_machine::Event::UndoPhoneme => println!("  >>> UNDO PHONEME"),
             }
         }
@@ -290,6 +292,7 @@ fn run() {
                     }
                     state_machine::Event::SpaceUp => eprintln!("  space-up"),
                     state_machine::Event::Backspace => eprintln!("  backspace"),
+                    state_machine::Event::ModTap => eprintln!("  mod-tap"),
                     state_machine::Event::UndoPhoneme => eprintln!("  undo-phoneme"),
                 }
 

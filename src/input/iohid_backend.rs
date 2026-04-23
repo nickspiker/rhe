@@ -46,6 +46,8 @@ mod ffi {
     pub const kHIDUsage_KeyboardS: u32 = 0x16;
     pub const kHIDUsage_KeyboardD: u32 = 0x07;
     pub const kHIDUsage_KeyboardF: u32 = 0x09;
+    pub const kHIDUsage_KeyboardG: u32 = 0x0A;
+    pub const kHIDUsage_KeyboardH: u32 = 0x0B;
     pub const kHIDUsage_KeyboardJ: u32 = 0x0D;
     pub const kHIDUsage_KeyboardK: u32 = 0x0E;
     pub const kHIDUsage_KeyboardL: u32 = 0x0F;
@@ -503,6 +505,8 @@ fn hid_usage_to_scan(usage: u32) -> Option<u8> {
         ffi::kHIDUsage_KeyboardS => Some(scan::L_RING),
         ffi::kHIDUsage_KeyboardD => Some(scan::L_MID),
         ffi::kHIDUsage_KeyboardF => Some(scan::L_IDX),
+        ffi::kHIDUsage_KeyboardG => Some(scan::L_IDX_INNER),
+        ffi::kHIDUsage_KeyboardH => Some(scan::R_IDX_INNER),
 
         // Right hand home row (QWERTY J K L ;) + spacebar as thumb/mod bit
         ffi::kHIDUsage_KeyboardJ => Some(scan::R_IDX),

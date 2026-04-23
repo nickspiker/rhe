@@ -1,12 +1,19 @@
 //! Random Wikipedia article extracts, for tutor practice text.
 //!
-//! Fetches plain-text summaries via the REST API, strips parentheticals
-//! and non-English noise, splits into sentences, and caches to
-//! `~/.cache/rhe/practice_wiki.txt` for about a week between refreshes.
+//! Fetches plain-text summaries via the MediaWiki action API on
+//! demand — no cache. Two entry points:
 //!
-//! Falls back to the caller's bundled text if the network isn't there.
+//! - `load_sentences()` — blocking fetch of one article's sentences.
+//!   Returns an empty Vec on network failure so the caller can fall
+//!   back to bundled text.
+//! - `SentenceStream` — double-buffered: fetches one article up-front
+//!   (the initial batch blocks), then pre-fetches the next in a
+//!   background thread. The tutor pulls the next batch on a
+//!   non-blocking poll when it finishes the current one, and that
+//!   pull kicks off the following prefetch. Steady state is one
+//!   always-prefetched article sitting ready.
 
-use std::path::PathBuf;
+use std::sync::mpsc;
 use std::time::Duration;
 
 const USER_AGENT: &str = concat!(
@@ -15,21 +22,19 @@ const USER_AGENT: &str = concat!(
     " (+https://github.com/nickspiker/rhe)"
 );
 
-const CACHE_TTL_SECS: u64 = 7 * 24 * 3600;
-const ARTICLES_PER_FETCH: usize = 20;
+const ARTICLES_PER_FETCH: usize = 1;
 const MIN_WORDS_PER_SENTENCE: usize = 6;
 const MAX_WORDS_PER_SENTENCE: usize = 30;
 
-/// Load practice sentences: cached copy if fresh, otherwise fetch fresh
-/// and write the cache. Returns an empty Vec on network failure so the
-/// caller can fall back to its own bundled text.
 pub fn load_sentences() -> Vec<String> {
-    let cache = cache_path();
-    if let Some(sentences) = read_cache(&cache) {
-        return sentences;
-    }
-
     eprintln!("rhe: fetching Wikipedia practice text…");
+    fetch_batch()
+}
+
+/// Perform one fetch and turn the result into cleaned sentences.
+/// Separate from the public entry so `SentenceStream` can reuse it
+/// from a worker thread.
+fn fetch_batch() -> Vec<String> {
     let extracts = match fetch_random_extracts(ARTICLES_PER_FETCH) {
         Ok(e) => e,
         Err(e) => {
@@ -48,51 +53,51 @@ pub fn load_sentences() -> Vec<String> {
         }
     }
 
-    if sentences.is_empty() {
-        return Vec::new();
-    }
-
-    if let Some(parent) = cache.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let _ = std::fs::write(&cache, sentences.join("\n"));
-    eprintln!("rhe: cached {} practice sentences", sentences.len());
+    eprintln!("rhe: fetched {} practice sentences", sentences.len());
     sentences
 }
 
-fn cache_path() -> PathBuf {
-    if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
-        if !xdg.is_empty() {
-            return PathBuf::from(xdg).join("rhe").join("practice_wiki.txt");
-        }
-    }
-    if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home)
-            .join(".cache")
-            .join("rhe")
-            .join("practice_wiki.txt");
-    }
-    PathBuf::from(".rhe-cache").join("practice_wiki.txt")
+/// Double-buffered article stream. `initial()` blocks until the first
+/// batch is ready; at the same time a background thread starts
+/// prefetching the next. `try_next()` is non-blocking: if the
+/// prefetch is done, it returns the ready batch and kicks off the
+/// next prefetch; otherwise `None`.
+pub struct SentenceStream {
+    rx: mpsc::Receiver<Vec<String>>,
+    tx: mpsc::Sender<Vec<String>>,
 }
 
-fn read_cache(path: &PathBuf) -> Option<Vec<String>> {
-    let meta = std::fs::metadata(path).ok()?;
-    let modified = meta.modified().ok()?;
-    let age = modified.elapsed().ok()?;
-    if age.as_secs() > CACHE_TTL_SECS {
-        return None;
+impl SentenceStream {
+    /// Spawn the first fetch immediately. Call `initial()` to block
+    /// for it.
+    pub fn new() -> Self {
+        let (tx, rx) = mpsc::channel();
+        spawn_fetch(tx.clone());
+        Self { rx, tx }
     }
-    let text = std::fs::read_to_string(path).ok()?;
-    let sentences: Vec<String> = text
-        .lines()
-        .map(str::to_string)
-        .filter(|s| !s.is_empty())
-        .collect();
-    if sentences.is_empty() {
-        None
-    } else {
-        Some(sentences)
+
+    /// Block until the first batch arrives, then kick off the next
+    /// prefetch so it's ready by the time the tutor needs it.
+    pub fn initial(&self) -> Vec<String> {
+        let first = self.rx.recv().unwrap_or_default();
+        spawn_fetch(self.tx.clone());
+        first
     }
+
+    /// Non-blocking poll for the next prefetched batch. If one is
+    /// ready, returns it and immediately kicks off another fetch so
+    /// there's always exactly one prefetch in flight.
+    pub fn try_next(&self) -> Option<Vec<String>> {
+        let batch = self.rx.try_recv().ok()?;
+        spawn_fetch(self.tx.clone());
+        Some(batch)
+    }
+}
+
+fn spawn_fetch(tx: mpsc::Sender<Vec<String>>) {
+    std::thread::spawn(move || {
+        let _ = tx.send(fetch_batch());
+    });
 }
 
 /// MediaWiki action API: one request returns N random article extracts.

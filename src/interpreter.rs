@@ -60,6 +60,19 @@ pub enum Action {
     Suffix(String),
 }
 
+/// Which sub-session of word-held the user is currently in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    /// Default: Chord events look up phonemes (word held) or briefs
+    /// (word not held). Word release commits the phoneme buffer.
+    Normal,
+    /// Entered via a mod-tap during a word-held session. Chord events
+    /// emit digits or symbols (if mod is also in the chord). Another
+    /// mod-tap emits a decimal point. Word release emits a trailing
+    /// space and returns to Normal.
+    Number,
+}
+
 /// Converts state machine events into output actions.
 ///
 /// Chord with space_held=true: look up phoneme, buffer it.
@@ -72,6 +85,7 @@ pub struct Interpreter {
     buffer: Vec<Phoneme>,
     emit_history: Vec<usize>, // stack of emitted char counts for multi-backspace
     fallback: Arc<AtomicU8>,
+    mode: Mode,
 }
 
 impl Interpreter {
@@ -94,12 +108,33 @@ impl Interpreter {
             buffer: Vec::new(),
             emit_history: Vec::new(),
             fallback,
+            mode: Mode::Normal,
         }
+    }
+
+    /// Currently inside a word-held number sub-session? The tutor uses
+    /// this to swap keyboard labels (digits/symbols vs phonemes/briefs)
+    /// so the drill shows what the next press actually emits.
+    pub fn in_number_mode(&self) -> bool {
+        self.mode == Mode::Number
     }
 
     pub fn process(&mut self, event: &Event) -> Option<Action> {
         match event {
             Event::Chord { key, space_held, first_down } => {
+                if self.mode == Mode::Number {
+                    // Number mode dispatch: mod-held chord → symbol,
+                    // plain finger chord → digit, anything else → no-op.
+                    let emitted = if key.has_mod() {
+                        crate::number_data::chord_to_symbol(*key)
+                    } else {
+                        crate::number_data::chord_to_digit(*key)
+                    };
+                    return emitted.map(|c| {
+                        self.emit_history.push(1);
+                        Action::Emit(c.to_string())
+                    });
+                }
                 if *space_held {
                     if let Some(phoneme) = self.phonemes.lookup(*key) {
                         self.buffer.push(phoneme);
@@ -120,7 +155,36 @@ impl Interpreter {
                     })
                 }
             }
+            Event::ModTap => {
+                // First mod-tap during a word-held session switches
+                // us into Number mode; subsequent mod-taps (same
+                // session) emit a decimal point. Either way there
+                // should be no pending phoneme buffer — clearing it
+                // is defensive.
+                match self.mode {
+                    Mode::Normal => {
+                        self.mode = Mode::Number;
+                        self.buffer.clear();
+                        eprintln!("rhe: number mode ON");
+                        None
+                    }
+                    Mode::Number => {
+                        self.emit_history.push(1);
+                        Some(Action::Emit(".".to_string()))
+                    }
+                }
+            }
             Event::SpaceUp => {
+                if self.mode == Mode::Number {
+                    // Exit number mode with a trailing space. The
+                    // emit_history push keeps Backspace symmetrical —
+                    // one tap removes the space, next tap the last
+                    // digit/symbol, and so on.
+                    self.mode = Mode::Normal;
+                    self.emit_history.push(1);
+                    eprintln!("rhe: number mode OFF");
+                    return Some(Action::Emit(" ".to_string()));
+                }
                 if self.buffer.is_empty() {
                     None
                 } else {
@@ -215,5 +279,75 @@ mod tests {
     fn empty_space_tap() {
         let mut interp = setup();
         assert!(interp.process(&Event::SpaceUp).is_none());
+    }
+
+    #[test]
+    fn number_mode_entry_and_digit() {
+        let mut interp = setup();
+        // First ModTap: enter number mode, no emit.
+        assert!(interp.process(&Event::ModTap).is_none());
+        assert_eq!(interp.mode, Mode::Number);
+        // Chord with R_IDX alone → digit "3" (position 3).
+        use crate::key_mask::KeyMask;
+        let key = ChordKey::from_mask(KeyMask::EMPTY.with(crate::scan::R_IDX));
+        let event = Event::Chord { key, space_held: true, first_down: None };
+        let action = interp.process(&event).unwrap();
+        assert_eq!(action, Action::Emit("3".to_string()));
+    }
+
+    #[test]
+    fn number_mode_decimal_on_second_mod_tap() {
+        let mut interp = setup();
+        interp.process(&Event::ModTap); // enter
+        let action = interp.process(&Event::ModTap).unwrap();
+        assert_eq!(action, Action::Emit(".".to_string()));
+    }
+
+    #[test]
+    fn number_mode_symbol_with_mod() {
+        let mut interp = setup();
+        interp.process(&Event::ModTap); // enter
+        // R_IDX + thumb → "+"
+        use crate::key_mask::KeyMask;
+        let key = ChordKey::from_mask(
+            KeyMask::EMPTY.with(crate::scan::R_IDX).with(crate::scan::R_THUMB),
+        );
+        let event = Event::Chord { key, space_held: true, first_down: None };
+        let action = interp.process(&event).unwrap();
+        assert_eq!(action, Action::Emit("+".to_string()));
+    }
+
+    #[test]
+    fn number_mode_spaceup_emits_space_and_exits() {
+        let mut interp = setup();
+        interp.process(&Event::ModTap);
+        let action = interp.process(&Event::SpaceUp).unwrap();
+        assert_eq!(action, Action::Emit(" ".to_string()));
+        assert_eq!(interp.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn number_mode_backspace_pops_digit() {
+        let mut interp = setup();
+        interp.process(&Event::ModTap);
+        use crate::key_mask::KeyMask;
+        let key = ChordKey::from_mask(KeyMask::EMPTY.with(crate::scan::R_PINKY));
+        let event = Event::Chord { key, space_held: true, first_down: None };
+        interp.process(&event).unwrap(); // emits "0"
+        let action = interp.process(&Event::Backspace).unwrap();
+        assert_eq!(action, Action::Backspace(1));
+    }
+
+    #[test]
+    fn number_mode_multi_finger_ignored() {
+        let mut interp = setup();
+        interp.process(&Event::ModTap);
+        // Two fingers together don't map to a digit.
+        use crate::key_mask::KeyMask;
+        let key = ChordKey::from_mask(
+            KeyMask::EMPTY.with(crate::scan::R_PINKY).with(crate::scan::R_RING),
+        );
+        let event = Event::Chord { key, space_held: true, first_down: None };
+        assert!(interp.process(&event).is_none());
     }
 }

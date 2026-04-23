@@ -40,6 +40,8 @@ const KEY_A: u16 = 30;
 const KEY_S: u16 = 31;
 const KEY_D: u16 = 32;
 const KEY_F: u16 = 33;
+const KEY_G: u16 = 34;
+const KEY_H: u16 = 35;
 const KEY_J: u16 = 36;
 const KEY_K: u16 = 37;
 const KEY_L: u16 = 38;
@@ -399,6 +401,8 @@ fn linux_to_scan(code: u16) -> Option<u8> {
         KEY_S => scan::L_RING,
         KEY_D => scan::L_MID,
         KEY_F => scan::L_IDX,
+        KEY_G => scan::L_IDX_INNER,
+        KEY_H => scan::R_IDX_INNER,
         KEY_J => scan::R_IDX,
         KEY_K => scan::R_MID,
         KEY_L => scan::R_RING,
