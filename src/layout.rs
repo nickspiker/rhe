@@ -28,15 +28,17 @@ use crate::scan;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Layout {
     NarrowR,
+    MediumR,
     WideR,
     NarrowL,
+    MediumL,
     WideL,
 }
 
 /// The layout this build will use. Edit this single line and recompile
 /// to change rhe's key mapping. Wide-R is the default — right-dominant
 /// typists who want the most comfortable hand stance.
-pub const CURRENT: Layout = Layout::WideR;
+pub const CURRENT: Layout = Layout::NarrowR;
 
 // ─── Linux evdev scancode constants ───
 // A compile-time-only module so backends don't have to redeclare these.
@@ -90,8 +92,10 @@ pub mod hid {
 pub const fn linux_to_role(code: u16) -> Option<u8> {
     match CURRENT {
         Layout::NarrowR => linux_narrow_r(code),
+        Layout::MediumR => linux_medium_r(code),
         Layout::WideR => linux_wide_r(code),
         Layout::NarrowL => linux_narrow_l(code),
+        Layout::MediumL => linux_medium_l(code),
         Layout::WideL => linux_wide_l(code),
     }
 }
@@ -111,6 +115,28 @@ const fn linux_narrow_r(code: u16) -> Option<u8> {
         KEY_SEMICOLON => Some(scan::R_PINKY),
         KEY_SPACE => Some(scan::R_THUMB),
         KEY_LEFTALT => Some(scan::WORD),
+        _ => None,
+    }
+}
+
+const fn linux_medium_r(code: u16) -> Option<u8> {
+    use linux::*;
+    match code {
+        // Left hand unchanged.
+        KEY_A => Some(scan::L_PINKY),
+        KEY_S => Some(scan::L_RING),
+        KEY_D => Some(scan::L_MID),
+        KEY_F => Some(scan::L_IDX),
+        KEY_G => Some(scan::L_IDX_INNER),
+        // Right hand shifted one column right.
+        KEY_J => Some(scan::R_IDX_INNER),
+        KEY_K => Some(scan::R_IDX),
+        KEY_L => Some(scan::R_MID),
+        KEY_SEMICOLON => Some(scan::R_RING),
+        KEY_APOSTROPHE => Some(scan::R_PINKY),
+        // Same thumb roles as wide: space=word, right-alt=mod.
+        KEY_SPACE => Some(scan::WORD),
+        KEY_RIGHTALT => Some(scan::R_THUMB),
         _ => None,
     }
 }
@@ -159,6 +185,27 @@ const fn linux_narrow_l(code: u16) -> Option<u8> {
     }
 }
 
+const fn linux_medium_l(code: u16) -> Option<u8> {
+    use linux::*;
+    match code {
+        // "Left hand" (vowels) on physical right, shifted one col right.
+        KEY_APOSTROPHE => Some(scan::L_PINKY),
+        KEY_SEMICOLON => Some(scan::L_RING),
+        KEY_L => Some(scan::L_MID),
+        KEY_K => Some(scan::L_IDX),
+        KEY_J => Some(scan::L_IDX_INNER),
+        // "Right hand" (consonants) on physical left, unshifted.
+        KEY_G => Some(scan::R_IDX_INNER),
+        KEY_F => Some(scan::R_IDX),
+        KEY_D => Some(scan::R_MID),
+        KEY_S => Some(scan::R_RING),
+        KEY_A => Some(scan::R_PINKY),
+        KEY_SPACE => Some(scan::WORD),
+        KEY_LEFTALT => Some(scan::R_THUMB),
+        _ => None,
+    }
+}
+
 const fn linux_wide_l(code: u16) -> Option<u8> {
     use linux::*;
     match code {
@@ -189,7 +236,7 @@ pub const fn linux_enter_synth_key() -> Option<u16> {
     match CURRENT {
         Layout::WideR => Some(linux::KEY_RIGHTSHIFT),
         Layout::WideL => Some(linux::KEY_LEFTSHIFT),
-        _ => None,
+        Layout::NarrowR | Layout::NarrowL | Layout::MediumR | Layout::MediumL => None,
     }
 }
 
@@ -198,8 +245,10 @@ pub const fn linux_enter_synth_key() -> Option<u16> {
 pub const fn hid_to_role(usage: u32) -> Option<u8> {
     match CURRENT {
         Layout::NarrowR => hid_narrow_r(usage),
+        Layout::MediumR => hid_medium_r(usage),
         Layout::WideR => hid_wide_r(usage),
         Layout::NarrowL => hid_narrow_l(usage),
+        Layout::MediumL => hid_medium_l(usage),
         Layout::WideL => hid_wide_l(usage),
     }
 }
@@ -218,6 +267,26 @@ const fn hid_narrow_r(usage: u32) -> Option<u8> {
         hid::SEMICOLON => Some(scan::R_PINKY),
         hid::SPACEBAR => Some(scan::R_THUMB),
         hid::LEFT_GUI => Some(scan::WORD),
+        _ => None,
+    }
+}
+
+const fn hid_medium_r(usage: u32) -> Option<u8> {
+    match usage {
+        hid::A => Some(scan::L_PINKY),
+        hid::S => Some(scan::L_RING),
+        hid::D => Some(scan::L_MID),
+        hid::F => Some(scan::L_IDX),
+        hid::G => Some(scan::L_IDX_INNER),
+        // Right hand shifted one column right
+        hid::J => Some(scan::R_IDX_INNER),
+        hid::K => Some(scan::R_IDX),
+        hid::L => Some(scan::R_MID),
+        hid::SEMICOLON => Some(scan::R_RING),
+        hid::APOSTROPHE => Some(scan::R_PINKY),
+        // Same thumb roles as wide: space=word, right-gui=mod
+        hid::SPACEBAR => Some(scan::WORD),
+        hid::RIGHT_GUI => Some(scan::R_THUMB),
         _ => None,
     }
 }
@@ -254,6 +323,26 @@ const fn hid_narrow_l(usage: u32) -> Option<u8> {
         hid::A => Some(scan::R_PINKY),
         hid::SPACEBAR => Some(scan::R_THUMB),
         hid::RIGHT_GUI => Some(scan::WORD),
+        _ => None,
+    }
+}
+
+const fn hid_medium_l(usage: u32) -> Option<u8> {
+    match usage {
+        // "Left hand" (vowels) on physical right, shifted one col right
+        hid::APOSTROPHE => Some(scan::L_PINKY),
+        hid::SEMICOLON => Some(scan::L_RING),
+        hid::L => Some(scan::L_MID),
+        hid::K => Some(scan::L_IDX),
+        hid::J => Some(scan::L_IDX_INNER),
+        // "Right hand" (consonants) on physical left, unshifted
+        hid::G => Some(scan::R_IDX_INNER),
+        hid::F => Some(scan::R_IDX),
+        hid::D => Some(scan::R_MID),
+        hid::S => Some(scan::R_RING),
+        hid::A => Some(scan::R_PINKY),
+        hid::SPACEBAR => Some(scan::WORD),
+        hid::LEFT_GUI => Some(scan::R_THUMB),
         _ => None,
     }
 }

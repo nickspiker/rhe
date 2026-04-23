@@ -176,7 +176,7 @@ impl Interpreter {
                     Mode::Normal => {
                         self.mode = Mode::Number;
                         self.buffer.clear();
-                        eprintln!("rhe: number mode ON");
+                        // number mode entered
                         None
                     }
                     Mode::Number => {
@@ -193,7 +193,7 @@ impl Interpreter {
                     // digit/symbol, and so on.
                     self.mode = Mode::Normal;
                     self.emit_history.push(1);
-                    eprintln!("rhe: number mode OFF");
+                    // number mode exited
                     return Some(Action::Emit(" ".to_string()));
                 }
                 if self.buffer.is_empty() {
