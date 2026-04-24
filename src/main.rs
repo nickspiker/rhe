@@ -19,6 +19,7 @@ mod state_machine;
 mod table_gen;
 mod tray;
 mod tutor;
+mod ui;
 mod wiki;
 mod word_lookup;
 
