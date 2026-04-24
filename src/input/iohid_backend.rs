@@ -190,11 +190,28 @@ struct CallbackContext {
 
 pub struct IoHidInput {
     pub rx: mpsc::Receiver<HidEvent>,
+    manager: ffi::IOHIDManagerRef,
+}
+
+// Safety: the IOHIDManagerRef is thread-safe (CFRunLoop-based).
+unsafe impl Send for IoHidInput {}
+
+impl Drop for IoHidInput {
+    fn drop(&mut self) {
+        // Reset caps lock LED to off on shutdown
+        unsafe {
+            set_caps_lock_led(self.manager, false);
+        }
+    }
 }
 
 impl IoHidInput {
     pub fn start_grab(enabled: Arc<AtomicBool>, esc_quits: bool) -> Result<Self, String> {
         let (tx, rx) = mpsc::channel();
+        // Wrapper to send raw pointer across thread boundary
+        struct SendPtr(*mut std::ffi::c_void);
+        unsafe impl Send for SendPtr {}
+        let (mgr_tx, mgr_rx) = mpsc::channel::<SendPtr>();
 
         std::thread::spawn(move || {
             unsafe {
@@ -202,6 +219,8 @@ impl IoHidInput {
                 if manager.is_null() {
                     panic!("IOHIDManagerCreate failed");
                 }
+                // Send manager ref back so Drop can reset the LED
+                let _ = mgr_tx.send(SendPtr(manager));
 
                 // Match keyboard devices
                 let matching = create_keyboard_matching();
@@ -244,7 +263,8 @@ impl IoHidInput {
             }
         });
 
-        Ok(Self { rx })
+        let SendPtr(manager) = mgr_rx.recv().map_err(|_| "failed to get manager ref".to_string())?;
+        Ok(Self { rx, manager })
     }
 }
 
@@ -274,8 +294,12 @@ extern "C" fn hid_callback(
         let usage = ffi::IOHIDElementGetUsage(element);
         let pressed = ffi::IOHIDValueGetIntegerValue(value);
 
-        // Only real keyboard keys (skip rollover/sentinel elements)
-        if usage_page != ffi::kHIDPage_KeyboardOrKeypad || usage <= 0x03 || usage == 0xffffffff {
+        // Non-keyboard usage pages (consumer control, etc.) — let them through
+        if usage_page != ffi::kHIDPage_KeyboardOrKeypad {
+            return; // IOHIDManager doesn't suppress non-keyboard elements
+        }
+        // Skip rollover/sentinel elements within the keyboard page
+        if usage <= 0x03 || usage == 0xffffffff {
             return;
         }
 
