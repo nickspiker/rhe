@@ -64,6 +64,30 @@ pub enum Action {
     Replace(usize, String),
 }
 
+/// Map a brief-mode chord (word not held, left-hand only) to a
+/// number-form if it matches one of the form slots. Returns `None`
+/// for any chord that isn't a form trigger — caller falls through
+/// to the regular brief / English-suffix path.
+///
+/// Slot ranking mirrors the existing SUFFIXES table's bench-measured
+/// effort order: fastest single-finger chords go to the most common
+/// forms.
+fn chord_to_form(key: crate::chord_map::ChordKey) -> Option<crate::number_forms::Form> {
+    use crate::number_forms::Form;
+    if key.right_bits() != 0 || key.has_mod() {
+        return None;
+    }
+    match key.left_bits() {
+        0b0001 => Some(Form::SpelledCardinal), // L-idx  (fastest alone, 668ms)
+        0b0100 => Some(Form::Ordinal),         // L-ring (703ms)
+        0b1000 => Some(Form::Multiplier),      // L-pinky (721ms)
+        0b0010 => Some(Form::Group),           // L-mid  (739ms)
+        0b0110 => Some(Form::Fraction),        // L-mid + L-ring (754ms)
+        0b0011 => Some(Form::Prefix),          // L-idx + L-mid  (843ms)
+        _ => None,
+    }
+}
+
 /// Which sub-session of word-held the user is currently in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
@@ -181,32 +205,39 @@ impl Interpreter {
                     None
                 } else {
                     // Brief-mode chord. First check for a number-form
-                    // transform: L-ring alone after a pure-integer
-                    // commit fires the ordinal form, replacing the
-                    // emitted digits with the spelled ordinal.
-                    // (L-ring is the second-fastest single-finger
-                    // chord by bench timings; ordinal is the most
-                    // common number form after raw cardinals, so the
-                    // value×effort ranking puts it here.)
-                    let is_l_ring_alone = key.left_bits() == 0b0100
-                        && key.right_bits() == 0
-                        && !key.has_mod();
-                    if is_l_ring_alone {
+                    // transform. Five forms live on the left-hand
+                    // chord surface (see chord_to_form); each
+                    // replaces the last-emitted number with its
+                    // spelled equivalent. The context stays armed
+                    // after a successful transform so the user can
+                    // swap forms in place ("42" → ordinal →
+                    // multiplier → group → prefix without retyping).
+                    if let Some(form) = chord_to_form(*key) {
                         if let Some(num) = self.last_number.take() {
-                            if let Some(ord) = crate::number_forms::ordinal(&num) {
-                                let text = format!("{} ", ord);
-                                let back = num.chars().count() + 1;
-                                self.emit_history.push(text.chars().count());
+                            if let Some(out) = crate::number_forms::apply(form, &num) {
+                                let text = format!("{} ", out);
+                                let new_count = text.chars().count();
+                                // Pop the prior emission (consolidated
+                                // digits-plus-space on first transform,
+                                // or a previous form's output on
+                                // subsequent in-place transforms).
+                                let back = self
+                                    .emit_history
+                                    .pop()
+                                    .unwrap_or(num.chars().count() + 1);
+                                self.emit_history.push(new_count);
+                                // Preserve context for further in-
+                                // place form swaps.
+                                self.last_number = Some(num);
                                 return Some(Action::Replace(back, text));
                             }
-                            // Ordinal lookup failed (number too large
-                            // for v1 table); fall through to English
-                            // suffix path below. last_number already
-                            // consumed by `.take()`.
+                            // Form lookup failed (number out of this
+                            // form's range); fall through to English
+                            // suffix path. last_number is gone.
                         }
                     }
-                    // Any other brief-mode chord clears the number-
-                    // form context.
+                    // Any non-form brief-mode chord clears the
+                    // number-form context.
                     self.last_number = None;
                     self.briefs.lookup(*key, *first_down).map(|s| {
                         if s.starts_with('\x01') {
@@ -248,19 +279,31 @@ impl Interpreter {
             }
             Event::SpaceUp => {
                 if self.mode == Mode::Number {
-                    // Exit number mode with a trailing space. The
-                    // emit_history push keeps Backspace symmetrical —
-                    // one tap removes the space, next tap the last
-                    // digit/symbol, and so on.
-                    // If the number-mode session produced only plain
-                    // digits (no symbols / spelled / decimal), arm
-                    // the number-form context — the next L-pinky
-                    // chord will transform these digits into an
-                    // ordinal instead of suffixing `-ing`.
-                    let buf = std::mem::take(&mut self.number_buffer);
-                    self.last_number = if buf.is_empty() { None } else { Some(buf) };
+                    // Exit number mode with a trailing space.
+                    //
+                    // If the session produced only plain digits (no
+                    // symbols / spelled / decimal), arm the number-
+                    // form context AND consolidate the per-digit
+                    // emit_history entries into a single one covering
+                    // the whole number plus its trailing space. That
+                    // lets the form Replace path backspace the
+                    // entire number in one atomic pop.
                     self.mode = Mode::Normal;
-                    self.emit_history.push(1);
+                    let buf = std::mem::take(&mut self.number_buffer);
+                    if buf.is_empty() {
+                        self.last_number = None;
+                        self.emit_history.push(1);
+                    } else {
+                        let digit_count = buf.chars().count();
+                        // Each digit pushed 1 during number mode;
+                        // remove those before pushing the combined
+                        // digits+space entry.
+                        for _ in 0..digit_count {
+                            self.emit_history.pop();
+                        }
+                        self.emit_history.push(digit_count + 1);
+                        self.last_number = Some(buf);
+                    }
                     return Some(Action::Emit(" ".to_string()));
                 }
                 self.last_number = None;
@@ -539,6 +582,66 @@ mod tests {
         // last_number should be None; L-pinky = no ordinal, no brief
         // (empty setup table) → None.
         assert!(interp.process(&l_ring_brief_event()).is_none());
+    }
+
+    fn l_chord_event(left_bits: u8) -> Event {
+        use crate::key_mask::KeyMask;
+        let mut mask = KeyMask::EMPTY;
+        // left_bits encoding: I=0001, M=0010, R=0100, P=1000 (per briefs_data)
+        if left_bits & 0b0001 != 0 { mask.set(crate::scan::L_IDX); }
+        if left_bits & 0b0010 != 0 { mask.set(crate::scan::L_MID); }
+        if left_bits & 0b0100 != 0 { mask.set(crate::scan::L_RING); }
+        if left_bits & 0b1000 != 0 { mask.set(crate::scan::L_PINKY); }
+        let first_down = if left_bits & 0b1000 != 0 { crate::scan::L_PINKY }
+            else if left_bits & 0b0100 != 0 { crate::scan::L_RING }
+            else if left_bits & 0b0010 != 0 { crate::scan::L_MID }
+            else { crate::scan::L_IDX };
+        Event::Chord {
+            key: ChordKey::from_mask(mask),
+            space_held: false,
+            first_down: Some(first_down),
+        }
+    }
+
+    #[test]
+    fn forms_swap_in_place_on_same_number() {
+        // Type "3" then cycle through three forms on the same number
+        // without retyping. Each Replace backspaces the prior
+        // emission and emits the new one.
+        let mut interp = setup();
+        interp.process(&Event::ModTap);
+        interp.process(&digit_event(crate::scan::R_IDX)); // "3"
+        interp.process(&Event::SpaceUp);
+        // Ordinal (L-ring)
+        let a1 = interp.process(&l_chord_event(0b0100)).unwrap();
+        assert_eq!(a1, Action::Replace(2, "third ".to_string())); // backspace "3 "
+        // Multiplier (L-pinky) — backspaces "third " (6) and emits "thrice "
+        let a2 = interp.process(&l_chord_event(0b1000)).unwrap();
+        assert_eq!(a2, Action::Replace(6, "thrice ".to_string()));
+        // Group (L-mid) — backspaces "thrice " (7) and emits "triple "
+        let a3 = interp.process(&l_chord_event(0b0010)).unwrap();
+        assert_eq!(a3, Action::Replace(7, "triple ".to_string()));
+        // Prefix (L-idx + L-mid) — backspaces "triple " (7) and emits "tri "
+        let a4 = interp.process(&l_chord_event(0b0011)).unwrap();
+        assert_eq!(a4, Action::Replace(7, "tri ".to_string()));
+    }
+
+    #[test]
+    fn form_for_larger_number_falls_back() {
+        // Type "1921" (outside group's 10-max range). L-mid should
+        // fall back to the English -ly suffix.
+        let mut interp = setup();
+        interp.process(&Event::ModTap);
+        interp.process(&digit_event(crate::scan::R_RING));  // 1
+        interp.process(&digit_event(crate::scan::L_PINKY)); // 9
+        interp.process(&digit_event(crate::scan::R_MID));   // 2
+        interp.process(&digit_event(crate::scan::R_RING));  // 1
+        interp.process(&Event::SpaceUp);
+        // L-mid = group, but group("1921") is None (>10). Falls
+        // through to English -ly suffix. The setup() brief table
+        // doesn't register -ly, so the result is None.
+        let result = interp.process(&l_chord_event(0b0010));
+        assert!(result.is_none());
     }
 
     #[test]
