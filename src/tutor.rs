@@ -1247,9 +1247,7 @@ fn build_practice(
             }
         }
 
-        if !skipped.is_empty() {
-            eprintln!("  SKIP unknown: {}", skipped.join(", "));
-        }
+        // skipped words with no CMU entry are silently dropped
     }
 
     // Pick a random starting sentence from the set of line-start indices,

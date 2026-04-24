@@ -38,11 +38,5 @@ pub fn load_briefs() -> BriefTable {
         table.insert(key, format!("\x01{} ", suffix));
     }
 
-    eprintln!(
-        "rhe: loaded {} briefs + {} ordered + {} suffixes",
-        BRIEFS.len(),
-        ORDERED_BRIEFS.len(),
-        SUFFIXES.len()
-    );
     table
 }

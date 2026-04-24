@@ -27,7 +27,6 @@ const MIN_WORDS_PER_SENTENCE: usize = 6;
 const MAX_WORDS_PER_SENTENCE: usize = 30;
 
 pub fn load_sentences() -> Vec<String> {
-    eprintln!("rhe: fetching Wikipedia practice text…");
     fetch_batch()
 }
 
@@ -38,7 +37,7 @@ fn fetch_batch() -> Vec<String> {
     let extracts = match fetch_random_extracts(ARTICLES_PER_FETCH) {
         Ok(e) => e,
         Err(e) => {
-            eprintln!("rhe: wiki fetch failed ({}); using bundled text", e);
+            // wiki fetch failed, fall back to bundled text
             return Vec::new();
         }
     };
@@ -53,7 +52,6 @@ fn fetch_batch() -> Vec<String> {
         }
     }
 
-    eprintln!("rhe: fetched {} practice sentences", sentences.len());
     sentences
 }
 

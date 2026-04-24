@@ -67,8 +67,6 @@ impl PhonemeDictionary {
             .map(|(k, (word, _))| (k, word))
             .collect();
 
-        eprintln!("rhe: phoneme dictionary: {} entries", dict.len());
-
         Self { entries: dict }
     }
 

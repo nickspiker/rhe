@@ -38,7 +38,7 @@ fn load(filename: &str) -> String {
     }
 
     let cache = cache_path(filename);
-    eprintln!("rhe: fetching {} from github…", filename);
+    // fetching data file from github
     match download(filename, &cache) {
         Ok(()) => fs::read_to_string(&cache)
             .unwrap_or_else(|e| panic!("rhe: cached {:?} unreadable: {}", cache, e)),
