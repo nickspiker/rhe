@@ -19,6 +19,8 @@ pub mod renderer_macos_softbuffer;
 
 pub mod text_rasterizing;
 pub mod primitives;
+pub mod theme;
+pub mod photon_chrome;
 
 #[cfg(target_os = "linux")]
 pub use renderer_linux_softbuffer as renderer;

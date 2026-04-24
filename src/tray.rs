@@ -27,7 +27,9 @@ use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 use crate::interpreter::FallbackMode;
-use crate::ui::primitives;
+use crate::ui::photon_chrome::{
+    HIT_CLOSE_BUTTON, HIT_MAXIMIZE_BUTTON, HIT_MINIMIZE_BUTTON, HIT_NONE, PhotonApp,
+};
 use crate::ui::renderer::Renderer;
 use crate::ui::text_rasterizing::TextRenderer;
 use std::sync::Arc;
@@ -124,51 +126,14 @@ struct TrayApp {
     tutor_mods: ModifiersState,
     /// Last cursor position inside the tutor window, in physical px.
     tutor_cursor: PhysicalPosition<f64>,
-}
-
-/// Chrome hit zones — returned by `chrome_hit` when a click lands on
-/// one of the window-control buttons. Clicks on the chrome bar outside
-/// any button are treated as a drag grip.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ChromeHit {
-    Close,
-    Maximize,
-    Minimize,
-    DragBar,
-}
-
-/// Layout data for the chrome strip. Derived from window size + ru so
-/// everything stays span-relative. The three button centers are on a
-/// single horizontal row at the right edge.
-struct ChromeLayout {
-    bar_height: i32,
-    button_radius: i32,
-    close_cx: i32,
-    max_cx: i32,
-    min_cx: i32,
-    button_cy: i32,
-}
-
-impl ChromeLayout {
-    fn for_window(width: u32, height: u32, ru: f32) -> Self {
-        let span = crate::ui::span(width, height);
-        let bar_height = ((span * ru) / 24.0).round().max(18.0) as i32;
-        let button_radius = ((span * ru) / 80.0).round().max(4.0) as i32;
-        let gap = button_radius * 3;
-        let right_margin = button_radius * 3;
-        let button_cy = bar_height / 2;
-        let close_cx = width as i32 - right_margin;
-        let max_cx = close_cx - gap;
-        let min_cx = max_cx - gap;
-        ChromeLayout {
-            bar_height,
-            button_radius,
-            close_cx,
-            max_cx,
-            min_cx,
-            button_cy,
-        }
-    }
+    /// Hit-test map, one byte per pixel. Photon's draw_* fns populate
+    /// this with HIT_* constants; we consult it on click to dispatch
+    /// to the right action.
+    tutor_hit_test: Vec<u8>,
+    /// Textbox alpha mask (0 = outside textbox, 255 = inside, AA edge
+    /// values in between). Populated by draw_textbox, consumed by
+    /// apply_textbox_glow. Sized to pixels.len().
+    tutor_textbox_mask: Vec<u8>,
 }
 
 #[cfg(target_os = "macos")]
@@ -211,7 +176,8 @@ impl TrayApp {
         let attrs = Window::default_attributes()
             .with_title("rhe tutor")
             .with_inner_size(PhysicalSize::new(800u32, 500u32))
-            .with_decorations(false);
+            .with_decorations(false)
+            .with_transparent(true);
         let window = match event_loop.create_window(attrs) {
             Ok(w) => w,
             Err(e) => {
@@ -240,6 +206,15 @@ impl TrayApp {
         self.tutor_window = None;
     }
 
+    fn ensure_buffers(&mut self, size_px: usize) {
+        if self.tutor_hit_test.len() != size_px {
+            self.tutor_hit_test.resize(size_px, HIT_NONE);
+        }
+        if self.tutor_textbox_mask.len() != size_px {
+            self.tutor_textbox_mask.resize(size_px, 0);
+        }
+    }
+
     fn redraw_tutor(&mut self) {
         let Some(window) = self.tutor_window.as_ref() else {
             return;
@@ -255,78 +230,60 @@ impl TrayApp {
             self.text_renderer = Some(TextRenderer::new());
         }
 
+        self.ensure_buffers(width * height);
+
         let Some(renderer) = self.tutor_renderer.as_mut() else {
             return;
         };
 
-        let chrome = ChromeLayout::for_window(size.width, size.height, self.tutor_ru);
-        let bw = size.width as i32;
-        let bh = size.height as i32;
-
         let mut buf = renderer.lock_buffer();
         let pixels = buf.as_mut();
 
-        primitives::fill(pixels, primitives::rgb(0x1a, 0x1a, 0x22));
+        // Clear background + hit map every frame. Transparent (0) lets
+        // photon's edges-and-mask pass clear the squircle corners to
+        // fully transparent — the compositor then shows whatever's
+        // behind the window.
+        pixels.fill(0xFF10_1016);
+        self.tutor_hit_test.fill(HIT_NONE);
+        self.tutor_textbox_mask.fill(0);
 
-        // Chrome strip: dark bar + hairline + three pill-circle buttons
-        // (close / maximize / minimize), visually matching photon's dark
-        // window controls but drawn rhe-native.
-        primitives::fill_rect(
+        // Photon's chrome. window_controls returns the squircle bounds
+        // that edges_and_mask + button_hairlines both need.
+        let (start, crossings, button_x_start, button_height) = PhotonApp::draw_window_controls(
             pixels,
-            bw,
-            bh,
-            0,
-            0,
-            bw,
-            chrome.bar_height,
-            primitives::rgb(0x1e, 0x1e, 0x1e),
+            &mut self.tutor_hit_test,
+            size.width,
+            size.height,
+            self.tutor_ru,
         );
-        primitives::hline(
+        PhotonApp::draw_window_edges_and_mask(
             pixels,
-            bw,
-            bh,
-            0,
-            chrome.bar_height,
-            bw,
-            primitives::rgb(0x44, 0x41, 0x37),
+            &mut self.tutor_hit_test,
+            size.width,
+            size.height,
+            start,
+            &crossings,
         );
-        primitives::fill_disc(
+        PhotonApp::draw_button_hairlines(
             pixels,
-            bw,
-            bh,
-            chrome.close_cx,
-            chrome.button_cy,
-            chrome.button_radius,
-            primitives::rgb(0x80, 0x20, 0x20),
-        );
-        primitives::fill_disc(
-            pixels,
-            bw,
-            bh,
-            chrome.max_cx,
-            chrome.button_cy,
-            chrome.button_radius,
-            primitives::rgb(0x48, 0x6b, 0x3a),
-        );
-        primitives::fill_disc(
-            pixels,
-            bw,
-            bh,
-            chrome.min_cx,
-            chrome.button_cy,
-            chrome.button_radius,
-            primitives::rgb(0x33, 0x30, 0xc7),
+            &mut self.tutor_hit_test,
+            size.width,
+            size.height,
+            button_x_start,
+            button_height,
+            start,
+            &crossings,
         );
 
-        // Phase B.4 placeholder: draw "rhe" centered in the content
-        // area to prove the full font stack works end-to-end. Phase C
-        // will render the real tutor view here.
+        // Phase B.4 placeholder: target word in Oxanium Bold, centered
+        // below the chrome strip. Phase C replaces this with the real
+        // tutor view.
         if let Some(text) = self.text_renderer.as_mut() {
             let span = crate::ui::span(size.width, size.height);
             let font_size = span * self.tutor_ru / 4.0;
-            let content_top = chrome.bar_height as f32;
+            let chrome_h = button_height as f32;
             let cx = width as f32 / 2.0;
-            let cy = content_top + (height as f32 - content_top) / 2.0;
+            let cy = chrome_h + (height as f32 - chrome_h) / 2.0;
             text.draw_text_center_u32(
                 pixels,
                 width,
@@ -335,7 +292,7 @@ impl TrayApp {
                 cy,
                 font_size,
                 700,
-                0x00E0E0F0,
+                0xFFE0_E0F0,
                 "Oxanium",
             );
         }
@@ -344,44 +301,22 @@ impl TrayApp {
         let _ = buf.present();
     }
 
-    fn chrome_hit(&self, chrome: &ChromeLayout) -> Option<ChromeHit> {
-        let px = self.tutor_cursor.x as i32;
-        let py = self.tutor_cursor.y as i32;
-        if py < 0 || py > chrome.bar_height {
-            return None;
+    /// Read the hit-test map at the current cursor position. Returns 0
+    /// (HIT_NONE) when cursor is out of bounds.
+    fn hit_at_cursor(&self) -> u8 {
+        let Some(window) = self.tutor_window.as_ref() else {
+            return HIT_NONE;
+        };
+        let size = window.inner_size();
+        let width = size.width as usize;
+        let height = size.height as usize;
+        let x = self.tutor_cursor.x as i32;
+        let y = self.tutor_cursor.y as i32;
+        if x < 0 || y < 0 || x >= width as i32 || y >= height as i32 {
+            return HIT_NONE;
         }
-        if primitives::point_in_disc(
-            px,
-            py,
-            chrome.close_cx,
-            chrome.button_cy,
-            chrome.button_radius,
-        ) {
-            return Some(ChromeHit::Close);
-        }
-        if primitives::point_in_disc(
-            px,
-            py,
-            chrome.max_cx,
-            chrome.button_cy,
-            chrome.button_radius,
-        ) {
-            return Some(ChromeHit::Maximize);
-        }
-        if primitives::point_in_disc(
-            px,
-            py,
-            chrome.min_cx,
-            chrome.button_cy,
-            chrome.button_radius,
-        ) {
-            return Some(ChromeHit::Minimize);
-        }
-        // Click on the bar but not on a button — treat as a drag grip.
-        if py <= chrome.bar_height {
-            return Some(ChromeHit::DragBar);
-        }
-        None
+        let idx = y as usize * width + x as usize;
+        self.tutor_hit_test.get(idx).copied().unwrap_or(HIT_NONE)
     }
 
     fn on_menu_click(&mut self, event_loop: &ActiveEventLoop, id: MenuId) {
@@ -462,26 +397,21 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 if state == ElementState::Pressed && button == MouseButton::Left {
+                    let hit = self.hit_at_cursor();
                     let Some(window) = self.tutor_window.as_ref() else {
                         return;
                     };
-                    let size = window.inner_size();
-                    let chrome = ChromeLayout::for_window(size.width, size.height, self.tutor_ru);
-                    match self.chrome_hit(&chrome) {
-                        Some(ChromeHit::Close) => {
-                            self.close_tutor();
-                        }
-                        Some(ChromeHit::Maximize) => {
-                            let was_max = window.is_maximized();
-                            window.set_maximized(!was_max);
-                        }
-                        Some(ChromeHit::Minimize) => {
-                            window.set_minimized(true);
-                        }
-                        Some(ChromeHit::DragBar) => {
-                            let _ = window.drag_window();
-                        }
-                        None => {}
+                    if hit == HIT_CLOSE_BUTTON {
+                        self.close_tutor();
+                    } else if hit == HIT_MAXIMIZE_BUTTON {
+                        let was_max = window.is_maximized();
+                        window.set_maximized(!was_max);
+                    } else if hit == HIT_MINIMIZE_BUTTON {
+                        window.set_minimized(true);
+                    } else if hit == HIT_NONE {
+                        // Non-hit = drag grip. Clicking anywhere not
+                        // claimed by a button starts a window move.
+                        let _ = window.drag_window();
                     }
                 }
             }
@@ -729,6 +659,8 @@ pub fn run_tray(
         tutor_ru: 1.0,
         tutor_mods: ModifiersState::empty(),
         tutor_cursor: PhysicalPosition::new(0.0, 0.0),
+        tutor_hit_test: Vec::new(),
+        tutor_textbox_mask: Vec::new(),
     };
 
     event_loop.run_app(&mut app).ok();
