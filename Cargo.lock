@@ -1727,7 +1727,7 @@ dependencies = [
 
 [[package]]
 name = "rhe"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "core-foundation 0.10.1",
  "core-graphics 0.24.0",
