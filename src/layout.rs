@@ -66,21 +66,26 @@ pub enum Layout {
 /// before switching to Medium or Wide.
 pub const CURRENT: Layout = Layout::NarrowR;
 
-/// When enabled (default), the input backends auto-flip rhe on/off
-/// based on the pattern of physical keys the user presses:
+/// When enabled, the input backends auto-flip rhe on/off based on
+/// the pattern of physical keys the user presses:
 ///
 /// - **Enable** (off → on) when the user simultaneously holds 3+
-///   home-row chord keys, OR 2+ chord keys alongside WORD or thumb
-///   — a pattern too distinctive to hit during normal typing.
+///   home-row chord keys, OR 2+ chord keys alongside WORD or thumb.
 /// - **Disable** (on → off) the moment a non-home-row *letter* key
-///   goes down (the Q-row and Z-row positions). Numbers, symbols,
-///   punctuation, modifiers, and navigation keys don't trigger the
-///   switch — users often need to type `$` or arrow around while
-///   legitimately inside rhe mode.
+///   goes down (Q-row or Z-row positions). Numbers, symbols,
+///   punctuation, modifiers, and navigation keys don't trigger —
+///   users need to type `$` or arrow around while inside rhe.
 ///
-/// Caps-lock toggle still works regardless. Set this to `false` to
-/// require manual toggling only (strict caps-lock mode).
-pub const AUTO_SWITCH: bool = true;
+/// **Default: off.** Fast typists routinely hold 3+ home-row keys
+/// briefly during rolled keystrokes, which triggers false auto-
+/// enables. Caps-lock is the universally-reliable toggle; this
+/// is strictly an opt-in convenience for users who find they
+/// forget which mode rhe is in. Set to `true` here to enable.
+///
+/// Stuck-key handling on the transition is implemented either
+/// way — flipping mid-press synthesizes the proper releases so
+/// nothing gets latched.
+pub const AUTO_SWITCH: bool = false;
 
 /// True for Linux evdev scancodes that correspond to the 17
 /// non-home-row letter positions (Q-W-E-R-T-Y-U-I-O-P and Z-X-C-V-
