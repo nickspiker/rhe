@@ -2414,6 +2414,7 @@ dependencies = [
  "foreign-types 0.5.0",
  "gtk",
  "libc",
+ "png 0.17.16",
  "ratatui",
  "rdev",
  "softbuffer",

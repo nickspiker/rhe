@@ -2504,7 +2504,9 @@ impl PhotonApp {
     ) {
         let r = radius;
         let diameter = (radius * 2) as usize;
-        let stroke_width = radius / 16;
+        // rhe tweak vs photon: +2 floor so the ring stays visible
+        // at tiny (22px tray-icon) radii where radius/16 rounds to 0.
+        let stroke_width = radius / 16 + 2;
 
         // Ring radii: 1px inside + 1px outside = 2px total
         let r_inner = r - 1;

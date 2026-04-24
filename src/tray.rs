@@ -20,7 +20,7 @@ use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
-use winit::keyboard::{Key, ModifiersState};
+use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{CursorIcon, ResizeDirection, Window, WindowId};
 
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
@@ -36,6 +36,111 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 const ICON_SIZE: u32 = 22;
+
+/// Bright lime when rhe is capturing input.
+const ICON_RING_ON: u32 = 0xFF40_FF40;
+/// Dark purple when rhe is passing keys through to the OS.
+const ICON_RING_OFF: u32 = 0xFF4A_1A72;
+
+/// Logo embedded at compile time. 1024×1024 RGB PNG.
+const LOGO_PNG_BYTES: &[u8] = include_bytes!("../logo.png");
+
+/// Decode and scale-down logo.png to a square RGB buffer of `diameter`×
+/// `diameter`. Cached after the first call. Nearest-neighbour scaling —
+/// fine for tray-icon sizes where per-pixel sharpness matters more than
+/// filter fidelity.
+fn scaled_logo_rgb(diameter: usize) -> Vec<u8> {
+    use std::sync::OnceLock;
+    static DECODED: OnceLock<(Vec<u8>, usize, usize)> = OnceLock::new();
+    let (rgb, src_w, src_h) = DECODED.get_or_init(|| {
+        let decoder = png::Decoder::new(LOGO_PNG_BYTES);
+        let mut reader = decoder.read_info().expect("logo.png invalid");
+        let info = reader.info();
+        let w = info.width as usize;
+        let h = info.height as usize;
+        let mut buf = vec![0u8; reader.output_buffer_size()];
+        let frame = reader.next_frame(&mut buf).expect("logo.png decode");
+        let color = frame.color_type;
+        // Normalise to RGB regardless of source colour type.
+        let rgb = match color {
+            png::ColorType::Rgb => buf,
+            png::ColorType::Rgba => buf
+                .chunks_exact(4)
+                .flat_map(|p| [p[0], p[1], p[2]])
+                .collect(),
+            png::ColorType::Grayscale => buf
+                .iter()
+                .flat_map(|&g| [g, g, g])
+                .collect(),
+            png::ColorType::GrayscaleAlpha => buf
+                .chunks_exact(2)
+                .flat_map(|p| [p[0], p[0], p[0]])
+                .collect(),
+            png::ColorType::Indexed => panic!("indexed PNG not supported"),
+        };
+        (rgb, w, h)
+    });
+
+    let mut dst = vec![0u8; diameter * diameter * 3];
+    for dy in 0..diameter {
+        let sy = dy * src_h / diameter;
+        for dx in 0..diameter {
+            let sx = dx * src_w / diameter;
+            let src_idx = (sy * src_w + sx) * 3;
+            let dst_idx = (dy * diameter + dx) * 3;
+            dst[dst_idx] = rgb[src_idx];
+            dst[dst_idx + 1] = rgb[src_idx + 1];
+            dst[dst_idx + 2] = rgb[src_idx + 2];
+        }
+    }
+    dst
+}
+
+/// Render the tray icon: ring around a scaled-down logo.png via
+/// photon's draw_avatar. Ring colour signals rhe's enabled state.
+fn make_tray_icon(size: u32, online: bool) -> Icon {
+    use crate::ui::photon_chrome::PhotonApp;
+
+    let w = size as usize;
+    let h = size as usize;
+
+    // Photon's draw_avatar AA fringe assumes the ring radius leaves
+    // room for stroke + outer AA pixel. At size=22 the ring is
+    // stroke_width = radius/16 + 2 = 2, plus 1 AA pixel on each side →
+    // total 4px. Set radius so the ring outer edge lands ~1px shy of
+    // the icon bounds.
+    let radius = (size as isize) / 2 - 3;
+    let diameter = (radius * 2) as usize;
+    let cx = (size / 2) as isize;
+    let cy = cx;
+
+    let mut pixels = vec![0u32; w * h];
+    let logo = scaled_logo_rgb(diameter);
+
+    let ring = if online { ICON_RING_ON } else { ICON_RING_OFF };
+    PhotonApp::draw_avatar(
+        &mut pixels,
+        None,
+        w,
+        h,
+        cx,
+        cy,
+        radius,
+        Some(&logo),
+        Some(ring),
+        false,
+    );
+
+    // u32 ARGB → RGBA bytes for tray-icon's Icon::from_rgba.
+    let mut rgba = Vec::with_capacity(w * h * 4);
+    for px in pixels {
+        rgba.push(((px >> 16) & 0xFF) as u8);
+        rgba.push(((px >> 8) & 0xFF) as u8);
+        rgba.push((px & 0xFF) as u8);
+        rgba.push(((px >> 24) & 0xFF) as u8);
+    }
+    Icon::from_rgba(rgba, size, size).expect("tray icon build failed")
+}
 
 /// Events that wake the winit event loop.
 #[derive(Debug, Clone)]
@@ -141,6 +246,10 @@ struct TrayApp {
     tutor_debug_hit_test: bool,
     tutor_show_textbox_mask: bool,
     tutor_debug_hit_colours: Vec<(u8, u8, u8)>,
+    /// Manual Ctrl tracking derived from KeyboardInput events. Used as
+    /// a fallback when winit's ModifiersChanged doesn't fire on some
+    /// Wayland compositors (or before the window has keyboard focus).
+    tutor_ctrl_held: bool,
 
     // Frame/redraw counters for the debug HUD.
     tutor_frame_counter: u64,
@@ -432,10 +541,28 @@ impl TrayApp {
     }
 
     fn handle_keyboard(&mut self, event: KeyEvent) {
+        // Track Ctrl via the key event directly — ModifiersChanged can
+        // skip events on some Wayland compositors until after the
+        // window has held keyboard focus for a bit.
+        if matches!(event.logical_key, Key::Named(NamedKey::Control)) {
+            self.tutor_ctrl_held = event.state == ElementState::Pressed;
+        }
+        // Loud diagnostic so we can see exactly what reaches the
+        // tutor window. If nothing prints on key press the window
+        // isn't getting keyboard focus at all.
+        eprintln!(
+            "rhe tutor kbd: state={:?} logical={:?} mods.ctrl={} manual_ctrl={}",
+            event.state,
+            event.logical_key,
+            self.tutor_mods.control_key(),
+            self.tutor_ctrl_held,
+        );
+
         if event.state != ElementState::Pressed {
             return;
         }
-        if !self.tutor_mods.control_key() {
+        let ctrl = self.tutor_mods.control_key() || self.tutor_ctrl_held;
+        if !ctrl {
             return;
         }
         let Key::Character(c) = &event.logical_key else {
@@ -588,23 +715,31 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.tutor_cursor = position;
-                // Update cursor icon to advertise resizability at the
-                // edges. Winit won't do this itself with
-                // .with_decorations(false).
                 if let Some(w) = self.tutor_window.as_ref() {
-                    let icon = match self.resize_edge_at_cursor() {
-                        Some(ResizeDirection::NorthWest)
-                        | Some(ResizeDirection::SouthEast) => CursorIcon::NwseResize,
-                        Some(ResizeDirection::NorthEast)
-                        | Some(ResizeDirection::SouthWest) => CursorIcon::NeswResize,
-                        Some(ResizeDirection::North) | Some(ResizeDirection::South) => {
-                            CursorIcon::NsResize
+                    // Cursor priority (matches photon):
+                    //   chrome buttons → Pointer
+                    //   resize edges   → direction arrow
+                    //   else           → Default
+                    let hit = self.hit_at_cursor();
+                    let icon = if hit == HIT_CLOSE_BUTTON
+                        || hit == HIT_MAXIMIZE_BUTTON
+                        || hit == HIT_MINIMIZE_BUTTON
+                    {
+                        CursorIcon::Pointer
+                    } else {
+                        match self.resize_edge_at_cursor() {
+                            Some(ResizeDirection::NorthWest)
+                            | Some(ResizeDirection::SouthEast) => CursorIcon::NwseResize,
+                            Some(ResizeDirection::NorthEast)
+                            | Some(ResizeDirection::SouthWest) => CursorIcon::NeswResize,
+                            Some(ResizeDirection::North) | Some(ResizeDirection::South) => {
+                                CursorIcon::NsResize
+                            }
+                            Some(ResizeDirection::East) | Some(ResizeDirection::West) => {
+                                CursorIcon::EwResize
+                            }
+                            Some(_) | None => CursorIcon::Default,
                         }
-                        Some(ResizeDirection::East) | Some(ResizeDirection::West) => {
-                            CursorIcon::EwResize
-                        }
-                        Some(_) => CursorIcon::Default,
-                        None => CursorIcon::Default,
                     };
                     w.set_cursor(icon);
                 }
@@ -653,7 +788,7 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                if self.tutor_mods.control_key() {
+                if self.tutor_mods.control_key() || self.tutor_ctrl_held {
                     let steps = match delta {
                         MouseScrollDelta::LineDelta(_, y) => y,
                         MouseScrollDelta::PixelDelta(p) => (p.y / 50.0) as f32,
@@ -716,8 +851,8 @@ fn build_mac_tray(
     enabled: &Arc<AtomicBool>,
     fallback: &Arc<AtomicU8>,
 ) -> MacTrayState {
-    let icon_off = circle_icon(180, 60, 180, 160);
-    let icon_on = circle_icon(80, 255, 80, 255);
+    let icon_off = make_tray_icon(ICON_SIZE, false);
+    let icon_on = make_tray_icon(ICON_SIZE, true);
 
     let initial_enabled = enabled.load(Ordering::Relaxed);
     let initial_fallback = FallbackMode::from_u8(fallback.load(Ordering::Relaxed));
@@ -783,8 +918,8 @@ fn spawn_linux_tray_thread(
 
         gtk::init().expect("gtk::init failed");
 
-        let icon_off = circle_icon(180, 60, 180, 160);
-        let icon_on = circle_icon(80, 255, 80, 255);
+        let icon_off = make_tray_icon(ICON_SIZE, false);
+        let icon_on = make_tray_icon(ICON_SIZE, true);
 
         let initial_enabled = enabled.load(Ordering::Relaxed);
         let initial_fallback = FallbackMode::from_u8(fallback.load(Ordering::Relaxed));
@@ -904,6 +1039,7 @@ pub fn run_tray(
         tutor_debug_hit_colours: Vec::new(),
         tutor_frame_counter: 0,
         tutor_redraw_counter: 0,
+        tutor_ctrl_held: false,
     };
 
     event_loop.run_app(&mut app).ok();
