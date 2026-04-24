@@ -107,3 +107,43 @@ pub const fn rgb(r: u8, g: u8, b: u8) -> u32 {
 pub const fn argb(a: u8, r: u8, g: u8, b: u8) -> u32 {
     ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
 }
+
+/// Filled disc of radius `r` at center `(cx, cy)`. Clipped to buffer.
+/// Uses a square-distance test — cheap, no antialiasing. Fine for
+/// chrome buttons where `r` is in the 5-10 px range; the OS cursor
+/// provides the only comparison eye has and this still reads clean.
+pub fn fill_disc(
+    pixels: &mut [u32],
+    buf_width: i32,
+    buf_height: i32,
+    cx: i32,
+    cy: i32,
+    r: i32,
+    color: u32,
+) {
+    let r2 = r * r;
+    let x0 = (cx - r).max(0);
+    let y0 = (cy - r).max(0);
+    let x1 = (cx + r + 1).min(buf_width);
+    let y1 = (cy + r + 1).min(buf_height);
+    let stride = buf_width as usize;
+    for y in y0..y1 {
+        let dy = y - cy;
+        let base = y as usize * stride;
+        for x in x0..x1 {
+            let dx = x - cx;
+            if dx * dx + dy * dy <= r2 {
+                pixels[base + x as usize] = color;
+            }
+        }
+    }
+}
+
+/// Is point `(px, py)` inside the disc of center `(cx, cy)` and
+/// radius `r`? Hit-test companion to `fill_disc`.
+#[inline]
+pub fn point_in_disc(px: i32, py: i32, cx: i32, cy: i32, r: i32) -> bool {
+    let dx = px - cx;
+    let dy = py - cy;
+    dx * dx + dy * dy <= r * r
+}
