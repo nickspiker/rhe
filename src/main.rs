@@ -32,28 +32,36 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     match args.get(1).map(|s| s.as_str()) {
+        None | Some("run") => run(),
         Some("map") => show_map(),
         Some("briefs") => show_briefs(),
         Some("listen") => listen(),
-        Some("run") => run(),
         Some("tutor") => tutor::run_tutor(false),
         Some("test") => tutor::run_tutor(true),
         Some("rollover") => rollover_test(),
         Some("bench") => tutor::run_bench(),
-        _ => {
-            println!("rhe v{}", env!("CARGO_PKG_VERSION"));
-            println!();
-            println!("usage:");
-            println!("  rhe map       — show phoneme-to-chord mapping");
-            println!("  rhe briefs    — show word brief assignments");
-            println!("  rhe listen    — show raw key events + chords");
-            println!("  rhe run       — menu bar app + full engine");
-            println!("  rhe tutor     — interactive typing tutor (Wikipedia text)");
-            println!("  rhe test      — tutor with curated homophone/ordering drills");
-            println!("  rhe bench     — measure chord speed per finger combo");
-            println!("  rhe rollover  — test simultaneous key count");
+        Some("-h") | Some("--help") | Some("help") => show_usage(),
+        Some(other) => {
+            eprintln!("rhe: unknown subcommand `{other}`");
+            eprintln!();
+            show_usage();
+            std::process::exit(2);
         }
     }
+}
+
+fn show_usage() {
+    println!("rhe v{}", env!("CARGO_PKG_VERSION"));
+    println!();
+    println!("usage:");
+    println!("  rhe           — menu bar app + full engine (default)");
+    println!("  rhe map       — show phoneme-to-chord mapping");
+    println!("  rhe briefs    — show word brief assignments");
+    println!("  rhe listen    — show raw key events + chords");
+    println!("  rhe tutor     — interactive typing tutor (Wikipedia text)");
+    println!("  rhe test      — tutor with curated homophone/ordering drills");
+    println!("  rhe bench     — measure chord speed per finger combo");
+    println!("  rhe rollover  — test simultaneous key count");
 }
 
 fn show_map() {
