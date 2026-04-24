@@ -21,7 +21,7 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, ModifiersState};
-use winit::window::{ResizeDirection, Window, WindowId};
+use winit::window::{CursorIcon, ResizeDirection, Window, WindowId};
 
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
@@ -441,14 +441,27 @@ impl TrayApp {
         let Key::Character(c) = &event.logical_key else {
             return;
         };
-        if c.eq_ignore_ascii_case("d") {
+
+        // rhe's evdev grab eats the home-row letters (A/S/D/F/G/H/J/K/L/;)
+        // as chord roles, so photon's default Ctrl+D / Ctrl+H never
+        // reach this handler while rhe is enabled. We use digit keys
+        // for the primary shortcuts so they pass through the grab
+        // untouched. Letter aliases are kept as a courtesy for muscle
+        // memory from photon — they work whenever rhe is disabled.
+        //
+        //   Ctrl+1 / Ctrl+D   debug counters HUD
+        //   Ctrl+2 / Ctrl+H   hit-map colour overlay
+        //   Ctrl+3 / Ctrl+T   textbox mask overlay
+        //   Ctrl+= or +       zoom in
+        //   Ctrl+-            zoom out
+        //   Ctrl+0            reset zoom
+        let matched = if c == "1" || c.eq_ignore_ascii_case("d") {
             self.tutor_debug = !self.tutor_debug;
-        } else if c.eq_ignore_ascii_case("h") {
+            true
+        } else if c == "2" || c.eq_ignore_ascii_case("h") {
             self.tutor_debug_hit_test = !self.tutor_debug_hit_test;
             self.tutor_show_textbox_mask = false;
             if self.tutor_debug_hit_test && self.tutor_debug_hit_colours.is_empty() {
-                // Deterministic but visually distinct: scatter hue via
-                // simple LCG so hit IDs render as different colours.
                 let mut seed: u32 = 0x9E3779B9;
                 for _ in 0..=255u8 {
                     seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
@@ -458,20 +471,27 @@ impl TrayApp {
                     self.tutor_debug_hit_colours.push((r, g, b));
                 }
             }
-        } else if c.eq_ignore_ascii_case("t") {
+            true
+        } else if c == "3" || c.eq_ignore_ascii_case("t") {
             self.tutor_show_textbox_mask = !self.tutor_show_textbox_mask;
             self.tutor_debug_hit_test = false;
+            true
         } else if c == "=" || c == "+" {
             self.tutor_ru = (self.tutor_ru * 1.1).clamp(0.3, 5.0);
+            true
         } else if c == "-" {
             self.tutor_ru = (self.tutor_ru / 1.1).clamp(0.3, 5.0);
+            true
         } else if c == "0" {
             self.tutor_ru = 1.0;
+            true
         } else {
-            return;
-        }
-        if let Some(w) = self.tutor_window.as_ref() {
-            w.request_redraw();
+            false
+        };
+        if matched {
+            if let Some(w) = self.tutor_window.as_ref() {
+                w.request_redraw();
+            }
         }
     }
 
@@ -568,6 +588,26 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.tutor_cursor = position;
+                // Update cursor icon to advertise resizability at the
+                // edges. Winit won't do this itself with
+                // .with_decorations(false).
+                if let Some(w) = self.tutor_window.as_ref() {
+                    let icon = match self.resize_edge_at_cursor() {
+                        Some(ResizeDirection::NorthWest)
+                        | Some(ResizeDirection::SouthEast) => CursorIcon::NwseResize,
+                        Some(ResizeDirection::NorthEast)
+                        | Some(ResizeDirection::SouthWest) => CursorIcon::NeswResize,
+                        Some(ResizeDirection::North) | Some(ResizeDirection::South) => {
+                            CursorIcon::NsResize
+                        }
+                        Some(ResizeDirection::East) | Some(ResizeDirection::West) => {
+                            CursorIcon::EwResize
+                        }
+                        Some(_) => CursorIcon::Default,
+                        None => CursorIcon::Default,
+                    };
+                    w.set_cursor(icon);
+                }
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 if state == ElementState::Pressed && button == MouseButton::Left {
