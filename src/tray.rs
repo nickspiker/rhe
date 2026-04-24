@@ -350,6 +350,15 @@ impl TrayApp {
         if width == 0 || height == 0 {
             return;
         }
+        eprintln!(
+            "rhe tutor: redraw w={} h={} ru={:.2} debug={} hit_test={} tbm={}",
+            width,
+            height,
+            self.tutor_ru,
+            self.tutor_debug,
+            self.tutor_debug_hit_test,
+            self.tutor_show_textbox_mask,
+        );
 
         if self.text_renderer.is_none() {
             self.text_renderer = Some(TextRenderer::new());
@@ -616,6 +625,13 @@ impl TrayApp {
             false
         };
         if matched {
+            eprintln!(
+                "rhe tutor: shortcut matched → debug={} hit_test={} tbm={} ru={:.2}",
+                self.tutor_debug,
+                self.tutor_debug_hit_test,
+                self.tutor_show_textbox_mask,
+                self.tutor_ru,
+            );
             if let Some(w) = self.tutor_window.as_ref() {
                 w.request_redraw();
             }
