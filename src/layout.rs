@@ -1,21 +1,45 @@
 //! Physical-key → rhe-role mapping, per layout.
 //!
-//! Four standard layouts cover the common hand-position variations:
+//! Six standard layouts cover the common hand-position variations:
 //!
 //! - **Narrow-R**: right-dominant, hands close together, right-thumb on
 //!   space. The original rhe layout.
-//! - **Wide-R**: right-dominant, right hand shifted two columns right
-//!   so the pinky lands on Enter. Left thumb on space is the word
-//!   key, right-Alt is the mod. Right-Shift synthesizes Enter so the
-//!   user can still emit newlines.
-//! - **Narrow-L** / **Wide-L**: mirror images for left-dominant
-//!   typists. All rhe internals stay the same — only the physical
-//!   scancodes swap sides.
+//! - **Medium-R**: right hand shifted one column right (index on K).
+//!   Small stance widening with no edge-key exposure.
+//! - **Wide-R**: right hand shifted two columns right so the pinky
+//!   lands on Enter. Left thumb on space is the word key, right-Alt
+//!   is the mod. Right-Shift synthesizes Enter so the user can still
+//!   emit newlines.
+//! - **Narrow-L** / **Medium-L** / **Wide-L**: mirror images for
+//!   left-dominant typists. All rhe internals stay the same — only
+//!   the physical scancodes swap sides.
 //!
 //! `CURRENT` picks which layout the binary uses. Change it here and
 //! recompile; the file is both human-readable text and the single
 //! source of truth the compiler sees, so there's no config drift and
 //! no runtime dispatch cost (the match on `CURRENT` folds away).
+//!
+//! ## Rollover caveat (choosing a layout)
+//!
+//! Most keyboards — Mac, PC, laptop, membrane, or otherwise — only
+//! guarantee full N-key rollover across the main alpha block (roughly
+//! the 30 keys around home row). Keys outside that zone (`'`, Enter,
+//! right-Shift, the numpad) typically share matrix rows with other
+//! keys and drop to 2-key rollover under simultaneous press, causing
+//! chord "ghosting" where the hardware silently suppresses keys rhe
+//! needs. rhe chord use pushes up to six simultaneous keys on one
+//! hand, so:
+//!
+//! - **Narrow-R / Narrow-L** live entirely inside the main alpha
+//!   block and work on any keyboard. This is the safe default.
+//! - **Medium-R / Medium-L** step one column into the edge zone
+//!   (apostrophe) — usually fine, some budget boards will complain.
+//! - **Wide-R / Wide-L** use Enter as a chord key and will ghost on
+//!   most keyboards. Only viable on hardware with advertised full
+//!   NKRO (gaming mechs, most aftermarket boards).
+//!
+//! When in doubt, stay narrow. Upgrade to medium/wide once you've
+//! verified your keyboard's rollover across the target keys.
 
 // The two platforms each consume one half of this module's surface;
 // the other half is "dead" from that platform's perspective but the
@@ -36,8 +60,10 @@ pub enum Layout {
 }
 
 /// The layout this build will use. Edit this single line and recompile
-/// to change rhe's key mapping. Wide-R is the default — right-dominant
-/// typists who want the most comfortable hand stance.
+/// to change rhe's key mapping. Narrow-R is the default — it stays
+/// inside the main alpha block where almost every keyboard provides
+/// full N-key rollover. See the rollover caveat in the module docs
+/// before switching to Medium or Wide.
 pub const CURRENT: Layout = Layout::NarrowR;
 
 // ─── Linux evdev scancode constants ───
