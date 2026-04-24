@@ -28,6 +28,7 @@ use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 use crate::interpreter::FallbackMode;
 use crate::ui::primitives;
 use crate::ui::renderer::Renderer;
+use crate::ui::text_rasterizing::TextRenderer;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
@@ -95,6 +96,7 @@ struct TrayApp {
     // the window below, and must be dropped first to avoid dangling).
     tutor_renderer: Option<Renderer>,
     tutor_window: Option<Window>,
+    text_renderer: Option<TextRenderer>,
 
     mode_item: MenuItem,
     enabled_item: MenuItem,
@@ -161,16 +163,50 @@ impl TrayApp {
     }
 
     fn redraw_tutor(&mut self) {
-        let (Some(_window), Some(renderer)) =
-            (self.tutor_window.as_ref(), self.tutor_renderer.as_mut())
-        else {
+        let Some(window) = self.tutor_window.as_ref() else {
+            return;
+        };
+        let size = window.inner_size();
+        let width = size.width as usize;
+        let height = size.height as usize;
+        if width == 0 || height == 0 {
+            return;
+        }
+
+        // Lazily construct the text renderer on first tutor open. It
+        // parses 20 TTFs (~1.2MB), so we don't want this on startup.
+        if self.text_renderer.is_none() {
+            self.text_renderer = Some(TextRenderer::new());
+        }
+
+        let Some(renderer) = self.tutor_renderer.as_mut() else {
             return;
         };
 
-        // Phase B.4 placeholder: solid background to prove the lift.
-        // Phase C will render the real tutor view here.
         let mut buf = renderer.lock_buffer();
         primitives::fill(buf.as_mut(), primitives::rgb(0x1a, 0x1a, 0x22));
+
+        // Phase B.4 placeholder: draw "rhe" centered to prove the full
+        // font stack works end-to-end. Phase C will render the real
+        // tutor view (target word + phoneme hint + keyboard diagram).
+        if let Some(text) = self.text_renderer.as_mut() {
+            let span = crate::ui::span(size.width, size.height);
+            let font_size = span / 4.0;
+            let cx = width as f32 / 2.0;
+            let cy = height as f32 / 2.0;
+            text.draw_text_center_u32(
+                buf.as_mut(),
+                width,
+                "rhe",
+                cx,
+                cy,
+                font_size,
+                700,
+                0x00E0E0F0,
+                "Oxanium",
+            );
+        }
+
         buf.mark_all();
         let _ = buf.present();
     }
@@ -349,6 +385,7 @@ pub fn run_tray(
         tray: None,
         tutor_renderer: None,
         tutor_window: None,
+        text_renderer: None,
         tutor_item,
         mode_item,
         enabled_item,
