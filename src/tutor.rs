@@ -897,6 +897,87 @@ fn number_char_target(c: char) -> Option<(u8, u8, bool)> {
 /// the trailing space and exits number mode. Returns `None` if the
 /// word contains a character with no number-mode mapping, or has no
 /// digit at all (so we don't accidentally drill words like "=").
+/// Build number-mode steps for spelled-out digit words ("one" through "nine").
+/// Generates: mod-tap entry → finger+mod chord (finger first = spelled word) → commit.
+fn build_digit_word_steps(word: &str) -> Option<Vec<Step>> {
+    let lower = word.to_lowercase();
+    let scan_code = match lower.as_str() {
+        "zero"  => scan::R_PINKY,
+        "one"   => scan::R_RING,
+        "two"   => scan::R_MID,
+        "three" => scan::R_IDX,
+        "four"  => scan::R_IDX_INNER,
+        "five"  => scan::L_IDX_INNER,
+        "six"   => scan::L_IDX,
+        "seven" => scan::L_MID,
+        "eight" => scan::L_RING,
+        "nine"  => scan::L_PINKY,
+        _ => return None,
+    };
+
+    // Figure out right/left bits for the target
+    let (right, left) = if let Some(bit) = scan::right_bit(scan_code) {
+        (1u8 << bit | (1 << 4), 0u8) // finger + mod (thumb)
+    } else if let Some(bit) = scan::left_bit(scan_code) {
+        // Left-hand digit: mod is right thumb, finger is left hand
+        // Target shows left finger + right mod
+        (1u8 << 4, 1u8 << bit)
+    } else {
+        return None;
+    };
+
+    // Finger-first ordering: the finger scancode is the accepted lead
+    let mut leads = KeyMask::EMPTY;
+    leads.set(scan_code);
+
+    let mut steps = Vec::new();
+
+    // Step 1: mod-tap entry (enter number mode)
+    steps.push(Step {
+        target: Target {
+            right: 1 << 4,
+            left: 0,
+            word: true,
+            accepted_leads: KeyMask::EMPTY,
+        },
+        mod_tap_only: true,
+        number_glyph: None,
+        ..Step::default()
+    });
+
+    // Step 2: finger+mod chord (finger pressed first = spelled word)
+    steps.push(Step {
+        target: Target {
+            right,
+            left,
+            word: true,
+            accepted_leads: leads,
+        },
+        number_glyph: Some(word.chars().next().unwrap_or('?')),
+        ..Step::default()
+    });
+
+    // Step 3: release
+    steps.push(Step {
+        target: Target {
+            right: 0,
+            left: 0,
+            word: true,
+            accepted_leads: KeyMask::EMPTY,
+        },
+        ..Step::default()
+    });
+
+    // Step 4: commit (word release)
+    steps.push(Step {
+        target: Target::default(),
+        space_only: true,
+        ..Step::default()
+    });
+
+    Some(steps)
+}
+
 fn build_number_steps(word: &str) -> Option<Vec<Step>> {
     if !word.chars().any(|c| c.is_ascii_digit()) {
         return None;
@@ -1014,6 +1095,19 @@ fn build_practice(
                 // from the number-mode set) bypass phoneme/brief
                 // lookup entirely. They drill number-mode only.
                 if let Some(number_steps) = build_number_steps(word_str) {
+                    sentence.push(PracticeWord {
+                        word: word_str.to_string(),
+                        phoneme_steps: Vec::new(),
+                        brief_steps: None,
+                        suffix_steps: None,
+                        suffix_label: None,
+                        number_steps: Some(number_steps),
+                    });
+                    continue;
+                }
+
+                // Spelled digit words → number-mode steps (mod-tap → finger+mod)
+                if let Some(number_steps) = build_digit_word_steps(word_str) {
                     sentence.push(PracticeWord {
                         word: word_str.to_string(),
                         phoneme_steps: Vec::new(),
