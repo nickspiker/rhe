@@ -1,4 +1,4 @@
-//! Cross-platform tray icon + right-click menu.
+//! Cross-platform tray icon + right-click menu + on-demand tutor window.
 //!
 //! macOS gets its native menu bar icon via `tray-icon` (which wraps
 //! `NSStatusItem`). Linux gets a StatusNotifierItem registered via DBus
@@ -8,9 +8,8 @@
 //! The tray provides an ambient always-visible state indicator (icon
 //! color reflects rhe enabled/disabled) and a right-click menu. The
 //! winit event loop owns the main thread — this is the same event loop
-//! that will host the tutor GUI window in a later phase, so the tray
-//! and tutor share one runtime instead of fighting over main-thread
-//! ownership.
+//! that hosts the tutor GUI window, so the tray and tutor share one
+//! runtime instead of fighting over main-thread ownership.
 //!
 //! Event-driven: the event loop sleeps indefinitely until either a menu
 //! event (bridged from `tray-icon`'s own channel via a forwarder
@@ -18,14 +17,17 @@
 //! `EventLoopProxy`) fires.
 
 use winit::application::ApplicationHandler;
+use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
-use winit::window::WindowId;
+use winit::window::{Window, WindowId};
 
-use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem};
+use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 use crate::interpreter::FallbackMode;
+use crate::ui::primitives;
+use crate::ui::renderer::Renderer;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
@@ -87,11 +89,20 @@ struct TrayApp {
     icon_on: Icon,
     icon_off: Icon,
     tray: Option<TrayIcon>,
+
+    // Tutor window state. Declared renderer-before-window so they drop
+    // in that order (renderer holds `&'static Window` transmuted from
+    // the window below, and must be dropped first to avoid dangling).
+    tutor_renderer: Option<Renderer>,
+    tutor_window: Option<Window>,
+
     mode_item: MenuItem,
     enabled_item: MenuItem,
+    tutor_item: MenuItem,
     quit_item: MenuItem,
     mode_id: MenuId,
     enabled_id: MenuId,
+    tutor_id: MenuId,
     quit_id: MenuId,
 }
 
@@ -108,6 +119,61 @@ impl TrayApp {
             tray.set_icon(Some(icon)).ok();
         }
     }
+
+    fn open_tutor(&mut self, event_loop: &ActiveEventLoop) {
+        if self.tutor_window.is_some() {
+            // Already open — just focus.
+            if let Some(w) = &self.tutor_window {
+                w.focus_window();
+            }
+            return;
+        }
+
+        let attrs = Window::default_attributes()
+            .with_title("rhe tutor")
+            .with_inner_size(PhysicalSize::new(800u32, 500u32));
+        let window = match event_loop.create_window(attrs) {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("rhe: failed to create tutor window: {e}");
+                return;
+            }
+        };
+
+        let size = window.inner_size();
+        self.tutor_window = Some(window);
+
+        // Safe only because:
+        //   1. tutor_renderer is declared before tutor_window in the
+        //      struct, so it drops first.
+        //   2. We never move tutor_window out of self except to drop it
+        //      (close path assigns None; renderer is cleared first).
+        if let Some(w_ref) = self.tutor_window.as_ref() {
+            self.tutor_renderer = Some(Renderer::new(w_ref, size.width, size.height));
+            w_ref.request_redraw();
+        }
+    }
+
+    fn close_tutor(&mut self) {
+        // Order matters: renderer first (holds &'static Window), window second.
+        self.tutor_renderer = None;
+        self.tutor_window = None;
+    }
+
+    fn redraw_tutor(&mut self) {
+        let (Some(_window), Some(renderer)) =
+            (self.tutor_window.as_ref(), self.tutor_renderer.as_mut())
+        else {
+            return;
+        };
+
+        // Phase B.4 placeholder: solid background to prove the lift.
+        // Phase C will render the real tutor view here.
+        let mut buf = renderer.lock_buffer();
+        primitives::fill(buf.as_mut(), primitives::rgb(0x1a, 0x1a, 0x22));
+        buf.mark_all();
+        let _ = buf.present();
+    }
 }
 
 impl ApplicationHandler<TrayEvent> for TrayApp {
@@ -119,8 +185,11 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
         }
 
         let menu = Menu::new();
+        menu.append(&self.tutor_item).ok();
+        menu.append(&PredefinedMenuItem::separator()).ok();
         menu.append(&self.mode_item).ok();
         menu.append(&self.enabled_item).ok();
+        menu.append(&PredefinedMenuItem::separator()).ok();
         menu.append(&self.quit_item).ok();
 
         let initial_on = self.enabled.load(Ordering::Relaxed);
@@ -146,15 +215,40 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
     fn window_event(
         &mut self,
         _event_loop: &ActiveEventLoop,
-        _id: WindowId,
-        _event: WindowEvent,
+        id: WindowId,
+        event: WindowEvent,
     ) {
-        // No windows yet in Phase A — tutor GUI window will land here
-        // once Phase C lifts photon's renderer.
+        let Some(window) = self.tutor_window.as_ref() else {
+            return;
+        };
+        if window.id() != id {
+            return;
+        }
+
+        match event {
+            WindowEvent::CloseRequested => {
+                self.close_tutor();
+            }
+            WindowEvent::Resized(size) => {
+                if let Some(renderer) = self.tutor_renderer.as_mut() {
+                    renderer.resize(size.width, size.height);
+                }
+                if let Some(w) = self.tutor_window.as_ref() {
+                    w.request_redraw();
+                }
+            }
+            WindowEvent::RedrawRequested => {
+                self.redraw_tutor();
+            }
+            _ => {}
+        }
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: TrayEvent) {
         match event {
+            TrayEvent::Menu(id) if id == self.tutor_id => {
+                self.open_tutor(event_loop);
+            }
             TrayEvent::Menu(id) if id == self.mode_id => {
                 let current = FallbackMode::from_u8(self.fallback.load(Ordering::Relaxed));
                 let next = match current {
@@ -216,6 +310,7 @@ pub fn run_tray(
     let initial_fallback = FallbackMode::from_u8(fallback.load(Ordering::Relaxed));
     let is_autospell = initial_fallback == FallbackMode::Autospell;
 
+    let tutor_item = MenuItem::new("Open Tutor", true, None);
     let mode_item = MenuItem::new(
         if is_autospell { "Autospell" } else { "IPA" },
         true,
@@ -228,6 +323,7 @@ pub fn run_tray(
     );
     let quit_item = MenuItem::new("Exit", true, None);
 
+    let tutor_id = tutor_item.id().clone();
     let mode_id = mode_item.id().clone();
     let enabled_id = enabled_item.id().clone();
     let quit_id = quit_item.id().clone();
@@ -251,9 +347,13 @@ pub fn run_tray(
         icon_on,
         icon_off,
         tray: None,
+        tutor_renderer: None,
+        tutor_window: None,
+        tutor_item,
         mode_item,
         enabled_item,
         quit_item,
+        tutor_id,
         mode_id,
         enabled_id,
         quit_id,
