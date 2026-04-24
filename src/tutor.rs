@@ -446,6 +446,14 @@ pub fn run_tutor(test_mode: bool) {
             if all_off {
                 log.push("  → ERROR CLEAR".to_string());
                 errored = false;
+                // A reset_word() that lands on the same (step_idx, mode)
+                // as before skips the step-transition wipe at the bottom
+                // of the loop, so `touched_*` would otherwise carry the
+                // offending fresh key-presses into the retry and trip
+                // has_extra_acc immediately on the next finger press.
+                touched_right = 0;
+                touched_left = 0;
+                tutor_first_down = None;
             }
         } else {
             let is_key_down = rhe_event.direction == KeyDirection::Down;
