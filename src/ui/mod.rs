@@ -17,6 +17,8 @@ pub mod renderer_linux_softbuffer;
 #[cfg(target_os = "macos")]
 pub mod renderer_macos_softbuffer;
 
+pub mod text_rasterizing;
+
 #[cfg(target_os = "linux")]
 pub use renderer_linux_softbuffer as renderer;
 
