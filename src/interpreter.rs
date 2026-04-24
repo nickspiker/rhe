@@ -58,6 +58,10 @@ pub enum Action {
     Backspace(usize),
     /// Suffix: backspace 1 (trailing space), then emit suffix + space.
     Suffix(String),
+    /// Backspace N characters, then emit text. Used by number-form
+    /// transforms (L-ring after a number commit → replace digits
+    /// with ordinal: backspace `"42 "` and emit `"forty-second "`).
+    Replace(usize, String),
 }
 
 /// Which sub-session of word-held the user is currently in.
@@ -86,6 +90,18 @@ pub struct Interpreter {
     emit_history: Vec<usize>, // stack of emitted char counts for multi-backspace
     fallback: Arc<AtomicU8>,
     mode: Mode,
+    /// Digits typed in the current number-mode session. Appended on
+    /// each plain-digit emission, cleared on symbol / decimal /
+    /// spelled-digit (any non-integer emission invalidates "this was
+    /// a pure integer"). At word-release, if non-empty, copied to
+    /// `last_number` and cleared.
+    number_buffer: String,
+    /// Set when the most recent commit was a pure-integer cardinal
+    /// ("1921", "42", "0"). Cleared by any subsequent emission that
+    /// isn't a number-form transform. Enables the L-ring-after-
+    /// number gesture to replace the emitted digits with an ordinal
+    /// spelling ("forty-second" for "42").
+    last_number: Option<String>,
 }
 
 impl Interpreter {
@@ -109,6 +125,8 @@ impl Interpreter {
             emit_history: Vec::new(),
             fallback,
             mode: Mode::Normal,
+            number_buffer: String::new(),
+            last_number: None,
         }
     }
 
@@ -130,28 +148,66 @@ impl Interpreter {
                     // The gesture-order split gives three distinct
                     // outputs from the same ten-finger layout without
                     // forcing the user to leave number mode for prose.
-                    let emitted = if !key.has_mod() {
-                        crate::number_data::chord_to_digit(*key)
-                            .map(|c| c.to_string())
+                    if !key.has_mod() {
+                        let d = crate::number_data::chord_to_digit(*key);
+                        return d.map(|c| {
+                            self.number_buffer.push(c);
+                            self.emit_history.push(1);
+                            Action::Emit(c.to_string())
+                        });
                     } else if *first_down == Some(crate::scan::R_THUMB) {
-                        crate::number_data::chord_to_symbol(*key)
-                            .map(|c| c.to_string())
+                        // Symbol — invalidates pure-integer buffer.
+                        self.number_buffer.clear();
+                        return crate::number_data::chord_to_symbol(*key).map(|c| {
+                            self.emit_history.push(1);
+                            Action::Emit(c.to_string())
+                        });
                     } else {
-                        crate::number_data::chord_to_digit_word(*key)
-                            .map(|s| s.to_string())
-                    };
-                    return emitted.map(|s| {
-                        let n = s.chars().count();
-                        self.emit_history.push(n);
-                        Action::Emit(s)
-                    });
+                        // Spelled digit — invalidates pure-integer buffer.
+                        self.number_buffer.clear();
+                        return crate::number_data::chord_to_digit_word(*key).map(|s| {
+                            let text = s.to_string();
+                            self.emit_history.push(text.chars().count());
+                            Action::Emit(text)
+                        });
+                    }
                 }
                 if *space_held {
+                    // Phoneme emission — invalidate number-form context.
+                    self.last_number = None;
                     if let Some(phoneme) = self.phonemes.lookup(*key) {
                         self.buffer.push(phoneme);
                     }
                     None
                 } else {
+                    // Brief-mode chord. First check for a number-form
+                    // transform: L-ring alone after a pure-integer
+                    // commit fires the ordinal form, replacing the
+                    // emitted digits with the spelled ordinal.
+                    // (L-ring is the second-fastest single-finger
+                    // chord by bench timings; ordinal is the most
+                    // common number form after raw cardinals, so the
+                    // value×effort ranking puts it here.)
+                    let is_l_ring_alone = key.left_bits() == 0b0100
+                        && key.right_bits() == 0
+                        && !key.has_mod();
+                    if is_l_ring_alone {
+                        if let Some(num) = self.last_number.take() {
+                            if let Some(ord) = crate::number_forms::ordinal(&num) {
+                                let text = format!("{} ", ord);
+                                let back = num.chars().count() + 1;
+                                self.emit_history.push(text.chars().count());
+                                return Some(Action::Replace(back, text));
+                            }
+                            // Ordinal lookup failed (number too large
+                            // for v1 table); fall through to English
+                            // suffix path below. last_number already
+                            // consumed by `.take()`.
+                        }
+                    }
+                    // Any other brief-mode chord clears the number-
+                    // form context.
+                    self.last_number = None;
                     self.briefs.lookup(*key, *first_down).map(|s| {
                         if s.starts_with('\x01') {
                             // Suffix: backspace trailing space, then emit suffix
@@ -174,12 +230,17 @@ impl Interpreter {
                 // is defensive.
                 match self.mode {
                     Mode::Normal => {
+                        // Entering a new number session invalidates
+                        // any prior-number-form context.
+                        self.last_number = None;
                         self.mode = Mode::Number;
                         self.buffer.clear();
-                        // number mode entered
+                        self.number_buffer.clear();
                         None
                     }
                     Mode::Number => {
+                        // Decimal point — invalidates pure-integer buffer.
+                        self.number_buffer.clear();
                         self.emit_history.push(1);
                         Some(Action::Emit(".".to_string()))
                     }
@@ -191,11 +252,18 @@ impl Interpreter {
                     // emit_history push keeps Backspace symmetrical —
                     // one tap removes the space, next tap the last
                     // digit/symbol, and so on.
+                    // If the number-mode session produced only plain
+                    // digits (no symbols / spelled / decimal), arm
+                    // the number-form context — the next L-pinky
+                    // chord will transform these digits into an
+                    // ordinal instead of suffixing `-ing`.
+                    let buf = std::mem::take(&mut self.number_buffer);
+                    self.last_number = if buf.is_empty() { None } else { Some(buf) };
                     self.mode = Mode::Normal;
                     self.emit_history.push(1);
-                    // number mode exited
                     return Some(Action::Emit(" ".to_string()));
                 }
+                self.last_number = None;
                 if self.buffer.is_empty() {
                     None
                 } else {
@@ -222,6 +290,7 @@ impl Interpreter {
                 }
             }
             Event::Backspace => {
+                self.last_number = None;
                 if let Some(n) = self.emit_history.pop() {
                     Some(Action::Backspace(n))
                 } else {
@@ -382,5 +451,107 @@ mod tests {
         );
         let event = Event::Chord { key, space_held: true, first_down: None };
         assert!(interp.process(&event).is_none());
+    }
+
+    fn digit_event(scan: u8) -> Event {
+        use crate::key_mask::KeyMask;
+        Event::Chord {
+            key: ChordKey::from_mask(KeyMask::EMPTY.with(scan)),
+            space_held: true,
+            first_down: Some(scan),
+        }
+    }
+
+    fn l_ring_brief_event() -> Event {
+        use crate::key_mask::KeyMask;
+        Event::Chord {
+            key: ChordKey::from_mask(KeyMask::EMPTY.with(crate::scan::L_RING)),
+            space_held: false,
+            first_down: Some(crate::scan::L_RING),
+        }
+    }
+
+    #[test]
+    fn ordinal_transform_on_pinky_after_integer() {
+        let mut interp = setup();
+        interp.process(&Event::ModTap); // enter number mode
+        // Type "3"
+        interp.process(&digit_event(crate::scan::R_IDX));
+        interp.process(&Event::SpaceUp); // commit → emits " ", arms last_number
+        // L-pinky brief chord → should fire ordinal transform.
+        let action = interp.process(&l_ring_brief_event()).unwrap();
+        assert_eq!(action, Action::Replace(2, "third ".to_string()));
+    }
+
+    #[test]
+    fn ordinal_transform_on_multi_digit_number() {
+        let mut interp = setup();
+        interp.process(&Event::ModTap);
+        // "42" — R_IDX_INNER is digit 4, R_MID is digit 2.
+        interp.process(&digit_event(crate::scan::R_IDX_INNER));
+        interp.process(&digit_event(crate::scan::R_MID));
+        interp.process(&Event::SpaceUp);
+        let action = interp.process(&l_ring_brief_event()).unwrap();
+        assert_eq!(action, Action::Replace(3, "forty-second ".to_string()));
+    }
+
+    #[test]
+    fn ordinal_transform_falls_back_when_number_too_large() {
+        // 1921 is outside v1 ordinal table (>999); L-pinky should
+        // fall through to the standard -ing suffix behavior.
+        let mut interp = setup();
+        interp.process(&Event::ModTap);
+        // "1921" — R_RING=1, R_RING=9? actually 9 is L_PINKY, 2=R_MID, 1=R_RING.
+        // Using positions: 1=R_RING, 9=L_PINKY, 2=R_MID, 1=R_RING.
+        interp.process(&digit_event(crate::scan::R_RING));
+        interp.process(&digit_event(crate::scan::L_PINKY));
+        interp.process(&digit_event(crate::scan::R_MID));
+        interp.process(&digit_event(crate::scan::R_RING));
+        interp.process(&Event::SpaceUp);
+        // L-pinky with last_number=Some("1921") but ordinal("1921")
+        // returns None (v1 only handles 0-999). Should fall through
+        // to the English suffix path. Since the brief table in setup()
+        // doesn't register L-pinky as a suffix, the result is None.
+        let result = interp.process(&l_ring_brief_event());
+        // No transform emitted (ordinal failed, brief table empty).
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn ordinal_not_triggered_after_symbol() {
+        // Typing "3+" leaves the buffer invalidated by the symbol;
+        // last_number should be None on commit, so L-pinky falls
+        // through to regular suffix behavior.
+        let mut interp = setup();
+        interp.process(&Event::ModTap);
+        interp.process(&digit_event(crate::scan::R_IDX)); // "3"
+        // "+" is R_IDX with mod, first_down=R_THUMB
+        use crate::key_mask::KeyMask;
+        let plus = Event::Chord {
+            key: ChordKey::from_mask(
+                KeyMask::EMPTY.with(crate::scan::R_IDX).with(crate::scan::R_THUMB),
+            ),
+            space_held: true,
+            first_down: Some(crate::scan::R_THUMB),
+        };
+        interp.process(&plus);
+        interp.process(&Event::SpaceUp);
+        // last_number should be None; L-pinky = no ordinal, no brief
+        // (empty setup table) → None.
+        assert!(interp.process(&l_ring_brief_event()).is_none());
+    }
+
+    #[test]
+    fn ordinal_context_cleared_by_intervening_word() {
+        let mut interp = setup();
+        interp.process(&Event::ModTap);
+        interp.process(&digit_event(crate::scan::R_IDX)); // "3"
+        interp.process(&Event::SpaceUp); // last_number = Some("3")
+        // Intervening word: word-held + phoneme chord + word-up.
+        // (Setup's empty phoneme table means no phoneme buffered, but
+        // the SpaceUp in Normal mode still clears last_number.)
+        interp.process(&Event::SpaceUp);
+        // Now L-pinky should NOT see ordinal context anymore.
+        assert!(interp.process(&l_ring_brief_event()).is_none());
     }
 }

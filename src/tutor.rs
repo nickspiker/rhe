@@ -414,6 +414,10 @@ pub fn run_tutor(test_mode: bool) {
                         output.backspace(1); // remove trailing space
                         output.emit(&text); // emit suffix + space
                     }
+                    crate::interpreter::Action::Replace(back, text) => {
+                        output.backspace(back);
+                        output.emit(&text);
+                    }
                 }
             }
         }

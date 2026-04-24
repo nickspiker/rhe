@@ -3,6 +3,7 @@
 mod briefs;
 mod briefs_data;
 mod number_data;
+mod number_forms;
 mod ordered_briefs_data;
 mod suffixes_data;
 mod chord_map;
@@ -313,6 +314,11 @@ fn run() {
                             out.backspace(1);
                             out.emit(text);
                         }
+                        interpreter::Action::Replace(back, ref text) => {
+                            eprintln!("  emit: replace(-{}) {}", back, text);
+                            out.backspace(back);
+                            out.emit(text);
+                        }
                     }
                 }
             }
@@ -400,6 +406,10 @@ fn run() {
                         interpreter::Action::Backspace(n) => out.backspace(n),
                         interpreter::Action::Suffix(ref text) => {
                             out.backspace(1);
+                            out.emit(text);
+                        }
+                        interpreter::Action::Replace(back, ref text) => {
+                            out.backspace(back);
                             out.emit(text);
                         }
                     }
