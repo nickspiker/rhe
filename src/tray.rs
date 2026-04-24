@@ -18,8 +18,9 @@
 
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
-use winit::event::WindowEvent;
+use winit::event::{MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
+use winit::keyboard::ModifiersState;
 use winit::window::{Window, WindowId};
 
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
@@ -114,6 +115,13 @@ struct TrayApp {
     tutor_renderer: Option<Renderer>,
     tutor_window: Option<Window>,
     text_renderer: Option<TextRenderer>,
+
+    /// User zoom multiplier applied on top of span-derived sizes.
+    /// Adjusted live by Ctrl+scroll; 1.0 is the default.
+    tutor_ru: f32,
+    /// Last observed modifier state for the tutor window. Updated on
+    /// every ModifiersChanged event so MouseWheel can consult it.
+    tutor_mods: ModifiersState,
 }
 
 #[cfg(target_os = "macos")]
@@ -211,7 +219,7 @@ impl TrayApp {
         // tutor view (target word + phoneme hint + keyboard diagram).
         if let Some(text) = self.text_renderer.as_mut() {
             let span = crate::ui::span(size.width, size.height);
-            let font_size = span / 4.0;
+            let font_size = span * self.tutor_ru / 4.0;
             let cx = width as f32 / 2.0;
             let cy = height as f32 / 2.0;
             text.draw_text_center_u32(
@@ -299,6 +307,27 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                 }
                 if let Some(w) = self.tutor_window.as_ref() {
                     w.request_redraw();
+                }
+            }
+            WindowEvent::ModifiersChanged(mods) => {
+                self.tutor_mods = mods.state();
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                if self.tutor_mods.control_key() {
+                    let steps = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => y,
+                        MouseScrollDelta::PixelDelta(p) => (p.y / 50.0) as f32,
+                    };
+                    if steps != 0.0 {
+                        // Zoom-per-notch matches photon's feel (1.1×
+                        // per scroll step). Clamped so nobody can zoom
+                        // into the abyss.
+                        let factor = 1.1f32.powf(steps);
+                        self.tutor_ru = (self.tutor_ru * factor).clamp(0.3, 5.0);
+                        if let Some(w) = self.tutor_window.as_ref() {
+                            w.request_redraw();
+                        }
+                    }
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -524,6 +553,8 @@ pub fn run_tray(
         tutor_renderer: None,
         tutor_window: None,
         text_renderer: None,
+        tutor_ru: 1.0,
+        tutor_mods: ModifiersState::empty(),
     };
 
     event_loop.run_app(&mut app).ok();
