@@ -410,13 +410,9 @@ pub fn run_tutor(test_mode: bool) {
                 match action {
                     crate::interpreter::Action::Emit(text) => output.emit(&text),
                     crate::interpreter::Action::Backspace(n) => output.backspace(n),
-                    crate::interpreter::Action::Suffix(text) => {
-                        output.backspace(1); // remove trailing space
-                        output.emit(&text); // emit suffix + space
-                    }
-                    crate::interpreter::Action::Replace(back, text) => {
-                        output.backspace(back);
-                        output.emit(&text);
+                    crate::interpreter::Action::Replace { before, after } => {
+                        output.backspace(before.chars().count());
+                        output.emit(&after);
                     }
                 }
             }

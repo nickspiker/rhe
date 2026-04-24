@@ -66,6 +66,46 @@ pub enum Layout {
 /// before switching to Medium or Wide.
 pub const CURRENT: Layout = Layout::NarrowR;
 
+/// When enabled (default), the input backends auto-flip rhe on/off
+/// based on the pattern of physical keys the user presses:
+///
+/// - **Enable** (off → on) when the user simultaneously holds 3+
+///   home-row chord keys, OR 2+ chord keys alongside WORD or thumb
+///   — a pattern too distinctive to hit during normal typing.
+/// - **Disable** (on → off) the moment a non-home-row *letter* key
+///   goes down (the Q-row and Z-row positions). Numbers, symbols,
+///   punctuation, modifiers, and navigation keys don't trigger the
+///   switch — users often need to type `$` or arrow around while
+///   legitimately inside rhe mode.
+///
+/// Caps-lock toggle still works regardless. Set this to `false` to
+/// require manual toggling only (strict caps-lock mode).
+pub const AUTO_SWITCH: bool = true;
+
+/// True for Linux evdev scancodes that correspond to the 17
+/// non-home-row letter positions (Q-W-E-R-T-Y-U-I-O-P and Z-X-C-V-
+/// B-N-M in a QWERTY physical layout — the *positions* are what
+/// matter, the actual letter the user's keymap produces is
+/// irrelevant). Pressing one of these is a strong signal that the
+/// user means to type letters, not chord.
+pub const fn linux_is_non_home_row_letter(code: u16) -> bool {
+    // Top letter row: 16..=25 inclusive (KEY_Q through KEY_P).
+    // Bottom letter row: 44..=50 inclusive (KEY_Z through KEY_M).
+    matches!(code, 16..=25 | 44..=50)
+}
+
+/// Mac equivalent: HID keyboard usage codes for the same 17
+/// non-home-row letter positions.
+pub const fn hid_is_non_home_row_letter(usage: u32) -> bool {
+    // Top row Q-P (USB HID usage table).
+    // Bottom row Z-M.
+    matches!(
+        usage,
+        0x14 | 0x1A | 0x08 | 0x15 | 0x17 | 0x1C | 0x18 | 0x0C | 0x12 | 0x13
+            | 0x1D | 0x1B | 0x06 | 0x19 | 0x05 | 0x11 | 0x10
+    )
+}
+
 // ─── Linux evdev scancode constants ───
 // A compile-time-only module so backends don't have to redeclare these.
 
@@ -482,6 +522,40 @@ mod tests {
     #[test]
     fn hid_wide_l_covers_all_roles() {
         assert_eq!(collect_roles(hid_wide_l, ALL_HID_USAGES), expected_roles());
+    }
+
+    #[test]
+    fn non_home_row_letter_detection_linux() {
+        // Top-row letter positions (Q-P) and bottom-row letter
+        // positions (Z-M) should all be flagged.
+        for code in 16..=25u16 {
+            assert!(linux_is_non_home_row_letter(code), "code {} should trigger", code);
+        }
+        for code in 44..=50u16 {
+            assert!(linux_is_non_home_row_letter(code), "code {} should trigger", code);
+        }
+        // Home-row positions must not trigger.
+        for code in [linux::KEY_A, linux::KEY_S, linux::KEY_D, linux::KEY_F, linux::KEY_G,
+                     linux::KEY_H, linux::KEY_J, linux::KEY_K, linux::KEY_L, linux::KEY_SEMICOLON] {
+            assert!(!linux_is_non_home_row_letter(code), "home-row {} triggered", code);
+        }
+        // Numbers, modifiers, punctuation: shouldn't trigger.
+        for code in [2u16, 3, 4, 10, 11, 12, 13, 26, 27, 28, 40, 41, 42, 54, 56, 57, 100] {
+            assert!(!linux_is_non_home_row_letter(code), "non-letter {} triggered", code);
+        }
+    }
+
+    #[test]
+    fn non_home_row_letter_detection_hid() {
+        // A few spot checks in HID usage space.
+        assert!(hid_is_non_home_row_letter(0x14)); // Q
+        assert!(hid_is_non_home_row_letter(0x13)); // P
+        assert!(hid_is_non_home_row_letter(0x1D)); // Z
+        assert!(hid_is_non_home_row_letter(0x10)); // M
+        assert!(!hid_is_non_home_row_letter(hid::A));
+        assert!(!hid_is_non_home_row_letter(hid::F));
+        assert!(!hid_is_non_home_row_letter(hid::SPACEBAR));
+        assert!(!hid_is_non_home_row_letter(hid::LEFT_ALT));
     }
 
     #[test]

@@ -177,6 +177,16 @@ mod ffi {
     pub const kCFStringEncodingUTF8: u32 = 0x08000100;
 }
 
+/// Auto-switch state: HID usages of currently-held chord keys. We
+/// track the raw usages (not just tallies) so that on a switch we
+/// can release keys from whichever side of the pipeline didn't see
+/// their down — preventing stuck keys when rhe grabs or releases
+/// the keyboard mid-press.
+#[derive(Default)]
+struct AutoSwitchState {
+    held: Vec<u32>,
+}
+
 /// Context passed to the HID callback.
 struct CallbackContext {
     tx: mpsc::Sender<HidEvent>,
@@ -186,6 +196,8 @@ struct CallbackContext {
     modifier_flags: std::sync::Mutex<u64>,
     /// If true, Escape sends Quit. If false, Escape passes through.
     esc_quits: bool,
+    /// Chord-key tallies for the auto-switch heuristic.
+    auto_switch: std::sync::Mutex<AutoSwitchState>,
 }
 
 pub struct IoHidInput {
@@ -232,6 +244,7 @@ impl IoHidInput {
                     tx, enabled, manager,
                     modifier_flags: std::sync::Mutex::new(0),
                     esc_quits,
+                    auto_switch: std::sync::Mutex::new(AutoSwitchState::default()),
                 }));
                 ffi::IOHIDManagerRegisterInputValueCallback(
                     manager,
@@ -343,6 +356,88 @@ extern "C" fn hid_callback(
                 reinject_key(0x24, 0x28, pressed != 0, &ctx.modifier_flags);
                 return;
             }
+        }
+
+        // Auto-switch: flip `enabled` based on chord-key patterns so
+        // rhe self-corrects when the user forgot to toggle it. See
+        // `crate::layout::AUTO_SWITCH` for the rule. On a switch,
+        // release the held keys from whichever side didn't see their
+        // down so they don't stay stuck after the ownership flip.
+        let mut auto_switched = false;
+        if crate::layout::AUTO_SWITCH {
+            let rhe_role = hid_usage_to_scan(usage);
+            let mut sw = ctx.auto_switch.lock().unwrap();
+            if rhe_role.is_some() {
+                if pressed != 0 {
+                    if !sw.held.contains(&usage) {
+                        sw.held.push(usage);
+                    }
+                } else {
+                    sw.held.retain(|&u| u != usage);
+                }
+            }
+
+            if pressed != 0 {
+                let (finger, word, thumb) = classify_hid_held(&sw.held);
+
+                // Auto-enable.
+                if !ctx.enabled.load(Ordering::Relaxed)
+                    && (finger >= 3 || (finger >= 2 && (word || thumb)))
+                {
+                    ctx.enabled.store(true, Ordering::Relaxed);
+                    set_caps_lock_led(ctx.manager, false);
+                    // Release held keys from OS's view (they were
+                    // passing through while rhe was off).
+                    for &u in &sw.held {
+                        if let Some(vk) = hid_usage_to_virtual_keycode(u) {
+                            reinject_key(vk, u, false, &ctx.modifier_flags);
+                        }
+                    }
+                    // Bring rhe's state machine up to date.
+                    for &u in &sw.held {
+                        if let Some(scan) = hid_usage_to_scan(u) {
+                            let _ = ctx.tx.send(HidEvent::Key(KeyEvent {
+                                scan,
+                                direction: KeyDirection::Down,
+                            }));
+                        }
+                    }
+                    auto_switched = true;
+                }
+
+                // Auto-disable.
+                if !auto_switched
+                    && rhe_role.is_none()
+                    && crate::layout::hid_is_non_home_row_letter(usage)
+                    && ctx.enabled.load(Ordering::Relaxed)
+                {
+                    ctx.enabled.store(false, Ordering::Relaxed);
+                    set_caps_lock_led(ctx.manager, true);
+                    // Tell rhe to release what it was tracking.
+                    for &u in &sw.held {
+                        if let Some(scan) = hid_usage_to_scan(u) {
+                            let _ = ctx.tx.send(HidEvent::Key(KeyEvent {
+                                scan,
+                                direction: KeyDirection::Up,
+                            }));
+                        }
+                    }
+                    // Inject matching key-downs to OS.
+                    for &u in &sw.held {
+                        if let Some(vk) = hid_usage_to_virtual_keycode(u) {
+                            reinject_key(vk, u, true, &ctx.modifier_flags);
+                        }
+                    }
+                }
+            }
+            drop(sw);
+        }
+
+        // After auto-enable the triggering event is already queued
+        // to rhe as part of the held-set replay; skip the rest of
+        // this callback to avoid double-sending it.
+        if auto_switched {
+            return;
         }
 
         // If rhe is disabled (caps lock toggled off), pass everything through
@@ -536,6 +631,27 @@ fn hid_usage_to_virtual_keycode(usage: u32) -> Option<u16> {
 /// Map HID usage codes to rhe canonical scancodes. The per-layout
 /// table lives in `crate::layout`; this is just a thin wrapper so the
 /// callers can stay in HID-land.
+/// Classify a set of held HID usages into the three tally buckets
+/// the auto-switch heuristic cares about. Mirrors `classify_held`
+/// on the Linux side.
+fn classify_hid_held(held: &[u32]) -> (u8, bool, bool) {
+    let mut finger: u8 = 0;
+    let mut word = false;
+    let mut thumb = false;
+    for &u in held {
+        if let Some(role) = crate::layout::hid_to_role(u) {
+            if role == crate::scan::R_THUMB {
+                thumb = true;
+            } else if role == crate::scan::WORD {
+                word = true;
+            } else {
+                finger = finger.saturating_add(1);
+            }
+        }
+    }
+    (finger, word, thumb)
+}
+
 fn hid_usage_to_scan(usage: u32) -> Option<u8> {
     crate::layout::hid_to_role(usage)
 }

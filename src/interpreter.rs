@@ -54,14 +54,14 @@ impl FallbackMode {
 pub enum Action {
     /// Emit a string (word + trailing space, or instant brief output).
     Emit(String),
-    /// Delete N characters (undo last emitted word).
+    /// Delete N characters. Produced by Backspace over a plain emit.
     Backspace(usize),
-    /// Suffix: backspace 1 (trailing space), then emit suffix + space.
-    Suffix(String),
-    /// Backspace N characters, then emit text. Used by number-form
-    /// transforms (L-ring after a number commit → replace digits
-    /// with ordinal: backspace `"42 "` and emit `"forty-second "`).
-    Replace(usize, String),
+    /// Backspace the `before` text, emit `after`. Covers both
+    /// suffixes (before = trailing space " ", after = suffix text)
+    /// and number-form transforms (before = previous emission,
+    /// after = new form output). The before field is what makes
+    /// undo reversible — Backspace swaps roles to restore.
+    Replace { before: String, after: String },
 }
 
 /// Map a brief-mode chord (word not held, left-hand only) to a
@@ -101,6 +101,36 @@ enum Mode {
     Number,
 }
 
+/// One undo step. Backspace pops the top of `emit_history` and
+/// inverts the corresponding emission: an `Emit` becomes a raw
+/// backspace over its text; a `Replace` swaps `before`/`after` so
+/// the prior visible state is restored. `prior_number_state`
+/// snapshots the number-form context from before the emission so
+/// undo can also re-arm or clear it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum HistoryEntry {
+    Emit {
+        text: String,
+        prior_number_state: Option<NumberContext>,
+    },
+    Replace {
+        before: String,
+        after: String,
+        prior_number_state: Option<NumberContext>,
+    },
+}
+
+/// Tracks the state needed for number-form transforms after a
+/// number-mode commit. `digits` feeds form generators; `current` is
+/// whatever's currently visible on screen for this number (digits+
+/// space initially, then the previous form's output after each
+/// transform) and serves as the `before` text of the next Replace.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NumberContext {
+    digits: String,
+    current: String,
+}
+
 /// Converts state machine events into output actions.
 ///
 /// Chord with space_held=true: look up phoneme, buffer it.
@@ -111,21 +141,24 @@ pub struct Interpreter {
     briefs: BriefTable,
     dictionary: PhonemeDictionary,
     buffer: Vec<Phoneme>,
-    emit_history: Vec<usize>, // stack of emitted char counts for multi-backspace
+    /// Stack of undoable emissions. Each entry carries enough info
+    /// to reverse the visible change AND restore prior number-form
+    /// context. `Backspace` pops one entry per press.
+    emit_history: Vec<HistoryEntry>,
     fallback: Arc<AtomicU8>,
     mode: Mode,
     /// Digits typed in the current number-mode session. Appended on
     /// each plain-digit emission, cleared on symbol / decimal /
     /// spelled-digit (any non-integer emission invalidates "this was
-    /// a pure integer"). At word-release, if non-empty, copied to
-    /// `last_number` and cleared.
+    /// a pure integer"). At word-release, if non-empty, a
+    /// `NumberContext` is armed and the buffer is cleared.
     number_buffer: String,
-    /// Set when the most recent commit was a pure-integer cardinal
-    /// ("1921", "42", "0"). Cleared by any subsequent emission that
-    /// isn't a number-form transform. Enables the L-ring-after-
-    /// number gesture to replace the emitted digits with an ordinal
-    /// spelling ("forty-second" for "42").
-    last_number: Option<String>,
+    /// Active number-form context. Armed on a pure-integer commit
+    /// from number mode, consumed by non-form emissions that clear
+    /// it. Form-transform chords use `digits` as input and update
+    /// `current` on success so successive transforms replace in
+    /// place.
+    last_number: Option<NumberContext>,
 }
 
 impl Interpreter {
@@ -161,6 +194,29 @@ impl Interpreter {
         self.mode == Mode::Number
     }
 
+    /// Push a plain Emit entry onto history, snapshotting the
+    /// number-form context. Helper so every emission path records
+    /// undo info consistently.
+    fn record_emit(&mut self, text: String) -> Action {
+        let prior_number_state = self.last_number.clone();
+        self.emit_history.push(HistoryEntry::Emit {
+            text: text.clone(),
+            prior_number_state,
+        });
+        Action::Emit(text)
+    }
+
+    /// Push a Replace entry (backspace `before` text, emit `after`).
+    fn record_replace(&mut self, before: String, after: String) -> Action {
+        let prior_number_state = self.last_number.clone();
+        self.emit_history.push(HistoryEntry::Replace {
+            before: before.clone(),
+            after: after.clone(),
+            prior_number_state,
+        });
+        Action::Replace { before, after }
+    }
+
     pub fn process(&mut self, event: &Event) -> Option<Action> {
         match event {
             Event::Chord { key, space_held, first_down } => {
@@ -169,100 +225,71 @@ impl Interpreter {
                     //   no mod → digit ("5")
                     //   mod, first_down = thumb → symbol ("+")
                     //   mod, first_down = finger → spelled word ("five")
-                    // The gesture-order split gives three distinct
-                    // outputs from the same ten-finger layout without
-                    // forcing the user to leave number mode for prose.
                     if !key.has_mod() {
-                        let d = crate::number_data::chord_to_digit(*key);
-                        return d.map(|c| {
+                        return crate::number_data::chord_to_digit(*key).map(|c| {
                             self.number_buffer.push(c);
-                            self.emit_history.push(1);
-                            Action::Emit(c.to_string())
+                            self.record_emit(c.to_string())
                         });
                     } else if *first_down == Some(crate::scan::R_THUMB) {
-                        // Symbol — invalidates pure-integer buffer.
                         self.number_buffer.clear();
-                        return crate::number_data::chord_to_symbol(*key).map(|c| {
-                            self.emit_history.push(1);
-                            Action::Emit(c.to_string())
-                        });
+                        return crate::number_data::chord_to_symbol(*key)
+                            .map(|c| self.record_emit(c.to_string()));
                     } else {
-                        // Spelled digit — invalidates pure-integer buffer.
                         self.number_buffer.clear();
-                        return crate::number_data::chord_to_digit_word(*key).map(|s| {
-                            let text = s.to_string();
-                            self.emit_history.push(text.chars().count());
-                            Action::Emit(text)
-                        });
+                        return crate::number_data::chord_to_digit_word(*key)
+                            .map(|s| self.record_emit(s.to_string()));
                     }
                 }
                 if *space_held {
-                    // Phoneme emission — invalidate number-form context.
                     self.last_number = None;
                     if let Some(phoneme) = self.phonemes.lookup(*key) {
                         self.buffer.push(phoneme);
                     }
                     None
                 } else {
-                    // Brief-mode chord. First check for a number-form
-                    // transform. Five forms live on the left-hand
-                    // chord surface (see chord_to_form); each
-                    // replaces the last-emitted number with its
-                    // spelled equivalent. The context stays armed
-                    // after a successful transform so the user can
-                    // swap forms in place ("42" → ordinal →
-                    // multiplier → group → prefix without retyping).
+                    // Form transform check.
                     if let Some(form) = chord_to_form(*key) {
-                        if let Some(num) = self.last_number.take() {
-                            if let Some(out) = crate::number_forms::apply(form, &num) {
-                                let text = format!("{} ", out);
-                                let new_count = text.chars().count();
-                                // Pop the prior emission (consolidated
-                                // digits-plus-space on first transform,
-                                // or a previous form's output on
-                                // subsequent in-place transforms).
-                                let back = self
-                                    .emit_history
-                                    .pop()
-                                    .unwrap_or(num.chars().count() + 1);
-                                self.emit_history.push(new_count);
-                                // Preserve context for further in-
-                                // place form swaps.
-                                self.last_number = Some(num);
-                                return Some(Action::Replace(back, text));
+                        if let Some(ctx) = self.last_number.clone() {
+                            if let Some(out) = crate::number_forms::apply(form, &ctx.digits) {
+                                let after = format!("{} ", out);
+                                let before = ctx.current.clone();
+                                // Snapshot must happen BEFORE we
+                                // update last_number so undo can
+                                // restore the pre-transform ctx.
+                                let action = self.record_replace(before, after.clone());
+                                self.last_number = Some(NumberContext {
+                                    digits: ctx.digits,
+                                    current: after,
+                                });
+                                return Some(action);
                             }
-                            // Form lookup failed (number out of this
-                            // form's range); fall through to English
-                            // suffix path. last_number is gone.
+                            // Form recognized but this number isn't
+                            // in its range — no-op, preserve context.
+                            return None;
                         }
+                        // No number context — fall through to suffix.
                     }
-                    // Any non-form brief-mode chord clears the
-                    // number-form context.
+                    // Any non-form brief-mode chord clears context.
                     self.last_number = None;
-                    self.briefs.lookup(*key, *first_down).map(|s| {
-                        if s.starts_with('\x01') {
-                            // Suffix: backspace trailing space, then emit suffix
-                            let suffix = &s[1..];
-                            self.emit_history.push(suffix.chars().count());
-                            Action::Suffix(suffix.to_string())
+                    // Materialize into an owned String up front so
+                    // the immutable borrow of self.briefs is dropped
+                    // before we call record_* which wants &mut self.
+                    let brief = self
+                        .briefs
+                        .lookup(*key, *first_down)
+                        .map(|s| s.to_string());
+                    brief.map(|s| {
+                        if let Some(suffix) = s.strip_prefix('\x01') {
+                            self.record_replace(" ".to_string(), suffix.to_string())
                         } else {
-                            let text = s.to_string();
-                            self.emit_history.push(text.chars().count());
-                            Action::Emit(text)
+                            self.record_emit(s)
                         }
                     })
                 }
             }
             Event::ModTap => {
-                // First mod-tap during a word-held session switches
-                // us into Number mode; subsequent mod-taps (same
-                // session) emit a decimal point. Either way there
-                // should be no pending phoneme buffer — clearing it
-                // is defensive.
                 match self.mode {
                     Mode::Normal => {
-                        // Entering a new number session invalidates
-                        // any prior-number-form context.
                         self.last_number = None;
                         self.mode = Mode::Number;
                         self.buffer.clear();
@@ -270,10 +297,9 @@ impl Interpreter {
                         None
                     }
                     Mode::Number => {
-                        // Decimal point — invalidates pure-integer buffer.
+                        // Decimal — invalidates pure-integer buffer.
                         self.number_buffer.clear();
-                        self.emit_history.push(1);
-                        Some(Action::Emit(".".to_string()))
+                        Some(self.record_emit(".".to_string()))
                     }
                 }
             }
@@ -281,63 +307,89 @@ impl Interpreter {
                 if self.mode == Mode::Number {
                     // Exit number mode with a trailing space.
                     //
-                    // If the session produced only plain digits (no
-                    // symbols / spelled / decimal), arm the number-
-                    // form context AND consolidate the per-digit
-                    // emit_history entries into a single one covering
-                    // the whole number plus its trailing space. That
-                    // lets the form Replace path backspace the
-                    // entire number in one atomic pop.
+                    // If the session produced only plain digits,
+                    // consolidate the per-digit history entries into
+                    // a single combined one covering the whole
+                    // number + space, and arm the form context so
+                    // L-hand chords can transform it.
                     self.mode = Mode::Normal;
                     let buf = std::mem::take(&mut self.number_buffer);
                     if buf.is_empty() {
                         self.last_number = None;
-                        self.emit_history.push(1);
-                    } else {
-                        let digit_count = buf.chars().count();
-                        // Each digit pushed 1 during number mode;
-                        // remove those before pushing the combined
-                        // digits+space entry.
-                        for _ in 0..digit_count {
-                            self.emit_history.pop();
-                        }
-                        self.emit_history.push(digit_count + 1);
-                        self.last_number = Some(buf);
+                        return Some(self.record_emit(" ".to_string()));
                     }
+                    let digit_count = buf.chars().count();
+                    // Pop the per-digit entries (they'll be subsumed
+                    // by the single combined entry). Each was pushed
+                    // individually during number mode so per-digit
+                    // backspace works mid-typing.
+                    for _ in 0..digit_count {
+                        self.emit_history.pop();
+                    }
+                    let combined = format!("{} ", buf);
+                    // Push combined with prior = None (the number
+                    // context didn't exist before this commit — it's
+                    // the emission that's arming it).
+                    self.emit_history.push(HistoryEntry::Emit {
+                        text: combined.clone(),
+                        prior_number_state: None,
+                    });
+                    self.last_number = Some(NumberContext {
+                        digits: buf,
+                        current: combined,
+                    });
                     return Some(Action::Emit(" ".to_string()));
                 }
+                // Phoneme commit from Normal mode.
                 self.last_number = None;
                 if self.buffer.is_empty() {
-                    None
-                } else {
-                    let phonemes = std::mem::take(&mut self.buffer);
-                    let mode = FallbackMode::from_u8(self.fallback.load(Ordering::Relaxed));
-                    let text = if mode == FallbackMode::Ipa {
-                        // IPA mode: always output IPA, skip dictionary
-                        let ipa: String = phonemes.iter().map(|p| p.to_ipa()).collect();
-                        format!("{} ", ipa)
-                    } else if let Some(word) = self.dictionary.lookup(&phonemes) {
-                        format!("{} ", word)
-                    } else {
-                        // Autospell fallback for unknown words
-                        let fallback: String = match mode {
-                            FallbackMode::Autospell => {
-                                phonemes.iter().map(|p| p.to_grapheme()).collect()
-                            }
-                            FallbackMode::Ipa => unreachable!(), // handled above
-                        };
-                        format!("{} ", fallback)
-                    };
-                    self.emit_history.push(text.chars().count());
-                    Some(Action::Emit(text))
+                    return None;
                 }
+                let phonemes = std::mem::take(&mut self.buffer);
+                let mode = FallbackMode::from_u8(self.fallback.load(Ordering::Relaxed));
+                let text = if mode == FallbackMode::Ipa {
+                    let ipa: String = phonemes.iter().map(|p| p.to_ipa()).collect();
+                    format!("{} ", ipa)
+                } else if let Some(word) = self.dictionary.lookup(&phonemes) {
+                    format!("{} ", word)
+                } else {
+                    let fallback: String = match mode {
+                        FallbackMode::Autospell => {
+                            phonemes.iter().map(|p| p.to_grapheme()).collect()
+                        }
+                        FallbackMode::Ipa => unreachable!(),
+                    };
+                    format!("{} ", fallback)
+                };
+                Some(self.record_emit(text))
             }
             Event::Backspace => {
-                self.last_number = None;
-                if let Some(n) = self.emit_history.pop() {
-                    Some(Action::Backspace(n))
-                } else {
-                    Some(Action::Backspace(1))
+                // Pop one history entry and invert it. A plain Emit
+                // becomes a backspace of its text. A Replace becomes
+                // a Replace with before/after swapped, restoring the
+                // prior visible state. Either way, last_number is
+                // set back to whatever it was before the popped
+                // emission, so undo restores number-form context.
+                match self.emit_history.pop() {
+                    Some(HistoryEntry::Emit { text, prior_number_state }) => {
+                        self.last_number = prior_number_state;
+                        Some(Action::Backspace(text.chars().count()))
+                    }
+                    Some(HistoryEntry::Replace {
+                        before,
+                        after,
+                        prior_number_state,
+                    }) => {
+                        self.last_number = prior_number_state;
+                        Some(Action::Replace {
+                            before: after,
+                            after: before,
+                        })
+                    }
+                    None => {
+                        self.last_number = None;
+                        Some(Action::Backspace(1))
+                    }
                 }
             }
             Event::UndoPhoneme => {
@@ -523,19 +575,30 @@ mod tests {
         interp.process(&Event::SpaceUp); // commit → emits " ", arms last_number
         // L-pinky brief chord → should fire ordinal transform.
         let action = interp.process(&l_ring_brief_event()).unwrap();
-        assert_eq!(action, Action::Replace(2, "third ".to_string()));
+        assert_eq!(
+            action,
+            Action::Replace {
+                before: "3 ".to_string(),
+                after: "third ".to_string()
+            }
+        );
     }
 
     #[test]
     fn ordinal_transform_on_multi_digit_number() {
         let mut interp = setup();
         interp.process(&Event::ModTap);
-        // "42" — R_IDX_INNER is digit 4, R_MID is digit 2.
         interp.process(&digit_event(crate::scan::R_IDX_INNER));
         interp.process(&digit_event(crate::scan::R_MID));
         interp.process(&Event::SpaceUp);
         let action = interp.process(&l_ring_brief_event()).unwrap();
-        assert_eq!(action, Action::Replace(3, "forty-second ".to_string()));
+        assert_eq!(
+            action,
+            Action::Replace {
+                before: "42 ".to_string(),
+                after: "forty-second ".to_string()
+            }
+        );
     }
 
     #[test]
@@ -614,16 +677,115 @@ mod tests {
         interp.process(&Event::SpaceUp);
         // Ordinal (L-ring)
         let a1 = interp.process(&l_chord_event(0b0100)).unwrap();
-        assert_eq!(a1, Action::Replace(2, "third ".to_string())); // backspace "3 "
-        // Multiplier (L-pinky) — backspaces "third " (6) and emits "thrice "
+        assert_eq!(
+            a1,
+            Action::Replace {
+                before: "3 ".to_string(),
+                after: "third ".to_string()
+            }
+        );
         let a2 = interp.process(&l_chord_event(0b1000)).unwrap();
-        assert_eq!(a2, Action::Replace(6, "thrice ".to_string()));
-        // Group (L-mid) — backspaces "thrice " (7) and emits "triple "
+        assert_eq!(
+            a2,
+            Action::Replace {
+                before: "third ".to_string(),
+                after: "thrice ".to_string()
+            }
+        );
         let a3 = interp.process(&l_chord_event(0b0010)).unwrap();
-        assert_eq!(a3, Action::Replace(7, "triple ".to_string()));
-        // Prefix (L-idx + L-mid) — backspaces "triple " (7) and emits "tri "
+        assert_eq!(
+            a3,
+            Action::Replace {
+                before: "thrice ".to_string(),
+                after: "triple ".to_string()
+            }
+        );
         let a4 = interp.process(&l_chord_event(0b0011)).unwrap();
-        assert_eq!(a4, Action::Replace(7, "tri ".to_string()));
+        assert_eq!(
+            a4,
+            Action::Replace {
+                before: "triple ".to_string(),
+                after: "tri ".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn backspace_restores_number_context_after_form() {
+        // Type "3" → ordinal → backspace should restore "3 " AND
+        // re-arm last_number so a different form can be applied.
+        let mut interp = setup();
+        interp.process(&Event::ModTap);
+        interp.process(&digit_event(crate::scan::R_IDX)); // "3"
+        interp.process(&Event::SpaceUp);
+        let a1 = interp.process(&l_chord_event(0b0100)).unwrap(); // ordinal
+        assert_eq!(
+            a1,
+            Action::Replace {
+                before: "3 ".to_string(),
+                after: "third ".to_string()
+            }
+        );
+        // Undo — should restore "3 " AND re-arm context.
+        let undo = interp.process(&Event::Backspace).unwrap();
+        assert_eq!(
+            undo,
+            Action::Replace {
+                before: "third ".to_string(),
+                after: "3 ".to_string()
+            }
+        );
+        // Now a different form should work on the same number.
+        let a2 = interp.process(&l_chord_event(0b1000)).unwrap(); // multiplier
+        assert_eq!(
+            a2,
+            Action::Replace {
+                before: "3 ".to_string(),
+                after: "thrice ".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn backspace_unwinds_chain_of_forms() {
+        // Cycle through three forms, then backspace three times.
+        // Each backspace reverses one step.
+        let mut interp = setup();
+        interp.process(&Event::ModTap);
+        interp.process(&digit_event(crate::scan::R_IDX)); // "3"
+        interp.process(&Event::SpaceUp);
+        interp.process(&l_chord_event(0b0100)); // → third
+        interp.process(&l_chord_event(0b1000)); // → thrice
+        interp.process(&l_chord_event(0b0010)); // → triple
+
+        // Three backspaces, each should unwind one step.
+        let u1 = interp.process(&Event::Backspace).unwrap();
+        assert_eq!(
+            u1,
+            Action::Replace {
+                before: "triple ".to_string(),
+                after: "thrice ".to_string()
+            }
+        );
+        let u2 = interp.process(&Event::Backspace).unwrap();
+        assert_eq!(
+            u2,
+            Action::Replace {
+                before: "thrice ".to_string(),
+                after: "third ".to_string()
+            }
+        );
+        let u3 = interp.process(&Event::Backspace).unwrap();
+        assert_eq!(
+            u3,
+            Action::Replace {
+                before: "third ".to_string(),
+                after: "3 ".to_string()
+            }
+        );
+        // One more should pop the commit entry and plain-backspace "3 ".
+        let u4 = interp.process(&Event::Backspace).unwrap();
+        assert_eq!(u4, Action::Backspace(2));
     }
 
     #[test]

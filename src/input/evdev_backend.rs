@@ -196,6 +196,16 @@ fn reader_loop(
         QuitTrigger::CapsLockPlusEsc | QuitTrigger::EscOrCapsPlusEsc
     );
 
+    // Auto-switch tracking: the *scancodes* of currently-held chord
+    // keys, so we can (a) derive the finger/word/thumb tallies for
+    // the transition heuristic, and (b) know which keys to release
+    // on each side of the switch to avoid stuck-key bugs — when
+    // rhe flips on, keys that were passing through to OS must get
+    // a synthetic key-up so the OS doesn't see them held forever;
+    // when rhe flips off, the state machine needs synthetic key-ups
+    // so its own live mask doesn't leak either.
+    let mut auto_held: Vec<u16> = Vec::new();
+
     loop {
         let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf_bytes) };
         if n <= 0 {
@@ -252,6 +262,100 @@ fn reader_loop(
             }
 
             let rhe_scan = layout::linux_to_role(ev.code);
+
+            // Auto-switch tracking: maintain the set of currently-
+            // held chord keys. Transitions use it both to detect the
+            // chording/typing pattern and to release stuck keys on
+            // each side of the switch.
+            if layout::AUTO_SWITCH && rhe_scan.is_some() {
+                match ev.value {
+                    1 => {
+                        if !auto_held.contains(&ev.code) {
+                            auto_held.push(ev.code);
+                        }
+                    }
+                    0 => auto_held.retain(|&c| c != ev.code),
+                    _ => {}
+                }
+            }
+
+            // Auto-switch trigger check (only on key-down).
+            let mut auto_switched = false;
+            if layout::AUTO_SWITCH && ev.value == 1 {
+                let (finger, word, thumb) = classify_held(&auto_held);
+
+                // Auto-enable: strong chord pattern while rhe is off.
+                if !enabled.load(Ordering::Relaxed)
+                    && (finger >= 3 || (finger >= 2 && (word || thumb)))
+                {
+                    enabled.store(true, Ordering::Relaxed);
+                    set_scroll_led(fd, false);
+                    // Release the held chord keys from OS's view so
+                    // they don't stay physically "pressed" after rhe
+                    // takes over.
+                    if let Some(ufd) = uinput_fd {
+                        for &scan in &auto_held {
+                            forward_key(ufd, scan, 0);
+                        }
+                    }
+                    // Bring rhe's state machine up to the same known
+                    // state — everything in auto_held is pressed.
+                    for &scan in &auto_held {
+                        if let Some(role) = layout::linux_to_role(scan) {
+                            let _ = tx.send(HidEvent::Key(KeyEvent {
+                                scan: role,
+                                direction: KeyDirection::Down,
+                            }));
+                        }
+                    }
+                    if let Some(hook) = on_toggle.as_ref() {
+                        hook();
+                    }
+                    auto_switched = true;
+                }
+
+                // Auto-disable: non-home-row letter means "typing
+                // prose, not chording."
+                if !auto_switched
+                    && rhe_scan.is_none()
+                    && layout::linux_is_non_home_row_letter(ev.code)
+                    && enabled.load(Ordering::Relaxed)
+                {
+                    enabled.store(false, Ordering::Relaxed);
+                    set_scroll_led(fd, true);
+                    // Tell rhe to release any chord keys it was
+                    // tracking — otherwise the state machine leaves
+                    // them pressed forever.
+                    for &scan in &auto_held {
+                        if let Some(role) = layout::linux_to_role(scan) {
+                            let _ = tx.send(HidEvent::Key(KeyEvent {
+                                scan: role,
+                                direction: KeyDirection::Up,
+                            }));
+                        }
+                    }
+                    // Inject matching key-downs to the OS so
+                    // subsequent physical releases pair up — without
+                    // this, the OS sees key-ups for keys it never
+                    // saw pressed (rhe was swallowing them).
+                    if let Some(ufd) = uinput_fd {
+                        for &scan in &auto_held {
+                            forward_key(ufd, scan, 1);
+                        }
+                    }
+                    if let Some(hook) = on_toggle.as_ref() {
+                        hook();
+                    }
+                }
+            }
+
+            // After auto-enable, this event has already been queued
+            // to rhe (as part of the held-set replay); skip normal
+            // processing to avoid double-sending it.
+            if auto_switched {
+                continue;
+            }
+
             let active = enabled.load(Ordering::Relaxed);
 
             // Quit gesture. Esc down only; Esc up + autorepeat ignored.
@@ -317,6 +421,28 @@ fn set_scroll_led(fd: RawFd, on: bool) {
         libc::write(fd, &led_ev as *const _ as *const libc::c_void, ev_size);
         libc::write(fd, &syn_ev as *const _ as *const libc::c_void, ev_size);
     }
+}
+
+/// Classify a set of currently-held chord scancodes into the three
+/// tally categories the auto-switch heuristic reads. Called on each
+/// key-down to decide whether to flip rhe on. Linear scan is fine —
+/// the set is bounded by the number of simultaneously pressed keys.
+fn classify_held(held: &[u16]) -> (u8, bool, bool) {
+    let mut finger: u8 = 0;
+    let mut word = false;
+    let mut thumb = false;
+    for &scan in held {
+        if let Some(role) = layout::linux_to_role(scan) {
+            if role == crate::scan::R_THUMB {
+                thumb = true;
+            } else if role == crate::scan::WORD {
+                word = true;
+            } else {
+                finger = finger.saturating_add(1);
+            }
+        }
+    }
+    (finger, word, thumb)
 }
 
 fn forward_key(uinput_fd: RawFd, code: u16, value: i32) {

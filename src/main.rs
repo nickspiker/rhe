@@ -309,15 +309,10 @@ fn run() {
                             eprintln!("  emit: backspace x{}", n);
                             out.backspace(n);
                         }
-                        interpreter::Action::Suffix(ref text) => {
-                            eprintln!("  emit: suffix {}", text);
-                            out.backspace(1);
-                            out.emit(text);
-                        }
-                        interpreter::Action::Replace(back, ref text) => {
-                            eprintln!("  emit: replace(-{}) {}", back, text);
-                            out.backspace(back);
-                            out.emit(text);
+                        interpreter::Action::Replace { ref before, ref after } => {
+                            eprintln!("  emit: replace(-{:?}) {:?}", before, after);
+                            out.backspace(before.chars().count());
+                            out.emit(after);
                         }
                     }
                 }
@@ -404,13 +399,9 @@ fn run() {
                     match action {
                         interpreter::Action::Emit(ref text) => out.emit(text),
                         interpreter::Action::Backspace(n) => out.backspace(n),
-                        interpreter::Action::Suffix(ref text) => {
-                            out.backspace(1);
-                            out.emit(text);
-                        }
-                        interpreter::Action::Replace(back, ref text) => {
-                            out.backspace(back);
-                            out.emit(text);
+                        interpreter::Action::Replace { ref before, ref after } => {
+                            out.backspace(before.chars().count());
+                            out.emit(after);
                         }
                     }
                 }
