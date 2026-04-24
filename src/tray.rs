@@ -161,7 +161,6 @@ pub fn run_tray(
                         FallbackMode::Autospell => "Autospell",
                         FallbackMode::Ipa => "IPA",
                     });
-                    eprintln!("rhe: mode → {:?} (tray)", next);
                 }
                 TrayEvent::Menu(id) if id == enabled_id => {
                     let now = !enabled.load(Ordering::Relaxed);
@@ -169,10 +168,8 @@ pub fn run_tray(
                     enabled_item.set_text(if now { "rhe" } else { "keyboard" });
                     let icon = if now { icon_on.clone() } else { icon_off.clone() };
                     tray.set_icon(Some(icon)).ok();
-                    eprintln!("rhe: {} (tray)", if now { "rhe" } else { "keyboard" });
                 }
                 TrayEvent::Menu(id) if id == quit_id => {
-                    eprintln!("rhe: exit from tray");
                     quit.store(true, Ordering::Relaxed);
                     *control_flow = ControlFlow::Exit;
                 }

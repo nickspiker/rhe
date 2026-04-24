@@ -126,16 +126,13 @@ impl EvdevInput {
 
         let mut grabbed = Vec::new();
         for path in &devices {
-            match open_and_grab(path) {
-                Ok(fd) => grabbed.push(fd),
-                Err(e) => eprintln!("evdev: skipping {}: {}", path, e),
+            if let Ok(fd) = open_and_grab(path) {
+                grabbed.push(fd);
             }
         }
         if grabbed.is_empty() {
             return Err("evdev: could not grab any keyboard device".into());
         }
-
-        eprintln!("evdev: grabbed {} keyboard device(s)", grabbed.len());
 
         // Open a uinput virtual keyboard for passing non-rhe keys back to the OS.
         // If this fails (no permission on /dev/uinput) we still run, we just
@@ -222,10 +219,6 @@ fn reader_loop(
                         if caps_is_rhe_key && caps_solo {
                             let was = enabled.fetch_xor(true, Ordering::Relaxed);
                             let now_enabled = !was;
-                            eprintln!(
-                                "rhe: {} (caps-lock tap)",
-                                if now_enabled { "enabled" } else { "disabled" }
-                            );
                             set_scroll_led(fd, !now_enabled);
                             if let Some(hook) = on_toggle.as_ref() {
                                 hook();

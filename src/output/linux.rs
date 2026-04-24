@@ -89,10 +89,7 @@ impl LinuxOutput {
         });
 
         let reverse_map = match build_reverse_map() {
-            Ok(m) => {
-                eprintln!("rhe: xkb reverse-map built ({} chars)", m.len());
-                m
-            }
+            Ok(m) => m,
             Err(e) => {
                 eprintln!(
                     "rhe: could not build xkb keymap ({}); unicode fallback only",
@@ -146,9 +143,8 @@ impl LinuxOutput {
             }
         } else if self.unicode_fallback {
             self.unicode_fallback_emit(c);
-        } else {
-            eprintln!("rhe: char U+{:04X} not in keymap, dropped", c as u32);
         }
+        // else: no keymap entry and no fallback — char silently dropped.
     }
 
     /// GTK/Qt/IBus unicode input: Ctrl+Shift+U (release), then hex digits,
@@ -297,12 +293,6 @@ fn build_reverse_map() -> Result<HashMap<char, (u16, u8)>, String> {
 
     let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
     let (rules, layout, variant) = detect_layout();
-    eprintln!(
-        "rhe: xkb layout: rules='{}' layout='{}' variant='{}'",
-        if rules.is_empty() { "(default)" } else { &rules },
-        if layout.is_empty() { "(default)" } else { &layout },
-        if variant.is_empty() { "(default)" } else { &variant },
-    );
 
     let model = String::new();
     let keymap = xkb::Keymap::new_from_names(

@@ -107,7 +107,7 @@ struct Step {
     /// Hint text for the tutor's word-detail line — the one character
     /// this number-mode step emits ('3', '.', '+', etc.). None for
     /// non-number steps.
-    number_glyph: Option<char>,
+    number_glyph: Option<String>,
 }
 
 struct PracticeWord {
@@ -953,7 +953,7 @@ fn build_digit_word_steps(word: &str) -> Option<Vec<Step>> {
             word: true,
             accepted_leads: leads,
         },
-        number_glyph: Some(word.chars().next().unwrap_or('?')),
+        number_glyph: Some(word.to_lowercase()),
         ..Step::default()
     });
 
@@ -1034,7 +1034,7 @@ fn build_number_steps(word: &str) -> Option<Vec<Step>> {
             steps.push(Step {
                 target: mod_tap_target,
                 mod_tap_only: true,
-                number_glyph: Some('.'),
+                number_glyph: Some(".".to_string()),
                 ..Step::default()
             });
             prev_needs_release = false;
@@ -1052,7 +1052,7 @@ fn build_number_steps(word: &str) -> Option<Vec<Step>> {
                 word: true,
                 accepted_leads: KeyMask::EMPTY,
             },
-            number_glyph: Some(c),
+            number_glyph: Some(c.to_string()),
             ..Step::default()
         });
         prev_needs_release = true;
@@ -1480,7 +1480,7 @@ fn draw(
         // shows `#` as a stand-in so there's always *something* in
         // the hint line. Other steps fall back to the phoneme IPA.
         let step = practice.current_step();
-        let phoneme_label = if let Some(glyph) = step.and_then(|s| s.number_glyph) {
+        let phoneme_label = if let Some(glyph) = step.and_then(|s| s.number_glyph.as_deref()) {
             format!(" {}", glyph)
         } else if step.map_or(false, |s| s.mod_tap_only) {
             " #".to_string()
