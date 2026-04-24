@@ -1,20 +1,20 @@
 //! Cross-platform tray icon + right-click menu + on-demand tutor window.
 //!
 //! macOS gets its native menu bar icon via `tray-icon` (which wraps
-//! `NSStatusItem`). Linux gets a StatusNotifierItem registered via DBus
-//! — works out of the box on KDE, XFCE, Cinnamon, MATE; on GNOME the user
-//! needs `gnome-shell-extension-appindicator` installed and enabled.
+//! `NSStatusItem`); tray events flow naturally through the NSApp
+//! event loop that winit already owns on the main thread.
 //!
-//! The tray provides an ambient always-visible state indicator (icon
-//! color reflects rhe enabled/disabled) and a right-click menu. The
-//! winit event loop owns the main thread — this is the same event loop
-//! that hosts the tutor GUI window, so the tray and tutor share one
-//! runtime instead of fighting over main-thread ownership.
-//!
-//! Event-driven: the event loop sleeps indefinitely until either a menu
-//! event (bridged from `tray-icon`'s own channel via a forwarder
-//! thread) or a state-change notification (sent by the evdev reader via
-//! `EventLoopProxy`) fires.
+//! Linux gets a StatusNotifierItem registered via DBus — works out of
+//! the box on KDE, XFCE, Cinnamon, MATE; on GNOME the user needs
+//! `gnome-shell-extension-appindicator` installed and enabled. The
+//! icon crate requires `gtk::init` + a running `gtk::main` loop for
+//! menu callbacks to fire, and winit doesn't pump gtk. So on Linux we
+//! spawn a dedicated gtk thread that owns the tray + menu items and
+//! runs `gtk::main()`; the main thread keeps running winit for the
+//! tutor window. Menu clicks flow via `tray-icon`'s `MenuEvent`
+//! receiver → `EventLoopProxy` → winit `UserEvent`; menu-item labels
+//! and icon state are kept in sync by a glib timeout on the gtk
+//! thread that polls the shared atomics.
 
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
@@ -38,7 +38,9 @@ const ICON_SIZE: u32 = 22;
 #[derive(Debug, Clone)]
 pub enum TrayEvent {
     /// The engine thread toggled the `enabled` flag (via caps tap).
-    /// The tray icon + check item need refreshing.
+    /// The tray icon + check item need refreshing. On Linux the gtk
+    /// thread's glib timeout notices this via atomics directly, so
+    /// this variant is just a no-op wake for the winit thread.
     StateChanged,
     /// A menu item was clicked.
     Menu(MenuId),
@@ -83,13 +85,28 @@ pub fn build() -> (EventLoop<TrayEvent>, TrayProxy) {
     (event_loop, proxy)
 }
 
+/// Menu IDs exposed to the winit thread so it can dispatch clicks back
+/// to the right action without holding the `MenuItem`s directly (which
+/// would be a problem on Linux, where the items must live on the gtk
+/// thread).
+#[derive(Clone)]
+struct TrayIds {
+    tutor: MenuId,
+    mode: MenuId,
+    enabled: MenuId,
+    quit: MenuId,
+}
+
 struct TrayApp {
     enabled: Arc<AtomicBool>,
     quit: Arc<AtomicBool>,
     fallback: Arc<AtomicU8>,
-    icon_on: Icon,
-    icon_off: Icon,
-    tray: Option<TrayIcon>,
+    ids: TrayIds,
+
+    // macOS keeps the tray + menu items on the winit thread; Linux
+    // hands them off to the gtk thread. On Linux these stay None.
+    #[cfg(target_os = "macos")]
+    mac_state: Option<MacTrayState>,
 
     // Tutor window state. Declared renderer-before-window so they drop
     // in that order (renderer holds `&'static Window` transmuted from
@@ -97,34 +114,39 @@ struct TrayApp {
     tutor_renderer: Option<Renderer>,
     tutor_window: Option<Window>,
     text_renderer: Option<TextRenderer>,
+}
 
+#[cfg(target_os = "macos")]
+struct MacTrayState {
+    tray: TrayIcon,
+    icon_on: Icon,
+    icon_off: Icon,
     mode_item: MenuItem,
     enabled_item: MenuItem,
-    tutor_item: MenuItem,
-    quit_item: MenuItem,
-    mode_id: MenuId,
-    enabled_id: MenuId,
-    tutor_id: MenuId,
-    quit_id: MenuId,
 }
 
 impl TrayApp {
+    #[cfg(target_os = "macos")]
     fn refresh_enabled_ui(&mut self) {
-        let on = self.enabled.load(Ordering::Relaxed);
-        self.enabled_item.set_text(if on { "rhe" } else { "keyboard" });
-        if let Some(tray) = &self.tray {
+        if let Some(state) = self.mac_state.as_mut() {
+            let on = self.enabled.load(Ordering::Relaxed);
+            state.enabled_item.set_text(if on { "rhe" } else { "keyboard" });
             let icon = if on {
-                self.icon_on.clone()
+                state.icon_on.clone()
             } else {
-                self.icon_off.clone()
+                state.icon_off.clone()
             };
-            tray.set_icon(Some(icon)).ok();
+            state.tray.set_icon(Some(icon)).ok();
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn refresh_enabled_ui(&mut self) {
+        // No-op on Linux: the gtk thread's glib timeout owns the UI.
     }
 
     fn open_tutor(&mut self, event_loop: &ActiveEventLoop) {
         if self.tutor_window.is_some() {
-            // Already open — just focus.
             if let Some(w) = &self.tutor_window {
                 w.focus_window();
             }
@@ -173,8 +195,6 @@ impl TrayApp {
             return;
         }
 
-        // Lazily construct the text renderer on first tutor open. It
-        // parses 20 TTFs (~1.2MB), so we don't want this on startup.
         if self.text_renderer.is_none() {
             self.text_renderer = Some(TextRenderer::new());
         }
@@ -210,42 +230,50 @@ impl TrayApp {
         buf.mark_all();
         let _ = buf.present();
     }
+
+    fn on_menu_click(&mut self, event_loop: &ActiveEventLoop, id: MenuId) {
+        if id == self.ids.tutor {
+            self.open_tutor(event_loop);
+        } else if id == self.ids.mode {
+            let current = FallbackMode::from_u8(self.fallback.load(Ordering::Relaxed));
+            let next = match current {
+                FallbackMode::Autospell => FallbackMode::Ipa,
+                FallbackMode::Ipa => FallbackMode::Autospell,
+            };
+            self.fallback.store(next.as_u8(), Ordering::Relaxed);
+            #[cfg(target_os = "macos")]
+            if let Some(state) = self.mac_state.as_mut() {
+                state.mode_item.set_text(match next {
+                    FallbackMode::Autospell => "Autospell",
+                    FallbackMode::Ipa => "IPA",
+                });
+            }
+            // Linux: gtk thread's glib timeout catches the atomic delta.
+        } else if id == self.ids.enabled {
+            let now = !self.enabled.load(Ordering::Relaxed);
+            self.enabled.store(now, Ordering::Relaxed);
+            self.refresh_enabled_ui();
+        } else if id == self.ids.quit {
+            self.quit.store(true, Ordering::Relaxed);
+            event_loop.exit();
+        }
+    }
 }
 
 impl ApplicationHandler<TrayEvent> for TrayApp {
+    #[cfg(target_os = "macos")]
     fn resumed(&mut self, _event_loop: &ActiveEventLoop) {
-        // Construct the tray icon lazily here rather than in run_tray so
-        // that on Linux the `gtk` init happens on the event-loop thread.
-        if self.tray.is_some() {
+        // macOS builds the tray on the event-loop thread so NSStatusItem
+        // is constructed on the NSApp main thread.
+        if self.mac_state.is_some() {
             return;
         }
+        self.mac_state = Some(build_mac_tray(&self.ids, &self.enabled, &self.fallback));
+    }
 
-        let menu = Menu::new();
-        menu.append(&self.tutor_item).ok();
-        menu.append(&PredefinedMenuItem::separator()).ok();
-        menu.append(&self.mode_item).ok();
-        menu.append(&self.enabled_item).ok();
-        menu.append(&PredefinedMenuItem::separator()).ok();
-        menu.append(&self.quit_item).ok();
-
-        let initial_on = self.enabled.load(Ordering::Relaxed);
-        let initial_icon = if initial_on {
-            self.icon_on.clone()
-        } else {
-            self.icon_off.clone()
-        };
-
-        let tray = TrayIconBuilder::new()
-            .with_icon(initial_icon)
-            .with_tooltip("rhe")
-            .with_menu(Box::new(menu))
-            .build()
-            .expect("failed to build tray icon");
-
-        #[cfg(target_os = "macos")]
-        tray.set_icon_as_template(false);
-
-        self.tray = Some(tray);
+    #[cfg(not(target_os = "macos"))]
+    fn resumed(&mut self, _event_loop: &ActiveEventLoop) {
+        // Linux: tray built on the gtk thread by spawn_linux_tray_thread.
     }
 
     fn window_event(
@@ -282,34 +310,8 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: TrayEvent) {
         match event {
-            TrayEvent::Menu(id) if id == self.tutor_id => {
-                self.open_tutor(event_loop);
-            }
-            TrayEvent::Menu(id) if id == self.mode_id => {
-                let current = FallbackMode::from_u8(self.fallback.load(Ordering::Relaxed));
-                let next = match current {
-                    FallbackMode::Autospell => FallbackMode::Ipa,
-                    FallbackMode::Ipa => FallbackMode::Autospell,
-                };
-                self.fallback.store(next.as_u8(), Ordering::Relaxed);
-                self.mode_item.set_text(match next {
-                    FallbackMode::Autospell => "Autospell",
-                    FallbackMode::Ipa => "IPA",
-                });
-            }
-            TrayEvent::Menu(id) if id == self.enabled_id => {
-                let now = !self.enabled.load(Ordering::Relaxed);
-                self.enabled.store(now, Ordering::Relaxed);
-                self.refresh_enabled_ui();
-            }
-            TrayEvent::Menu(id) if id == self.quit_id => {
-                self.quit.store(true, Ordering::Relaxed);
-                event_loop.exit();
-            }
-            TrayEvent::StateChanged => {
-                self.refresh_enabled_ui();
-            }
-            _ => {}
+            TrayEvent::Menu(id) => self.on_menu_click(event_loop, id),
+            TrayEvent::StateChanged => self.refresh_enabled_ui(),
         }
 
         if self.quit.load(Ordering::Relaxed) {
@@ -318,14 +320,175 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        // Engine thread signals quit through the shared flag. We poll on
-        // every loop iteration before going back to sleep so a quit set
-        // without a UserEvent nudge still lands.
         if self.quit.load(Ordering::Relaxed) {
             event_loop.exit();
         }
         event_loop.set_control_flow(ControlFlow::Wait);
     }
+}
+
+/// Forwarder thread: pipe `tray-icon`'s internal menu-click channel
+/// into the winit event loop. Runs on any platform — the menu-event
+/// receiver itself is thread-agnostic.
+fn spawn_menu_forwarder(proxy: TrayProxy) {
+    std::thread::spawn(move || {
+        let rx = MenuEvent::receiver();
+        while let Ok(event) = rx.recv() {
+            if proxy.send_event(TrayEvent::Menu(event.id)).is_err() {
+                break;
+            }
+        }
+    });
+}
+
+#[cfg(target_os = "macos")]
+fn build_mac_tray(
+    ids: &TrayIds,
+    enabled: &Arc<AtomicBool>,
+    fallback: &Arc<AtomicU8>,
+) -> MacTrayState {
+    let icon_off = circle_icon(180, 60, 180, 160);
+    let icon_on = circle_icon(80, 255, 80, 255);
+
+    let initial_enabled = enabled.load(Ordering::Relaxed);
+    let initial_fallback = FallbackMode::from_u8(fallback.load(Ordering::Relaxed));
+    let is_autospell = initial_fallback == FallbackMode::Autospell;
+
+    // Rebuild MenuItems with the IDs we pre-allocated so that the
+    // winit thread can match click events.
+    let tutor_item = MenuItem::with_id(ids.tutor.clone(), "Open Tutor", true, None);
+    let mode_item = MenuItem::with_id(
+        ids.mode.clone(),
+        if is_autospell { "Autospell" } else { "IPA" },
+        true,
+        None,
+    );
+    let enabled_item = MenuItem::with_id(
+        ids.enabled.clone(),
+        if initial_enabled { "rhe" } else { "keyboard" },
+        true,
+        None,
+    );
+    let quit_item = MenuItem::with_id(ids.quit.clone(), "Exit", true, None);
+
+    let menu = Menu::new();
+    menu.append(&tutor_item).ok();
+    menu.append(&PredefinedMenuItem::separator()).ok();
+    menu.append(&mode_item).ok();
+    menu.append(&enabled_item).ok();
+    menu.append(&PredefinedMenuItem::separator()).ok();
+    menu.append(&quit_item).ok();
+
+    let initial_icon = if initial_enabled {
+        icon_on.clone()
+    } else {
+        icon_off.clone()
+    };
+
+    let tray = TrayIconBuilder::new()
+        .with_icon(initial_icon)
+        .with_tooltip("rhe")
+        .with_menu(Box::new(menu))
+        .build()
+        .expect("failed to build tray icon");
+    tray.set_icon_as_template(false);
+
+    MacTrayState {
+        tray,
+        icon_on,
+        icon_off,
+        mode_item,
+        enabled_item,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn spawn_linux_tray_thread(
+    ids: TrayIds,
+    enabled: Arc<AtomicBool>,
+    quit: Arc<AtomicBool>,
+    fallback: Arc<AtomicU8>,
+) {
+    std::thread::spawn(move || {
+        use gtk::glib;
+
+        gtk::init().expect("gtk::init failed");
+
+        let icon_off = circle_icon(180, 60, 180, 160);
+        let icon_on = circle_icon(80, 255, 80, 255);
+
+        let initial_enabled = enabled.load(Ordering::Relaxed);
+        let initial_fallback = FallbackMode::from_u8(fallback.load(Ordering::Relaxed));
+        let is_autospell = initial_fallback == FallbackMode::Autospell;
+
+        let tutor_item = MenuItem::with_id(ids.tutor.clone(), "Open Tutor", true, None);
+        let mode_item = MenuItem::with_id(
+            ids.mode.clone(),
+            if is_autospell { "Autospell" } else { "IPA" },
+            true,
+            None,
+        );
+        let enabled_item = MenuItem::with_id(
+            ids.enabled.clone(),
+            if initial_enabled { "rhe" } else { "keyboard" },
+            true,
+            None,
+        );
+        let quit_item = MenuItem::with_id(ids.quit.clone(), "Exit", true, None);
+
+        let menu = Menu::new();
+        menu.append(&tutor_item).ok();
+        menu.append(&PredefinedMenuItem::separator()).ok();
+        menu.append(&mode_item).ok();
+        menu.append(&enabled_item).ok();
+        menu.append(&PredefinedMenuItem::separator()).ok();
+        menu.append(&quit_item).ok();
+
+        let initial_icon = if initial_enabled {
+            icon_on.clone()
+        } else {
+            icon_off.clone()
+        };
+
+        let tray = TrayIconBuilder::new()
+            .with_icon(initial_icon)
+            .with_tooltip("rhe")
+            .with_menu(Box::new(menu))
+            .build()
+            .expect("failed to build tray icon");
+
+        // Stateful closure that polls the shared atomics and updates the
+        // tray icon + menu labels when they diverge. Runs on this (gtk)
+        // thread via glib::timeout_add_local — safe for MenuItem/TrayIcon
+        // which are !Send on Linux.
+        let mut last_enabled = initial_enabled;
+        let mut last_fallback = initial_fallback.as_u8();
+        glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+            let e = enabled.load(Ordering::Relaxed);
+            if e != last_enabled {
+                last_enabled = e;
+                enabled_item.set_text(if e { "rhe" } else { "keyboard" });
+                let icon = if e { icon_on.clone() } else { icon_off.clone() };
+                tray.set_icon(Some(icon)).ok();
+            }
+            let f = fallback.load(Ordering::Relaxed);
+            if f != last_fallback {
+                last_fallback = f;
+                let fb = FallbackMode::from_u8(f);
+                mode_item.set_text(match fb {
+                    FallbackMode::Autospell => "Autospell",
+                    FallbackMode::Ipa => "IPA",
+                });
+            }
+            if quit.load(Ordering::Relaxed) {
+                gtk::main_quit();
+                return glib::ControlFlow::Break;
+            }
+            glib::ControlFlow::Continue
+        });
+
+        gtk::main();
+    });
 }
 
 /// Run the tray event loop on the main thread. Blocks until `quit` is set
@@ -339,61 +502,28 @@ pub fn run_tray(
     quit: Arc<AtomicBool>,
     fallback: Arc<AtomicU8>,
 ) {
-    let icon_off = circle_icon(180, 60, 180, 160);
-    let icon_on = circle_icon(80, 255, 80, 255);
+    let ids = TrayIds {
+        tutor: MenuId::new("rhe.tutor"),
+        mode: MenuId::new("rhe.mode"),
+        enabled: MenuId::new("rhe.enabled"),
+        quit: MenuId::new("rhe.quit"),
+    };
 
-    let initial_enabled = enabled.load(Ordering::Relaxed);
-    let initial_fallback = FallbackMode::from_u8(fallback.load(Ordering::Relaxed));
-    let is_autospell = initial_fallback == FallbackMode::Autospell;
+    spawn_menu_forwarder(event_loop.create_proxy());
 
-    let tutor_item = MenuItem::new("Open Tutor", true, None);
-    let mode_item = MenuItem::new(
-        if is_autospell { "Autospell" } else { "IPA" },
-        true,
-        None,
-    );
-    let enabled_item = MenuItem::new(
-        if initial_enabled { "rhe" } else { "keyboard" },
-        true,
-        None,
-    );
-    let quit_item = MenuItem::new("Exit", true, None);
-
-    let tutor_id = tutor_item.id().clone();
-    let mode_id = mode_item.id().clone();
-    let enabled_id = enabled_item.id().clone();
-    let quit_id = quit_item.id().clone();
-
-    // Bridge tray-icon's menu channel into the winit event loop so menu
-    // clicks trigger a UserEvent without us polling.
-    let proxy = event_loop.create_proxy();
-    std::thread::spawn(move || {
-        let rx = MenuEvent::receiver();
-        while let Ok(event) = rx.recv() {
-            if proxy.send_event(TrayEvent::Menu(event.id)).is_err() {
-                break; // event loop closed
-            }
-        }
-    });
+    #[cfg(target_os = "linux")]
+    spawn_linux_tray_thread(ids.clone(), enabled.clone(), quit.clone(), fallback.clone());
 
     let mut app = TrayApp {
         enabled,
         quit,
         fallback,
-        icon_on,
-        icon_off,
-        tray: None,
+        ids,
+        #[cfg(target_os = "macos")]
+        mac_state: None,
         tutor_renderer: None,
         tutor_window: None,
         text_renderer: None,
-        tutor_item,
-        mode_item,
-        enabled_item,
-        quit_item,
-        tutor_id,
-        mode_id,
-        enabled_id,
-        quit_id,
     };
 
     event_loop.run_app(&mut app).ok();

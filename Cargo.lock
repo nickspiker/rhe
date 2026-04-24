@@ -2412,6 +2412,7 @@ dependencies = [
  "cosmic-text",
  "crossterm",
  "foreign-types 0.5.0",
+ "gtk",
  "libc",
  "ratatui",
  "rdev",
