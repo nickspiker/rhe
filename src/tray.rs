@@ -18,10 +18,10 @@
 
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
-use winit::keyboard::ModifiersState;
-use winit::window::{Window, WindowId};
+use winit::keyboard::{Key, ModifiersState};
+use winit::window::{ResizeDirection, Window, WindowId};
 
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
@@ -134,6 +134,17 @@ struct TrayApp {
     /// values in between). Populated by draw_textbox, consumed by
     /// apply_textbox_glow. Sized to pixels.len().
     tutor_textbox_mask: Vec<u8>,
+
+    // Debug toggles (photon parity): Ctrl+D counters, Ctrl+H hitmap
+    // overlay, Ctrl+T textbox-mask overlay.
+    tutor_debug: bool,
+    tutor_debug_hit_test: bool,
+    tutor_show_textbox_mask: bool,
+    tutor_debug_hit_colours: Vec<(u8, u8, u8)>,
+
+    // Frame/redraw counters for the debug HUD.
+    tutor_frame_counter: u64,
+    tutor_redraw_counter: u64,
 }
 
 #[cfg(target_os = "macos")]
@@ -196,6 +207,11 @@ impl TrayApp {
         //      (close path assigns None; renderer is cleared first).
         if let Some(w_ref) = self.tutor_window.as_ref() {
             self.tutor_renderer = Some(Renderer::new(w_ref, size.width, size.height));
+            // Explicit focus request — needed on some compositors
+            // (Wayland in particular) to start delivering
+            // ModifiersChanged / KeyboardInput events without an
+            // intermediate user click.
+            w_ref.focus_window();
             w_ref.request_redraw();
         }
     }
@@ -297,8 +313,166 @@ impl TrayApp {
             );
         }
 
+        // Debug overlays — photon-parity visualisations toggled with
+        // Ctrl+H / Ctrl+T. Drawn LAST so they cover any UI underneath.
+        if self.tutor_debug_hit_test {
+            for (idx, &id) in self.tutor_hit_test.iter().enumerate() {
+                if let Some(&(r, g, b)) = self.tutor_debug_hit_colours.get(id as usize) {
+                    pixels[idx] =
+                        0xFF00_0000 | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+                }
+            }
+        }
+        if self.tutor_show_textbox_mask {
+            for (idx, &a) in self.tutor_textbox_mask.iter().enumerate() {
+                let v = a as u32;
+                pixels[idx] = 0xFF00_0000 | (v << 16) | (v << 8) | v;
+            }
+        }
+
+        // Debug HUD — counters + current zoom. Visible when Ctrl+D
+        // toggled the global debug flag. Photon's layout: bottom strip
+        // with R/U/F counters + top-left zoom percentage.
+        self.tutor_redraw_counter += 1;
+        self.tutor_frame_counter += 1;
+        if self.tutor_debug {
+            if let Some(text) = self.text_renderer.as_mut() {
+                let span = crate::ui::span(size.width, size.height);
+                let counter_size = (span / 24.0).max(10.0);
+                let strip_h = (counter_size * 2.0) as i32;
+
+                // Dark strip along the bottom for contrast.
+                let stride = width;
+                let start_row = (height as i32 - strip_h).max(0) as usize;
+                for y in start_row..height {
+                    let base = y * stride;
+                    for x in 0..width {
+                        let p = pixels[base + x];
+                        pixels[base + x] = (p >> 1 & 0xFF7F_7F7F) | 0xFF00_0000;
+                    }
+                }
+
+                let y = height as f32 - counter_size;
+                let redraw_text = format!("R:{}", self.tutor_redraw_counter);
+                let frame_text = format!("F:{}", self.tutor_frame_counter);
+                let zoom_text = format!("ru:{:.0}%", self.tutor_ru * 100.0);
+                text.draw_text_left_u32(
+                    pixels,
+                    width,
+                    &redraw_text,
+                    counter_size,
+                    y,
+                    counter_size,
+                    400,
+                    0xFFFF_FFFF,
+                    "Josefin Slab",
+                );
+                text.draw_text_center_u32(
+                    pixels,
+                    width,
+                    &zoom_text,
+                    width as f32 / 2.0,
+                    y,
+                    counter_size,
+                    400,
+                    0xFFFF_FFFF,
+                    "Josefin Slab",
+                );
+                text.draw_text_right_u32(
+                    pixels,
+                    width,
+                    &frame_text,
+                    width as f32 - counter_size,
+                    y,
+                    counter_size,
+                    400,
+                    0xFFFF_FFFF,
+                    "Josefin Slab",
+                );
+            }
+        }
+
         buf.mark_all();
         let _ = buf.present();
+    }
+
+    /// Photon-parity resize-edge detection. Returns Some(direction) if
+    /// the cursor is inside the `span/32` border strip on any side or
+    /// corner of the window. Mirrors photon's `get_resize_edge`.
+    fn resize_edge_at_cursor(&self) -> Option<ResizeDirection> {
+        let window = self.tutor_window.as_ref()?;
+        let size = window.inner_size();
+        let x = self.tutor_cursor.x as f32;
+        let y = self.tutor_cursor.y as f32;
+        let border = (crate::ui::span(size.width, size.height) / 32.0).ceil();
+        let at_left = x < border;
+        let at_right = x > size.width as f32 - border;
+        let at_top = y < border;
+        let at_bottom = y > size.height as f32 - border;
+        let dir = if at_top && at_left {
+            ResizeDirection::NorthWest
+        } else if at_top && at_right {
+            ResizeDirection::NorthEast
+        } else if at_bottom && at_left {
+            ResizeDirection::SouthWest
+        } else if at_bottom && at_right {
+            ResizeDirection::SouthEast
+        } else if at_top {
+            ResizeDirection::North
+        } else if at_bottom {
+            ResizeDirection::South
+        } else if at_left {
+            ResizeDirection::West
+        } else if at_right {
+            ResizeDirection::East
+        } else {
+            return None;
+        };
+        Some(dir)
+    }
+
+    fn handle_keyboard(&mut self, event: KeyEvent) {
+        if event.state != ElementState::Pressed {
+            return;
+        }
+        if !self.tutor_mods.control_key() {
+            return;
+        }
+        let Key::Character(c) = &event.logical_key else {
+            return;
+        };
+        if c.eq_ignore_ascii_case("d") {
+            self.tutor_debug = !self.tutor_debug;
+        } else if c.eq_ignore_ascii_case("h") {
+            self.tutor_debug_hit_test = !self.tutor_debug_hit_test;
+            self.tutor_show_textbox_mask = false;
+            if self.tutor_debug_hit_test && self.tutor_debug_hit_colours.is_empty() {
+                // Deterministic but visually distinct: scatter hue via
+                // simple LCG so hit IDs render as different colours.
+                let mut seed: u32 = 0x9E3779B9;
+                for _ in 0..=255u8 {
+                    seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                    let r = (seed >> 16) as u8;
+                    let g = (seed >> 8) as u8;
+                    let b = seed as u8;
+                    self.tutor_debug_hit_colours.push((r, g, b));
+                }
+            }
+        } else if c.eq_ignore_ascii_case("t") {
+            self.tutor_show_textbox_mask = !self.tutor_show_textbox_mask;
+            self.tutor_debug_hit_test = false;
+        } else if c == "=" || c == "+" {
+            self.tutor_ru = (self.tutor_ru * 1.1).clamp(0.3, 5.0);
+        } else if c == "-" {
+            self.tutor_ru = (self.tutor_ru / 1.1).clamp(0.3, 5.0);
+        } else if c == "0" {
+            self.tutor_ru = 1.0;
+        } else {
+            return;
+        }
+        if let Some(w) = self.tutor_window.as_ref() {
+            w.request_redraw();
+        }
     }
 
     /// Read the hit-test map at the current cursor position. Returns 0
@@ -397,22 +571,45 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 if state == ElementState::Pressed && button == MouseButton::Left {
-                    let hit = self.hit_at_cursor();
                     let Some(window) = self.tutor_window.as_ref() else {
                         return;
                     };
+                    // Priority: chrome buttons → resize edges → drag.
+                    // Photon's `handle_mouse_click` uses the same
+                    // ordering.
+                    let hit = self.hit_at_cursor();
                     if hit == HIT_CLOSE_BUTTON {
                         self.close_tutor();
-                    } else if hit == HIT_MAXIMIZE_BUTTON {
+                        return;
+                    }
+                    if hit == HIT_MAXIMIZE_BUTTON {
                         let was_max = window.is_maximized();
                         window.set_maximized(!was_max);
-                    } else if hit == HIT_MINIMIZE_BUTTON {
-                        window.set_minimized(true);
-                    } else if hit == HIT_NONE {
-                        // Non-hit = drag grip. Clicking anywhere not
-                        // claimed by a button starts a window move.
-                        let _ = window.drag_window();
+                        return;
                     }
+                    if hit == HIT_MINIMIZE_BUTTON {
+                        window.set_minimized(true);
+                        return;
+                    }
+
+                    if let Some(dir) = self.resize_edge_at_cursor() {
+                        let _ = window.drag_resize_window(dir);
+                        return;
+                    }
+
+                    // Nothing hit — drag-move the window.
+                    let _ = window.drag_window();
+                }
+            }
+            WindowEvent::KeyboardInput { event, .. } => {
+                self.handle_keyboard(event);
+            }
+            WindowEvent::Focused(true) => {
+                // Nudge: some compositors don't deliver the initial
+                // ModifiersChanged until the window has focus. Request
+                // a redraw in case anything depends on mods state.
+                if let Some(w) = self.tutor_window.as_ref() {
+                    w.request_redraw();
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
@@ -661,6 +858,12 @@ pub fn run_tray(
         tutor_cursor: PhysicalPosition::new(0.0, 0.0),
         tutor_hit_test: Vec::new(),
         tutor_textbox_mask: Vec::new(),
+        tutor_debug: false,
+        tutor_debug_hit_test: false,
+        tutor_show_textbox_mask: false,
+        tutor_debug_hit_colours: Vec::new(),
+        tutor_frame_counter: 0,
+        tutor_redraw_counter: 0,
     };
 
     event_loop.run_app(&mut app).ok();
