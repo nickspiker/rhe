@@ -35,7 +35,12 @@ use crate::ui::text_rasterizing::TextRenderer;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
-const ICON_SIZE: u32 = 22;
+/// Rendered tray-icon bitmap dimensions. 44 = 2× the conventional
+/// 22-px Linux SNI / 22-pt macOS NSStatusItem size, so retina /
+/// HiDPI displays get an exact pixel match and 1× displays
+/// downscale cleanly. Tray-icon 0.22 takes a single bitmap; the
+/// OS handles further scaling.
+const ICON_SIZE: u32 = 44;
 
 /// Bright lime when rhe is capturing input.
 const ICON_RING_ON: u32 = 0xFF40_FF40;
@@ -68,10 +73,7 @@ fn scaled_logo_rgb(diameter: usize) -> Vec<u8> {
                 .chunks_exact(4)
                 .flat_map(|p| [p[0], p[1], p[2]])
                 .collect(),
-            png::ColorType::Grayscale => buf
-                .iter()
-                .flat_map(|&g| [g, g, g])
-                .collect(),
+            png::ColorType::Grayscale => buf.iter().flat_map(|&g| [g, g, g]).collect(),
             png::ColorType::GrayscaleAlpha => buf
                 .chunks_exact(2)
                 .flat_map(|p| [p[0], p[0], p[0]])
@@ -105,8 +107,13 @@ fn make_tray_icon(size: u32, online: bool) -> Icon {
 
     let w = size as usize;
     let h = size as usize;
-    // Leave 3px of breathing room past the outer AA pixel.
-    let radius = (size as isize) / 2 - 3;
+
+    // -2, not -1: with cx = size/2 on an even canvas the solid ring
+    // would otherwise extend one pixel past the canvas edge on the
+    // bottom-right (parity quirk). Subtracting 2 puts the last solid
+    // pixel exactly at the edge and leaves the alpha-0 outer-AA off-
+    // canvas where it isn't visible.
+    let radius = (size as isize) / 2 - 2;
     let diameter = (radius * 2) as usize;
     let cx = (size / 2) as isize;
     let cy = cx;
@@ -267,7 +274,9 @@ impl TrayApp {
     fn refresh_enabled_ui(&mut self) {
         if let Some(state) = self.mac_state.as_mut() {
             let on = self.enabled.load(Ordering::Relaxed);
-            state.enabled_item.set_text(if on { "rhe" } else { "keyboard" });
+            state
+                .enabled_item
+                .set_text(if on { "rhe" } else { "keyboard" });
             let icon = if on {
                 state.icon_on.clone()
             } else {
@@ -435,8 +444,7 @@ impl TrayApp {
         if self.tutor_debug_hit_test {
             for (idx, &id) in self.tutor_hit_test.iter().enumerate() {
                 if let Some(&(r, g, b)) = self.tutor_debug_hit_colours.get(id as usize) {
-                    pixels[idx] =
-                        0xFF00_0000 | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+                    pixels[idx] = 0xFF00_0000 | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
                 }
             }
         }
@@ -681,12 +689,7 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
         // Linux: tray built on the gtk thread by spawn_linux_tray_thread.
     }
 
-    fn window_event(
-        &mut self,
-        _event_loop: &ActiveEventLoop,
-        id: WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, _event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         let Some(window) = self.tutor_window.as_ref() else {
             return;
         };
@@ -717,26 +720,27 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                     //   resize edges   → direction arrow
                     //   else           → Default
                     let hit = self.hit_at_cursor();
-                    let icon = if hit == HIT_CLOSE_BUTTON
-                        || hit == HIT_MAXIMIZE_BUTTON
-                        || hit == HIT_MINIMIZE_BUTTON
-                    {
-                        CursorIcon::Pointer
-                    } else {
-                        match self.resize_edge_at_cursor() {
-                            Some(ResizeDirection::NorthWest)
-                            | Some(ResizeDirection::SouthEast) => CursorIcon::NwseResize,
-                            Some(ResizeDirection::NorthEast)
-                            | Some(ResizeDirection::SouthWest) => CursorIcon::NeswResize,
-                            Some(ResizeDirection::North) | Some(ResizeDirection::South) => {
-                                CursorIcon::NsResize
+                    let icon =
+                        if hit == HIT_CLOSE_BUTTON
+                            || hit == HIT_MAXIMIZE_BUTTON
+                            || hit == HIT_MINIMIZE_BUTTON
+                        {
+                            CursorIcon::Pointer
+                        } else {
+                            match self.resize_edge_at_cursor() {
+                                Some(ResizeDirection::NorthWest)
+                                | Some(ResizeDirection::SouthEast) => CursorIcon::NwseResize,
+                                Some(ResizeDirection::NorthEast)
+                                | Some(ResizeDirection::SouthWest) => CursorIcon::NeswResize,
+                                Some(ResizeDirection::North) | Some(ResizeDirection::South) => {
+                                    CursorIcon::NsResize
+                                }
+                                Some(ResizeDirection::East) | Some(ResizeDirection::West) => {
+                                    CursorIcon::EwResize
+                                }
+                                Some(_) | None => CursorIcon::Default,
                             }
-                            Some(ResizeDirection::East) | Some(ResizeDirection::West) => {
-                                CursorIcon::EwResize
-                            }
-                            Some(_) | None => CursorIcon::Default,
-                        }
-                    };
+                        };
                     w.set_cursor(icon);
                 }
             }
