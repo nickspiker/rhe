@@ -248,8 +248,10 @@ fn run() {
     let enabled = Arc::new(AtomicBool::new(true)); // start in rhe mode
     let quit = Arc::new(AtomicBool::new(false));
     let fallback = interpreter::FallbackMode::new_shared_from_env();
+    let mode_flags = interpreter::new_shared_mode_flags();
     let enabled_engine = enabled.clone();
     let fallback_engine = fallback.clone();
+    let mode_flags_engine = mode_flags.clone();
     let _quit_engine = quit.clone();
 
     // Build the tray's event loop on the main thread so its proxy can be
@@ -265,11 +267,12 @@ fn run() {
         let dictionary = table_gen::PhonemeDictionary::build(&cmudict, &freq);
         let brief_table = briefs::load_briefs();
 
-        let mut interp = interpreter::Interpreter::with_fallback(
+        let mut interp = interpreter::Interpreter::with_fallback_and_modes(
             phoneme_table,
             brief_table,
             dictionary,
             fallback_engine,
+            mode_flags_engine,
         );
 
         eprintln!("rhe: ready. click menu bar icon to enable.");
@@ -343,8 +346,10 @@ fn run() {
     let enabled = Arc::new(AtomicBool::new(true));
     let quit = Arc::new(AtomicBool::new(false));
     let fallback = interpreter::FallbackMode::new_shared_from_env();
+    let mode_flags = interpreter::new_shared_mode_flags();
     let enabled_engine = enabled.clone();
     let fallback_engine = fallback.clone();
+    let mode_flags_engine = mode_flags.clone();
     let quit_engine = quit.clone();
 
     // Build the tray's event loop on the main thread so its proxy can be
@@ -367,11 +372,12 @@ fn run() {
         let dictionary = table_gen::PhonemeDictionary::build(&cmudict, &freq);
         let brief_table = briefs::load_briefs();
 
-        let mut interp = interpreter::Interpreter::with_fallback(
+        let mut interp = interpreter::Interpreter::with_fallback_and_modes(
             phoneme_table,
             brief_table,
             dictionary,
             fallback_engine,
+            mode_flags_engine,
         );
 
         // Input before output so the keyboard scan completes before any
@@ -428,7 +434,7 @@ fn run() {
         let _ = proxy.send_event(tray::TrayEvent::StateChanged);
     });
 
-    tray::run_tray(event_loop, enabled, quit, fallback);
+    tray::run_tray(event_loop, enabled, quit, fallback, mode_flags);
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]

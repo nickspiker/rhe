@@ -1080,6 +1080,23 @@ pub fn key_state_to_mask(state: &KeyState) -> KeyMask {
     m
 }
 
+/// Short label for a number-form transform chord. Stub set picked
+/// to fit a 9-char cell — each abbreviates the form's output:
+/// `spell` ("five"), `tuple` ("quintuple"), `pre` ("penta"),
+/// `ord` ("fifth"), `frac` ("half"/"third"), `mul` ("once"/"twice").
+/// Refine once the labels are visible alongside real numbers.
+pub fn form_label(form: crate::number_forms::Form) -> &'static str {
+    use crate::number_forms::Form;
+    match form {
+        Form::SpelledCardinal => "spell",
+        Form::Group => "tuple",
+        Form::Prefix => "pre",
+        Form::Ordinal => "ord",
+        Form::Fraction => "frac",
+        Form::Multiplier => "mul",
+    }
+}
+
 /// Predict what `cell_scan` would emit if added to the currently-held
 /// chord, for adaptive on-cell labels.
 ///
@@ -1091,6 +1108,9 @@ pub fn key_state_to_mask(state: &KeyState) -> KeyMask {
 ///   when the user is mid-roll. When nothing is held the cell itself
 ///   becomes the hypothetical lead.
 /// - `in_number_mode` swaps the lookup to digit/symbol tables.
+/// - `has_number_context` shifts brief-mode L-hand cells to number-
+///   form labels (the same chords' alternate meaning when a pure-
+///   integer is sitting one slot back, ready to be transformed).
 pub fn cell_label(
     cell_scan: u8,
     held_mask: KeyMask,
@@ -1099,6 +1119,7 @@ pub fn cell_label(
     phonemes: &PhonemeTable,
     briefs: &BriefTable,
     in_number_mode: bool,
+    has_number_context: bool,
 ) -> String {
     if in_number_mode {
         let mod_held = held_mask.test(scan::R_THUMB);
@@ -1139,6 +1160,15 @@ pub fn cell_label(
     } else {
         user_first_down
     };
+
+    // Brief-mode L-hand chord with armed number context: this chord
+    // would transform the just-emitted integer, not append a suffix.
+    // Show the form abbreviation instead of the brief lookup.
+    if !held_word && has_number_context {
+        if let Some(form) = crate::interpreter::chord_to_form(chord) {
+            return form_label(form).to_string();
+        }
+    }
 
     if held_word {
         phonemes

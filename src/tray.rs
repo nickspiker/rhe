@@ -27,7 +27,7 @@ use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 use crate::chord_map::{BriefTable, PhonemeTable};
-use crate::drill::{TutorState, WordMode, build_practice, cell_label, key_state_to_mask};
+use crate::drill::{TutorState, build_practice, cell_label, key_state_to_mask};
 use crate::hand::KeyEvent as RheKeyEvent;
 use crate::interpreter::FallbackMode;
 use crate::wiki::SentenceStream;
@@ -311,6 +311,11 @@ struct TrayApp {
     enabled: Arc<AtomicBool>,
     quit: Arc<AtomicBool>,
     fallback: Arc<AtomicU8>,
+    /// Bitfield mirroring the live Interpreter's sub-mode (number /
+    /// future symbol etc.). Cloned from the engine thread so the
+    /// tutor's adaptive cell labels match what the next press would
+    /// actually emit. See `interpreter::MODE_FLAG_*`.
+    mode_flags: Arc<AtomicU8>,
     ids: TrayIds,
 
     // macOS keeps the tray + menu items on the winit thread; Linux
@@ -745,11 +750,17 @@ impl TrayApp {
                 let held_mask = key_state_to_mask(&key_state);
                 let held_word = key_state.word;
                 let first_down = state.tutor_first_down;
-                // Drill-derived number mode: true once the mod-tap entry
-                // step of a number sequence has been taken, so the cell
-                // labels can switch to digit/symbol predictions.
-                let in_number_mode = state.practice.mode == WordMode::Number
-                    && state.practice.step_idx > 0;
+                // Live mode bits straight from the engine's
+                // Interpreter (single relaxed load on a shared
+                // atomic). Always coherent with what the next press
+                // would actually emit, regardless of where the drill
+                // happens to be. has_number_context flips L-hand
+                // brief cells to number-form labels (alt suffix
+                // meaning when a pure integer is one slot back).
+                let mode_bits = self.mode_flags.load(Ordering::Relaxed);
+                let in_number_mode = mode_bits & crate::interpreter::MODE_FLAG_NUMBER != 0;
+                let has_number_context =
+                    mode_bits & crate::interpreter::MODE_FLAG_HAS_NUMBER != 0;
                 let phonemes = PhonemeTable::new();
                 let briefs = self.tutor_brief_table.as_ref();
                 const CELL_SCANS: [u8; 10] = [
@@ -774,6 +785,7 @@ impl TrayApp {
                             &phonemes,
                             b,
                             in_number_mode,
+                            has_number_context,
                         )
                     } else {
                         String::new()
@@ -1489,6 +1501,7 @@ pub fn run_tray(
     enabled: Arc<AtomicBool>,
     quit: Arc<AtomicBool>,
     fallback: Arc<AtomicU8>,
+    mode_flags: Arc<AtomicU8>,
 ) {
     let ids = TrayIds {
         tutor: MenuId::new("rhe.tutor"),
@@ -1506,6 +1519,7 @@ pub fn run_tray(
         enabled,
         quit,
         fallback,
+        mode_flags,
         ids,
         #[cfg(target_os = "macos")]
         mac_state: None,

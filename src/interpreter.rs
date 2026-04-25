@@ -72,7 +72,10 @@ pub enum Action {
 /// Slot ranking mirrors the existing SUFFIXES table's bench-measured
 /// effort order: fastest single-finger chords go to the most common
 /// forms.
-fn chord_to_form(key: crate::chord_map::ChordKey) -> Option<crate::number_forms::Form> {
+///
+/// Pub so the tutor's adaptive cell labels can reuse the same
+/// chord→form mapping when `MODE_FLAG_HAS_NUMBER` is set.
+pub fn chord_to_form(key: crate::chord_map::ChordKey) -> Option<crate::number_forms::Form> {
     use crate::number_forms::Form;
     if key.right_bits() != 0 || key.has_mod() {
         return None;
@@ -86,6 +89,23 @@ fn chord_to_form(key: crate::chord_map::ChordKey) -> Option<crate::number_forms:
         0b0011 => Some(Form::Prefix),          // L-idx + L-mid  (843ms)
         _ => None,
     }
+}
+
+/// Bit positions in the shared mode-flags atomic. The interpreter
+/// writes on every mode transition; the tutor reads each frame to
+/// pick adaptive cell labels (digits/symbols vs phonemes/briefs vs
+/// number-form transforms). Pack future sub-modes into more bits.
+pub const MODE_FLAG_NUMBER: u8 = 1 << 0;
+/// `last_number` armed: the most recent committed token is still a
+/// pure-integer the user can transform with an L-hand chord.
+/// Brief-mode L-hand cells re-label to form names while this is set.
+pub const MODE_FLAG_HAS_NUMBER: u8 = 1 << 1;
+
+/// Allocate a fresh shared mode-flags atomic. Hand a clone to the
+/// interpreter via `with_fallback_and_modes` and another clone to
+/// any reader (the tutor window).
+pub fn new_shared_mode_flags() -> Arc<AtomicU8> {
+    Arc::new(AtomicU8::new(0))
 }
 
 /// Which sub-session of word-held the user is currently in.
@@ -146,6 +166,10 @@ pub struct Interpreter {
     /// context. `Backspace` pops one entry per press.
     emit_history: Vec<HistoryEntry>,
     fallback: Arc<AtomicU8>,
+    /// Shared bitfield mirroring `mode` for outside readers (the
+    /// tutor). Written on every transition in `process`; readers do
+    /// a single relaxed load. See `MODE_FLAG_*`.
+    mode_flags: Arc<AtomicU8>,
     mode: Mode,
     /// Digits typed in the current number-mode session. Appended on
     /// each plain-digit emission, cleared on symbol / decimal /
@@ -165,7 +189,13 @@ impl Interpreter {
     /// Seed the fallback from the `RHE_FALLBACK` env var. The returned
     /// interpreter owns its own atomic — no runtime switching from outside.
     pub fn new(phonemes: PhonemeTable, briefs: BriefTable, dictionary: PhonemeDictionary) -> Self {
-        Self::with_fallback(phonemes, briefs, dictionary, FallbackMode::new_shared_from_env())
+        Self::with_fallback_and_modes(
+            phonemes,
+            briefs,
+            dictionary,
+            FallbackMode::new_shared_from_env(),
+            new_shared_mode_flags(),
+        )
     }
 
     pub fn with_fallback(
@@ -174,6 +204,19 @@ impl Interpreter {
         dictionary: PhonemeDictionary,
         fallback: Arc<AtomicU8>,
     ) -> Self {
+        Self::with_fallback_and_modes(phonemes, briefs, dictionary, fallback, new_shared_mode_flags())
+    }
+
+    /// Build with both shared atomics handed in. The mode_flags arc is
+    /// the tutor's window into number/symbol/etc. sub-modes — clones
+    /// of it can be given to any number of readers.
+    pub fn with_fallback_and_modes(
+        phonemes: PhonemeTable,
+        briefs: BriefTable,
+        dictionary: PhonemeDictionary,
+        fallback: Arc<AtomicU8>,
+        mode_flags: Arc<AtomicU8>,
+    ) -> Self {
         Self {
             phonemes,
             briefs,
@@ -181,6 +224,7 @@ impl Interpreter {
             buffer: Vec::new(),
             emit_history: Vec::new(),
             fallback,
+            mode_flags,
             mode: Mode::Normal,
             number_buffer: String::new(),
             last_number: None,
@@ -192,6 +236,22 @@ impl Interpreter {
     /// so the drill shows what the next press actually emits.
     pub fn in_number_mode(&self) -> bool {
         self.mode == Mode::Number
+    }
+
+    /// Recompute the shared mode-flags bitfield from `mode` +
+    /// `last_number` and publish it for outside readers. Called
+    /// once per `process()` regardless of the path taken — a single
+    /// relaxed store is cheap, simpler than threading a write call
+    /// onto every internal mutation site.
+    fn write_mode_flags(&self) {
+        let mut bits = 0u8;
+        if self.mode == Mode::Number {
+            bits |= MODE_FLAG_NUMBER;
+        }
+        if self.last_number.is_some() {
+            bits |= MODE_FLAG_HAS_NUMBER;
+        }
+        self.mode_flags.store(bits, Ordering::Relaxed);
     }
 
     /// Push a plain Emit entry onto history, snapshotting the
@@ -218,6 +278,15 @@ impl Interpreter {
     }
 
     pub fn process(&mut self, event: &Event) -> Option<Action> {
+        let result = self.process_inner(event);
+        // Single publish per event, regardless of path. Covers every
+        // mode + last_number transition without sprinkling the body
+        // with explicit calls.
+        self.write_mode_flags();
+        result
+    }
+
+    fn process_inner(&mut self, event: &Event) -> Option<Action> {
         match event {
             Event::Chord { key, space_held, first_down } => {
                 if self.mode == Mode::Number {
