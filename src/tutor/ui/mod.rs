@@ -17,9 +17,10 @@ pub mod renderer_linux_softbuffer;
 #[cfg(target_os = "macos")]
 pub mod renderer_macos_softbuffer;
 
+pub mod compositor;
+pub mod drawing;
 pub mod text_rasterizing;
 pub mod theme;
-pub mod compositor;
 
 #[cfg(target_os = "linux")]
 pub use renderer_linux_softbuffer as renderer;

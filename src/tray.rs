@@ -33,6 +33,7 @@ use crate::tutor::drill::{TutorState, build_practice, cell_label, key_state_to_m
 use crate::tutor::ui::compositor::{
     HIT_CLOSE_BUTTON, HIT_MAXIMIZE_BUTTON, HIT_MINIMIZE_BUTTON, HIT_NONE, TutorApp,
 };
+use crate::tutor::ui::drawing;
 use crate::tutor::ui::renderer::Renderer;
 use crate::tutor::ui::text_rasterizing::TextRenderer;
 use crate::tutor::ui::theme;
@@ -552,11 +553,12 @@ impl TrayApp {
         let mut buf = renderer.lock_buffer();
         let pixels = buf.as_mut();
 
-        // Clear background + hit map every frame. Transparent (0) lets
-        // photon's edges-and-mask pass clear the squircle corners to
-        // fully transparent — the compositor then shows whatever's
-        // behind the window.
-        pixels.fill(theme::CANVAS_BG);
+        // Patchwork background texture — gives the chord cells'
+        // bevels something varied to read against. The chrome's
+        // edges-and-mask pass clears the squircle corners to fully
+        // transparent on top of this, so what's underneath the
+        // squircle stays untouched by the texture.
+        drawing::draw_background_texture(pixels, width, height, 0, true, 0);
         self.tutor_hit_test.fill(HIT_NONE);
         self.tutor_textbox_mask.fill(0);
 

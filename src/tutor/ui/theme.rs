@@ -24,16 +24,13 @@ const fn fmt(argb: u32) -> u32 {
 // ── Tray icon ────────────────────────────────────────────────────────────
 
 /// Tray icon ring colour while rhe is grabbing input — bright lime.
-pub const TRAY_RING_ON: u32 = fmt(0xFF_40_FF_40);
+pub const TRAY_RING_ON: u32 = fmt(0xFF_40_FF_00);
 /// Tray icon ring colour while rhe is passing keys through to the OS —
 /// dark purple.
-pub const TRAY_RING_OFF: u32 = fmt(0xFF_4A_1A_72);
+pub const TRAY_RING_OFF: u32 = fmt(0xFF_40_00_80);
 
 // ── Tutor canvas ─────────────────────────────────────────────────────────
-
-/// Tutor window fill behind everything else. Very dark purple, lets
-/// the squircle window edges contrast cleanly without going pure black.
-pub const CANVAS_BG: u32 = fmt(0xFF_10_10_16);
+pub const CANVAS_BG: u32 = fmt(0xFF_20_20_20);
 
 // ── Window chrome ────────────────────────────────────────────────────────
 
