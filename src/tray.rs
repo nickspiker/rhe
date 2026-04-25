@@ -26,9 +26,12 @@ use winit::window::{CursorIcon, ResizeDirection, Window, WindowId};
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
-use crate::drill::{TutorState, build_practice};
+use crate::chord_map::{BriefTable, PhonemeTable};
+use crate::drill::{TutorState, WordMode, build_practice, cell_label, key_state_to_mask};
 use crate::hand::KeyEvent as RheKeyEvent;
 use crate::interpreter::FallbackMode;
+use crate::wiki::SentenceStream;
+use crate::word_lookup::WordLookup;
 use crate::ui::compositor::{
     HIT_CLOSE_BUTTON, HIT_MAXIMIZE_BUTTON, HIT_MINIMIZE_BUTTON, HIT_NONE, TutorApp,
 };
@@ -323,6 +326,13 @@ struct TrayApp {
     tutor_state: Option<TutorState>,
     text_renderer: Option<TextRenderer>,
 
+    // Cached drill resources, kept alive between word transitions so a
+    // wiki wraparound can rebuild Practice without re-parsing cmudict /
+    // briefs. Built lazily on first `open_tutor`, dropped on close.
+    tutor_wiki_stream: Option<SentenceStream>,
+    tutor_word_lookup: Option<WordLookup>,
+    tutor_brief_table: Option<BriefTable>,
+
     /// User zoom multiplier applied on top of span-derived sizes.
     /// Adjusted live by Ctrl+scroll; 1.0 is the default.
     tutor_ru: f32,
@@ -426,19 +436,30 @@ impl TrayApp {
             w_ref.request_redraw();
         }
 
-        // Build the drill state on first open. Test-mode sentences for
-        // now (no network round-trip on open). Wiki-streamed practice
-        // is a follow-up.
+        // Build the drill state on first open. Wiki stream blocks for
+        // its first article (then prefetches the next in the
+        // background); falls back to bundled Alice text when the
+        // network isn't reachable.
         if self.tutor_state.is_none() {
             let cmudict = crate::data::load_cmudict();
-            let lookup = crate::word_lookup::WordLookup::new(&cmudict);
+            let lookup = WordLookup::new(&cmudict);
             let brief_table = crate::briefs::load_briefs();
-            let lines: Vec<String> = crate::drill::TEST_SENTENCES
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
-            let practice = build_practice(&lookup, &brief_table, lines, true);
+
+            let stream = SentenceStream::new();
+            let initial = stream.initial();
+            let lines: Vec<String> = if initial.is_empty() {
+                crate::drill::ALICE_FALLBACK
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                initial
+            };
+            let practice = build_practice(&lookup, &brief_table, lines, false);
             self.tutor_state = Some(TutorState::new(practice));
+            self.tutor_wiki_stream = Some(stream);
+            self.tutor_word_lookup = Some(lookup);
+            self.tutor_brief_table = Some(brief_table);
         }
     }
 
@@ -448,6 +469,32 @@ impl TrayApp {
         self.tutor_window = None;
         // Drop drill state too — it'll get rebuilt fresh next open.
         self.tutor_state = None;
+        self.tutor_wiki_stream = None;
+        self.tutor_word_lookup = None;
+        self.tutor_brief_table = None;
+    }
+
+    /// On wraparound, swap the drill to the next prefetched wiki batch
+    /// if one is ready. Otherwise just clear the flag — the same batch
+    /// loops, and the next wrap retries the prefetch.
+    fn maybe_swap_practice(&mut self) {
+        let Some(state) = self.tutor_state.as_mut() else {
+            return;
+        };
+        if !state.practice.wrapped {
+            return;
+        }
+        if let (Some(stream), Some(lookup), Some(brief_table)) = (
+            self.tutor_wiki_stream.as_ref(),
+            self.tutor_word_lookup.as_ref(),
+            self.tutor_brief_table.as_ref(),
+        ) {
+            if let Some(new_lines) = stream.try_next() {
+                state.practice = build_practice(lookup, brief_table, new_lines, false);
+                return;
+            }
+        }
+        state.practice.wrapped = false;
     }
 
     fn ensure_buffers(&mut self, size_px: usize) {
@@ -568,17 +615,93 @@ impl TrayApp {
             .unwrap_or_default();
         let errored = self.tutor_state.as_ref().map(|s| s.errored).unwrap_or(false);
 
+        // Sentence context: the full current sentence rendered as a
+        // single line, anchored so the current word stays centered.
+        // As word_idx advances the line shifts left, sliding completed
+        // words off and bringing upcoming words in.
+        let sentence_words: Vec<String> = self
+            .tutor_state
+            .as_ref()
+            .and_then(|s| s.practice.sentences.get(s.practice.sentence_idx))
+            .map(|s| s.iter().map(|w| w.word.clone()).collect())
+            .unwrap_or_default();
+        let cur_word_idx = self
+            .tutor_state
+            .as_ref()
+            .map(|s| s.practice.word_idx)
+            .unwrap_or(0);
+
         if let Some(text) = self.text_renderer.as_mut() {
-            let word_font = (span * ru / 5.0).max(24.0);
             let cx = bw as f32 / 2.0;
+            let word_font = (span * ru / 5.0).max(24.0);
             let cy = chrome_h as f32 + word_font;
+
+            // Sentence line above the big word.
+            if !sentence_words.is_empty() {
+                let line_font = (span * ru / 18.0).max(14.0);
+                let space_w = line_font * 0.4;
+                // Pass 1: measure each word by drawing it off-screen and
+                // capturing the returned width. Cosmic-text's bounds
+                // check skips every pixel write at far-negative x, so
+                // this is effectively a measure.
+                let widths: Vec<f32> = sentence_words
+                    .iter()
+                    .map(|w| {
+                        text.draw_text_left_u32(
+                            pixels,
+                            width,
+                            w,
+                            -1.0e6,
+                            -1.0e6,
+                            line_font,
+                            400,
+                            0,
+                            "Oxanium",
+                        )
+                    })
+                    .collect();
+                let mut left_w = 0.0f32;
+                for i in 0..cur_word_idx.min(widths.len()) {
+                    left_w += widths[i] + space_w;
+                }
+                let cur_w = widths.get(cur_word_idx).copied().unwrap_or(0.0);
+                let line_x = cx - (left_w + cur_w / 2.0);
+                let line_y = chrome_h as f32 + line_font * 1.2;
+                let mut x = line_x;
+                for (i, w) in sentence_words.iter().enumerate() {
+                    let (colour, weight) = if i == cur_word_idx {
+                        (
+                            if errored { 0xFFFF6060 } else { 0xFFFFFFFF },
+                            700,
+                        )
+                    } else if i < cur_word_idx {
+                        (0xFF60_6070, 400)
+                    } else {
+                        (0xFFB0_B0C0, 400)
+                    };
+                    text.draw_text_left_u32(
+                        pixels,
+                        width,
+                        w,
+                        x,
+                        line_y,
+                        line_font,
+                        weight,
+                        colour,
+                        "Oxanium",
+                    );
+                    x += widths.get(i).copied().unwrap_or(0.0) + space_w;
+                }
+            }
+
+            // Big centred target word.
             let colour = if errored { 0xFFFF6060 } else { 0xFFE0E0F0 };
             text.draw_text_center_u32(
                 pixels,
                 width,
                 &word_text,
                 cx,
-                cy,
+                cy + word_font * 0.6,
                 word_font,
                 700,
                 colour,
@@ -587,7 +710,7 @@ impl TrayApp {
 
             if !step_hint.is_empty() {
                 let hint_font = (span * ru / 14.0).max(12.0);
-                let hint_cy = cy + word_font * 0.9;
+                let hint_cy = cy + word_font * 1.5;
                 text.draw_text_center_u32(
                     pixels,
                     width,
@@ -605,12 +728,65 @@ impl TrayApp {
         // Keyboard diagram: 10 home/inner cells in a row + thumb cell
         // below the row's centre. Cell colour signals (target,
         // pressed, errored) state.
-        if let Some(state) = self.tutor_state.as_ref() {
-            let target = state
-                .practice
-                .current_target()
-                .copied()
-                .unwrap_or_default();
+        //
+        // Adaptive label per cell: shows what the cell's key would emit
+        // as part of the currently-held chord. Labels are computed
+        // ahead of cell rendering so the immutable tutor_state borrow
+        // doesn't conflict with the mutable text_renderer borrow that
+        // comes after.
+        let label_data: Option<(_, [String; 10], _, _, _)> =
+            if let Some(state) = self.tutor_state.as_ref() {
+                let target = state
+                    .practice
+                    .current_target()
+                    .copied()
+                    .unwrap_or_default();
+                let key_state = state.key_state.clone();
+                let held_mask = key_state_to_mask(&key_state);
+                let held_word = key_state.word;
+                let first_down = state.tutor_first_down;
+                // Drill-derived number mode: true once the mod-tap entry
+                // step of a number sequence has been taken, so the cell
+                // labels can switch to digit/symbol predictions.
+                let in_number_mode = state.practice.mode == WordMode::Number
+                    && state.practice.step_idx > 0;
+                let phonemes = PhonemeTable::new();
+                let briefs = self.tutor_brief_table.as_ref();
+                const CELL_SCANS: [u8; 10] = [
+                    crate::scan::L_PINKY,
+                    crate::scan::L_RING,
+                    crate::scan::L_MID,
+                    crate::scan::L_IDX,
+                    crate::scan::L_IDX_INNER,
+                    crate::scan::R_IDX_INNER,
+                    crate::scan::R_IDX,
+                    crate::scan::R_MID,
+                    crate::scan::R_RING,
+                    crate::scan::R_PINKY,
+                ];
+                let labels: [String; 10] = std::array::from_fn(|i| {
+                    if let Some(b) = briefs {
+                        cell_label(
+                            CELL_SCANS[i],
+                            held_mask,
+                            held_word,
+                            first_down,
+                            &phonemes,
+                            b,
+                            in_number_mode,
+                        )
+                    } else {
+                        String::new()
+                    }
+                });
+                Some((target, labels, key_state, errored, ()))
+            } else {
+                None
+            };
+
+        if let Some((target, labels, key_state, errored, _)) = label_data.as_ref() {
+            let target = *target;
+            let errored = *errored;
             let cell_d = ((span * ru / 12.0).round() as i32).max(12);
             let cell_gap = ((span * ru / 96.0).round() as i32).max(2);
             let hand_gap = cell_gap * 4;
@@ -621,50 +797,59 @@ impl TrayApp {
 
             // (bit, is_left, is_pressed) per cell, in row order.
             let left = [
-                (3usize, state.key_state.left[0]),
-                (2, state.key_state.left[1]),
-                (1, state.key_state.left[2]),
-                (0, state.key_state.left[3]),
-                (4, state.key_state.left[4]),
+                (3usize, key_state.left[0]),
+                (2, key_state.left[1]),
+                (1, key_state.left[2]),
+                (0, key_state.left[3]),
+                (4, key_state.left[4]),
             ];
             let right = [
-                (5usize, state.key_state.right[5]),
-                (0, state.key_state.right[0]),
-                (1, state.key_state.right[1]),
-                (2, state.key_state.right[2]),
-                (3, state.key_state.right[3]),
+                (5usize, key_state.right[5]),
+                (0, key_state.right[0]),
+                (1, key_state.right[1]),
+                (2, key_state.right[2]),
+                (3, key_state.right[3]),
             ];
 
+            // Cell rectangles in display order (left 0..5, right 5..10),
+            // captured during drawing so the label pass can reuse the
+            // exact centres without repeating the layout math.
+            let mut cell_centres: [(i32, i32); 10] = [(0, 0); 10];
+
             let mut x = row_x;
-            for (bit, pressed) in left {
+            for (i, (bit, pressed)) in left.iter().enumerate() {
                 let is_target = (target.left & (1u8 << bit)) != 0;
-                let fill = cell_fill(is_target, pressed, errored);
+                let fill = cell_fill(is_target, *pressed, errored);
+                let cx_cell = x + cell_d / 2;
                 cell(
                     pixels,
                     &mut self.tutor_hit_test,
                     width,
                     height,
-                    x + cell_d / 2,
+                    cx_cell,
                     cy,
                     cell_d,
                     fill,
                 );
+                cell_centres[i] = (cx_cell, cy);
                 x += cell_d + cell_gap;
             }
             x += hand_gap - cell_gap;
-            for (bit, pressed) in right {
+            for (i, (bit, pressed)) in right.iter().enumerate() {
                 let is_target = (target.right & (1u8 << bit)) != 0;
-                let fill = cell_fill(is_target, pressed, errored);
+                let fill = cell_fill(is_target, *pressed, errored);
+                let cx_cell = x + cell_d / 2;
                 cell(
                     pixels,
                     &mut self.tutor_hit_test,
                     width,
                     height,
-                    x + cell_d / 2,
+                    cx_cell,
                     cy,
                     cell_d,
                     fill,
                 );
+                cell_centres[5 + i] = (cx_cell, cy);
                 x += cell_d + cell_gap;
             }
 
@@ -676,7 +861,7 @@ impl TrayApp {
             let mod_w = 2 * cell_d + cell_gap;
             let mod_cx = row_x + row_w - mod_w / 2;
             let mod_target = (target.right & (1u8 << 4)) != 0;
-            let mod_pressed = state.key_state.right[4];
+            let mod_pressed = key_state.right[4];
             cell_wide(
                 pixels,
                 &mut self.tutor_hit_test,
@@ -701,8 +886,32 @@ impl TrayApp {
                 bottom_cy,
                 word_w,
                 cell_d,
-                cell_fill(target.word, state.key_state.word, errored),
+                cell_fill(target.word, key_state.word, errored),
             );
+
+            // Adaptive labels: draw each cell's predicted glyph centred
+            // in the cell. Done in its own pass so the text renderer's
+            // mutable borrow doesn't collide with tutor_state.
+            if let Some(text) = self.text_renderer.as_mut() {
+                let label_font = (cell_d as f32 * 0.55).max(10.0);
+                for i in 0..10 {
+                    if labels[i].is_empty() {
+                        continue;
+                    }
+                    let (cx_cell, cy_cell) = cell_centres[i];
+                    text.draw_text_center_u32(
+                        pixels,
+                        width,
+                        &labels[i],
+                        cx_cell as f32,
+                        cy_cell as f32 + label_font * 0.35,
+                        label_font,
+                        500,
+                        0xFFE8_E8F0,
+                        "Josefin Slab",
+                    );
+                }
+            }
         }
 
         // Debug overlays — photon-parity visualisations toggled with
@@ -1085,6 +1294,7 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
             TrayEvent::DrillKey(ev) => {
                 if let Some(state) = self.tutor_state.as_mut() {
                     state.tick(ev);
+                    self.maybe_swap_practice();
                     if let Some(w) = self.tutor_window.as_ref() {
                         w.request_redraw();
                     }
@@ -1303,6 +1513,9 @@ pub fn run_tray(
         tutor_window: None,
         tutor_state: None,
         text_renderer: None,
+        tutor_wiki_stream: None,
+        tutor_word_lookup: None,
+        tutor_brief_table: None,
         tutor_ru: 1.0,
         tutor_mods: ModifiersState::empty(),
         tutor_cursor: PhysicalPosition::new(0.0, 0.0),

@@ -10,7 +10,7 @@
 //! Lifted out of `tutor.rs` during Phase C so the GUI window in
 //! `tray.rs` can plug into the drill without dragging in ratatui.
 
-use crate::chord_map::{BriefTable, Phoneme};
+use crate::chord_map::{BriefTable, ChordKey, Phoneme, PhonemeTable};
 use crate::hand::{KeyDirection, KeyEvent as RheKeyEvent};
 use crate::key_mask::KeyMask;
 use crate::scan;
@@ -1047,6 +1047,112 @@ impl TutorState {
         if self.key_state.right_bits() == 0 && self.key_state.left_bits() == 0 {
             self.tutor_first_down = None;
         }
+    }
+}
+
+// ─── Adaptive cell labels ───
+
+/// Build a `KeyMask` from a `KeyState` for adaptive-label lookups.
+/// Mirrors the bit ordering used by the rest of the drill machinery.
+pub fn key_state_to_mask(state: &KeyState) -> KeyMask {
+    let mut m = KeyMask::EMPTY;
+    const L_SCANS: [u8; 4] = [scan::L_IDX, scan::L_MID, scan::L_RING, scan::L_PINKY];
+    const R_SCANS: [u8; 4] = [scan::R_IDX, scan::R_MID, scan::R_RING, scan::R_PINKY];
+    for (bit, s) in L_SCANS.iter().enumerate() {
+        if state.left_bits() & (1 << bit) != 0 {
+            m.set(*s);
+        }
+    }
+    for (bit, s) in R_SCANS.iter().enumerate() {
+        if state.right_bits() & (1 << bit) != 0 {
+            m.set(*s);
+        }
+    }
+    if state.right_bits() & (1 << 4) != 0 {
+        m.set(scan::R_THUMB);
+    }
+    if state.left[4] {
+        m.set(scan::L_IDX_INNER);
+    }
+    if state.right[5] {
+        m.set(scan::R_IDX_INNER);
+    }
+    m
+}
+
+/// Predict what `cell_scan` would emit if added to the currently-held
+/// chord, for adaptive on-cell labels.
+///
+/// - `held_word` selects between phoneme mode (word held) and brief
+///   mode (word released). In phoneme mode each hand fires
+///   independently, so the candidate chord only includes the cell's
+///   own hand bits.
+/// - `user_first_down` lets ordered briefs resolve to the right word
+///   when the user is mid-roll. When nothing is held the cell itself
+///   becomes the hypothetical lead.
+/// - `in_number_mode` swaps the lookup to digit/symbol tables.
+pub fn cell_label(
+    cell_scan: u8,
+    held_mask: KeyMask,
+    held_word: bool,
+    user_first_down: Option<u8>,
+    phonemes: &PhonemeTable,
+    briefs: &BriefTable,
+    in_number_mode: bool,
+) -> String {
+    if in_number_mode {
+        let mod_held = held_mask.test(scan::R_THUMB);
+        let mut candidate = KeyMask::EMPTY;
+        candidate.set(cell_scan);
+        if mod_held {
+            candidate.set(scan::R_THUMB);
+        }
+        let chord = ChordKey::from_mask(candidate);
+        let c = if mod_held {
+            crate::number_data::chord_to_symbol(chord)
+        } else {
+            crate::number_data::chord_to_digit(chord)
+        };
+        return c.map(|ch| ch.to_string()).unwrap_or_default();
+    }
+
+    // Phoneme mode fires each hand independently — left hand's label
+    // must only see left-hand held bits. Brief mode is a single
+    // combined chord, so all held bits contribute.
+    let base = if held_word {
+        if scan::LEFT_MASK.test(cell_scan) {
+            held_mask & scan::LEFT_MASK
+        } else if scan::RIGHT_MASK.test(cell_scan) {
+            held_mask & scan::RIGHT_MASK
+        } else {
+            KeyMask::EMPTY
+        }
+    } else {
+        held_mask
+    };
+    let mut candidate = base;
+    candidate.set(cell_scan);
+    let chord = ChordKey::from_mask(candidate);
+
+    let lookup_first = if base.is_empty() {
+        Some(cell_scan)
+    } else {
+        user_first_down
+    };
+
+    if held_word {
+        phonemes
+            .lookup(chord)
+            .map(|p| p.to_ipa().to_string())
+            .unwrap_or_default()
+    } else if let Some(entry) = briefs.lookup(chord, lookup_first) {
+        if let Some(suffix) = entry.strip_prefix('\x01') {
+            format!("-{}", suffix.trim_end())
+        } else {
+            entry.trim_end().to_string()
+        }
+    } else {
+        String::new()
     }
 }
 
