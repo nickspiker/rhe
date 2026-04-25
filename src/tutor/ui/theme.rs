@@ -93,20 +93,20 @@ pub const DOT_COLOURS: [u32; 10] = [
 /// Idle / non-target / errored fill for the eight resting-finger
 /// cells. Dark grey: present enough to anchor the row, dim enough to
 /// fade behind any active target.
-pub const CELL_IDLE: u32 = fmt(0xFF_30_30_38);
+pub const CELL_IDLE: u32 = fmt(0xFF_20_20_20);
 /// Idle fill for the two inner-index cells (idx 4, 5). Near-black so
 /// they visually drop out when not in play — they're never resting-
 /// finger keys, only used for number / symbol modes.
-pub const CELL_INNER_IDLE: u32 = fmt(0xFF_06_06_08);
+pub const CELL_INNER_IDLE: u32 = fmt(0xFF_00_00_00);
 
 /// Word-mode bar (left thumb): purple when an active target,
 /// half-brightness for ordered-brief secondary.
-pub const WORD_PRIMARY: u32 = fmt(0xFF_80_00_FF);
-pub const WORD_SECONDARY: u32 = fmt(0xFF_40_00_80);
+pub const WORD_PRIMARY: u32 = fmt(0xFF_80_00_E0);
+pub const WORD_SECONDARY: u32 = fmt(0xFF_40_00_70);
 /// Mod-key bar (right thumb): green when an active target,
 /// half-brightness for secondary.
-pub const MOD_PRIMARY: u32 = fmt(0xFF_00_FF_00);
-pub const MOD_SECONDARY: u32 = fmt(0xFF_00_7F_00);
+pub const MOD_PRIMARY: u32 = fmt(0xFF_40_E0_00);
+pub const MOD_SECONDARY: u32 = fmt(0xFF_20_70_00);
 
 // ── Cell bevel arithmetic ────────────────────────────────────────────────
 
@@ -127,16 +127,16 @@ pub const BEVEL_PRESS_DARKEN: u32 = 0x0010_1018;
 
 /// Sentence-context line: current word stays bright white + bold; past
 /// words dim to a muted grey-purple, future words sit at medium grey.
-pub const SENTENCE_CURRENT: u32 = fmt(0xFF_FF_FF_FF);
-pub const SENTENCE_PAST: u32 = fmt(0xFF_60_60_70);
-pub const SENTENCE_FUTURE: u32 = fmt(0xFF_B0_B0_C0);
+pub const SENTENCE_CURRENT: u32 = fmt(0xFF_E0_E0_E0);
+pub const SENTENCE_PAST: u32 = fmt(0xFF_70_70_70);
+pub const SENTENCE_FUTURE: u32 = fmt(0xFF_B0_B0_B0);
 
 /// Big centred drill word above the chord row.
-pub const TARGET_WORD: u32 = fmt(0xFF_E0_E0_F0);
+pub const TARGET_WORD: u32 = fmt(0xFF_E0_E0_E0);
 /// Step hint below the target word (IPA / digit / mode glyph).
-pub const STEP_HINT: u32 = fmt(0xFF_B0_B0_C0);
+pub const STEP_HINT: u32 = fmt(0xFF_B0_B0_B0);
 /// Adaptive label centred in each chord cell.
-pub const CELL_LABEL: u32 = fmt(0xFF_E8_E8_F0);
+pub const CELL_LABEL: u32 = fmt(0xFF_E0_E0_E0);
 
 // ── Generic UI palette (kept for future widgets) ─────────────────────────
 
@@ -186,10 +186,10 @@ pub const ZOOM_HINT_TEXT: u32 = fmt(0xFF_80_80_80);
 pub const DEBUG_MARKER: u32 = fmt(0xFE_FF_00_FF);
 
 // Background texture (noise generator inputs, if/when we add one).
-pub const BG_BASE: u32 = fmt(0xFF_0C_14_0E);
-pub const BG_MASK: u32 = fmt(0xFF_0F_07_1F);
+pub const BG_BASE: u32 = fmt(0xFF_10_10_10);
+pub const BG_MASK: u32 = fmt(0xFF_1F_1F_1F);
 pub const BG_ALPHA: u32 = fmt(0xFF_00_00_00);
-pub const BG_SPECKLE: u32 = fmt(0x00_3F_1F_7F);
+pub const BG_SPECKLE: u32 = fmt(0x00_30_30_30);
 
 // ── Fonts ────────────────────────────────────────────────────────────────
 

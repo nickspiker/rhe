@@ -104,16 +104,12 @@ fn scaled_logo_rgb(diameter: usize) -> Vec<u8> {
 /// dot colour for secondary, idle for everything else (including
 /// errored frames where the caller zeroes the target out). Inner-
 /// index cells (4, 5) idle to near-black; resting fingers idle to
-/// dark grey, with `pressed` darkening the grey a touch so the
-/// pressed bevel reads against a slightly different surface.
-fn finger_cell_fill(cell_idx: usize, is_target: bool, is_primary: bool, pressed: bool) -> u32 {
+/// dark grey. Press feedback comes from swapping the bevel edges
+/// in `cell()` — the fill itself is the same whether pressed or not.
+fn finger_cell_fill(cell_idx: usize, is_target: bool, is_primary: bool) -> u32 {
     if !is_target {
         let inner = cell_idx == 4 || cell_idx == 5;
-        let base = if inner { theme::CELL_INNER_IDLE } else { theme::CELL_IDLE };
-        if pressed && !inner {
-            return (base & theme::COLOUR_LSB_MASK).wrapping_sub(theme::BEVEL_PRESS_DARKEN);
-        }
-        return base;
+        return if inner { theme::CELL_INNER_IDLE } else { theme::CELL_IDLE };
     }
     if is_primary {
         theme::KEY_COLOURS[cell_idx]
@@ -125,7 +121,9 @@ fn finger_cell_fill(cell_idx: usize, is_target: bool, is_primary: bool, pressed:
 /// Pill-shaped cell via the compositor's draw_button. Square: width =
 /// height = `cell_d`. `pressed` swaps the bevel highlight/shadow so
 /// the cell reads as pushed-in instead of raised — mirrors the
-/// physical key state for live feedback.
+/// physical key state for live feedback. Photon-style fixed bevel
+/// constants (no per-fill arithmetic): same two colours every cell,
+/// just swapped on press.
 fn cell(
     pixels: &mut [u32],
     hit: &mut [u8],
@@ -140,9 +138,11 @@ fn cell(
     if cx < cell_d / 2 + 1 || cy < cell_d / 2 + 1 {
         return;
     }
-    let light = (fill & theme::COLOUR_LSB_MASK).wrapping_add(theme::BEVEL_DELTA);
-    let shadow = (fill & theme::COLOUR_LSB_MASK).wrapping_sub(theme::BEVEL_DELTA);
-    let (top_edge, bot_edge) = if pressed { (shadow, light) } else { (light, shadow) };
+    let (top_edge, bot_edge) = if pressed {
+        (theme::BUTTON_SHADOW_EDGE, theme::BUTTON_LIGHT_EDGE)
+    } else {
+        (theme::BUTTON_LIGHT_EDGE, theme::BUTTON_SHADOW_EDGE)
+    };
     crate::tutor::ui::compositor::TutorApp::draw_button(
         pixels,
         hit,
@@ -178,9 +178,11 @@ fn cell_wide(
     if cx < cell_w / 2 + 1 || cy < cell_h / 2 + 1 {
         return;
     }
-    let light = (fill & theme::COLOUR_LSB_MASK).wrapping_add(theme::BEVEL_DELTA);
-    let shadow = (fill & theme::COLOUR_LSB_MASK).wrapping_sub(theme::BEVEL_DELTA);
-    let (top_edge, bot_edge) = if pressed { (shadow, light) } else { (light, shadow) };
+    let (top_edge, bot_edge) = if pressed {
+        (theme::BUTTON_SHADOW_EDGE, theme::BUTTON_LIGHT_EDGE)
+    } else {
+        (theme::BUTTON_LIGHT_EDGE, theme::BUTTON_SHADOW_EDGE)
+    };
     crate::tutor::ui::compositor::TutorApp::draw_button(
         pixels,
         hit,
@@ -879,8 +881,7 @@ impl TrayApp {
             let mut x = row_x;
             for i in 0..5 {
                 let is_target = (target.left & (1u8 << left_bits[i])) != 0;
-                let fill =
-                    finger_cell_fill(i, is_target, is_primary(CELL_SCANS[i]), pressed[i]);
+                let fill = finger_cell_fill(i, is_target, is_primary(CELL_SCANS[i]));
                 let cx_cell = x + cell_d / 2;
                 cell(
                     pixels,
@@ -900,12 +901,8 @@ impl TrayApp {
             for i in 0..5 {
                 let cell_idx = 5 + i;
                 let is_target = (target.right & (1u8 << right_bits[i])) != 0;
-                let fill = finger_cell_fill(
-                    cell_idx,
-                    is_target,
-                    is_primary(CELL_SCANS[cell_idx]),
-                    pressed[cell_idx],
-                );
+                let fill =
+                    finger_cell_fill(cell_idx, is_target, is_primary(CELL_SCANS[cell_idx]));
                 let cx_cell = x + cell_d / 2;
                 cell(
                     pixels,

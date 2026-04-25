@@ -64,16 +64,8 @@ pub fn draw_background_texture(
     }
 }
 
-/// Splittable RNG mix constants (Murmur3 / SplitMix64-derived). Each
-/// is co-prime to 2^64 so XOR-mixing them with a small index gives
-/// a wide spread of seed states for adjacent patches.
-const SEED_BASE: usize = 0xDEADBEEF01234567;
-const ROW_MIX: usize = 0x9E3779B94517B397;
-const COARSE_X_MIX: usize = 0xBF58476D1CE4E5B9;
-const COARSE_Y_MIX: usize = 0x94D049BB133111EB;
-const FINE_X_MIX: usize = 0xD6E8FEB86659FD93;
-const FINE_Y_MIX: usize = 0xC2B2AE3D27D4EB4F;
-
+/// Draw a single row of the background texture
+/// This is the core algorithm shared between platforms
 #[inline]
 fn draw_background_row(
     row_pixels: &mut [u32],
@@ -84,45 +76,25 @@ fn draw_background_row(
     x_end: usize,
     speckle: usize,
 ) {
-    let row_seed: usize = SEED_BASE
+    // WHY: logical_row can be negative when scrolled, use wrapping for RNG seed
+    // PROOF: wrapping_sub produces consistent hash for any scroll position
+    // PREVENTS: Different behavior for negative vs positive row indices
+    let mut rng: usize = (0xDEADBEEF01234567)
         ^ ((logical_row as usize)
             .wrapping_sub(height / 2)
-            .wrapping_mul(ROW_MIX));
-
+            .wrapping_mul(0x9E3779B94517B397));
     let mask = theme::BG_MASK;
     let alpha = theme::BG_ALPHA;
-    let ones = 0x00010101u32;
+    let ones = 0x00010101;
     let base = theme::BG_BASE;
     let speckle_colour = theme::BG_SPECKLE;
-
-    // Per-row vertical patch hashes — mixed in at horizontal patch
-    // boundaries so the (cx, cy) cell as a whole gets its own seed.
-    let dist_y = (logical_row.unsigned_abs() as usize).wrapping_sub(height / 2);
-    let coarse_y = (dist_y / PATCH_COARSE).wrapping_mul(COARSE_Y_MIX);
-    let fine_y = (dist_y / PATCH_FINE).wrapping_mul(FINE_Y_MIX);
-
-    let centre = width / 2;
-
-    // Right half: left-to-right.
-    let mut rng = row_seed;
     let mut colour = rng as u32 & mask | alpha;
-    let mut last_coarse = usize::MAX;
-    let mut last_fine = usize::MAX;
-    for x in centre..x_end {
-        let dist_x = x - centre;
-        let coarse = dist_x / PATCH_COARSE;
-        let fine = dist_x / PATCH_FINE;
-        if coarse != last_coarse {
-            rng ^= coarse.wrapping_mul(COARSE_X_MIX) ^ coarse_y;
-            last_coarse = coarse;
-        }
-        if fine != last_fine {
-            rng ^= fine.wrapping_mul(FINE_X_MIX) ^ fine_y;
-            last_fine = fine;
-        }
+
+    // Right half: left-to-right
+    for x in width / 2..x_end {
         rng ^= rng.rotate_left(13).wrapping_add(12345678942);
         let adder = rng as u32 & ones;
-        if rng.wrapping_add(speckle) < usize::MAX / 256 {
+        if rng.wrapping_add(speckle) < usize::MAX >> 6 {
             colour = rng as u32 >> 8 & speckle_colour | alpha;
         } else {
             colour = colour.wrapping_add(adder) & mask;
@@ -132,28 +104,17 @@ fn draw_background_row(
         row_pixels[x] = colour.wrapping_add(base) | alpha;
     }
 
-    // Left half: right-to-left, distance-from-centre indexed so the
-    // patch-boundary mix-ins land at mirrored x's, preserving overall
-    // left/right symmetry of the patchwork.
-    rng = row_seed;
+    // Left half: right-to-left (mirror)
+    rng = 0xDEADBEEF01234567
+        ^ ((logical_row as usize)
+            .wrapping_sub(height / 2)
+            .wrapping_mul(0x9E3779B94517B397));
     colour = rng as u32 & mask | alpha;
-    last_coarse = usize::MAX;
-    last_fine = usize::MAX;
-    for x in (x_start..centre).rev() {
-        let dist_x = centre - 1 - x;
-        let coarse = dist_x / PATCH_COARSE;
-        let fine = dist_x / PATCH_FINE;
-        if coarse != last_coarse {
-            rng ^= coarse.wrapping_mul(COARSE_X_MIX) ^ coarse_y;
-            last_coarse = coarse;
-        }
-        if fine != last_fine {
-            rng ^= fine.wrapping_mul(FINE_X_MIX) ^ fine_y;
-            last_fine = fine;
-        }
+
+    for x in (x_start..width / 2).rev() {
         rng ^= rng.rotate_left(13).wrapping_sub(12345678942);
         let adder = rng as u32 & ones;
-        if rng.wrapping_add(speckle) < usize::MAX / 256 {
+        if rng.wrapping_add(speckle) < usize::MAX >> 6 {
             colour = rng as u32 >> 8 & speckle_colour | alpha;
         } else {
             colour = colour.wrapping_add(adder) & mask;
