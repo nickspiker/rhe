@@ -26,9 +26,9 @@ use winit::window::{CursorIcon, ResizeDirection, Window, WindowId};
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
-use crate::preferences::chord_map::{BriefTable, PhonemeTable};
 use crate::hand::KeyEvent as RheKeyEvent;
 use crate::interpreter::FallbackMode;
+use crate::preferences::chord_map::{BriefTable, PhonemeTable};
 use crate::tutor::drill::{TutorState, build_practice, cell_label, key_state_to_mask};
 use crate::tutor::ui::compositor::{
     HIT_CLOSE_BUTTON, HIT_MAXIMIZE_BUTTON, HIT_MINIMIZE_BUTTON, HIT_NONE, TutorApp,
@@ -100,6 +100,142 @@ fn scaled_logo_rgb(diameter: usize) -> Vec<u8> {
     dst
 }
 
+/// Geometry for every element the tutor draws — chord row,
+/// word/mod bar, target word, step hint, sentence line, cell labels.
+/// Computed once per redraw from `(window, ru, chrome_h)`.
+///
+/// Design split:
+///   - **Outer positions / row width** depend on `span` only — the
+///     chord row sits in the same place at any zoom, the sentence
+///     line / target word / step hint anchor to the same span-derived
+///     Y values, and the row's outer width is fixed in span.
+///   - **Inner sizes** (cell edge, fonts, label font) scale with
+///     `ru`. As `ru` shrinks the cells get smaller and the gaps
+///     between them widen to keep `row_w` fixed; the bottom row's
+///     word bar + 2-cell mod pill follow the same gap.
+///   - **Gaps absorb the slack**: `row_w = 10·cell_d + 8·cell_gap +
+///     hand_gap`, with `hand_gap = 4·cell_gap`, so 12 gap-units total.
+///     Solving for `cell_gap` gives an auto-fitting result that
+///     widens as `cell_d` shrinks.
+struct TutorLayout {
+    // Window
+    bw: i32,
+    bh: i32,
+    chrome_h: i32,
+
+    // Sentence-context line above the target word.
+    sentence_font: f32,
+    sentence_cy: f32,
+    sentence_space_w: f32,
+
+    // Big centred drill word + step hint.
+    target_font: f32,
+    target_cx: f32,
+    target_cy: f32,
+    hint_font: f32,
+    hint_cx: f32,
+    hint_cy: f32,
+
+    // Chord row (10 finger cells).
+    cell_d: i32,
+    cell_gap: i32,
+    hand_gap: i32,
+    row_x: i32,
+    row_w: i32,
+    row_cy: i32,
+
+    // Bottom row: long word bar + 2-cell mod pill on the right.
+    bottom_cy: i32,
+    word_cx: i32,
+    word_w: i32,
+    mod_cx: i32,
+    mod_w: i32,
+
+    // Adaptive cell labels (centred in each chord cell).
+    label_font: f32,
+}
+
+impl TutorLayout {
+    fn compute(window_w: u32, window_h: u32, chrome_h: i32, ru: f32) -> Self {
+        let bw = window_w as i32;
+        let bh = window_h as i32;
+        let span = crate::tutor::ui::span(window_w, window_h);
+        let cx = bw as f32 / 2.0;
+
+        // ── Outer (span-only) ────────────────────────────────────
+        // Row width 23/24·span — picked to match the ru=1.0 layout
+        // we had before this struct (10·span/12 + 12·span/96 = 23/24·span)
+        // so the visual at full zoom is unchanged.
+        let row_w = ((span * 23.0 / 24.0).round() as i32).max(48);
+        let row_x = (bw - row_w) / 2;
+        let row_cy = bh - (span * 0.21).round() as i32;
+        let bottom_cy = row_cy + (span * 0.094).round() as i32;
+
+        // ── Inner (ru-scaled), with row-fit clamp ────────────────
+        // Cell size: natural `span·ru/12`, clamped so the row can
+        // still hold 10 cells + 12 gap-units of at least 2px.
+        let cell_d_natural = (span * ru / 12.0).round() as i32;
+        let cell_d_max = ((row_w - 12 * 2) / 10).max(12);
+        let cell_d = cell_d_natural.clamp(12, cell_d_max);
+
+        // Gaps fill whatever's left. 8 cell-cell gaps + a 4-unit
+        // hand gap = 12 gap-units total.
+        let cell_gap = ((row_w - 10 * cell_d) / 12).max(2);
+        let hand_gap = cell_gap * 4;
+
+        // Bottom-row pills (mod right-aligned, word fills the rest).
+        let mod_w = 2 * cell_d + cell_gap;
+        let mod_cx = row_x + row_w - mod_w / 2;
+        let word_sep = cell_gap * 2;
+        let word_w = row_w - mod_w - word_sep;
+        let word_cx = row_x + word_w / 2;
+
+        // ── Text fonts (ru-scaled) ───────────────────────────────
+        let target_font = (span * ru / 5.0).max(24.0);
+        let hint_font = (span * ru / 14.0).max(12.0);
+        let sentence_font = (span * ru / 18.0).max(14.0);
+        let sentence_space_w = sentence_font * 0.4;
+        let label_font = (cell_d as f32 * 0.55).max(10.0);
+
+        // ── Text vertical positions (span-only) ──────────────────
+        // Chosen to match the prior ru=1.0 anchors: sentence line
+        // centred at chrome_h + 1.2·sentence_font; target word at
+        // chrome_h + 1.6·target_font; hint at chrome_h + 2.5·target_font.
+        // Substituting the ru=1.0 fonts gives 0.067·span / 0.32·span /
+        // 0.50·span respectively.
+        let sentence_cy = chrome_h as f32 + span * 0.067;
+        let target_cy = chrome_h as f32 + span * 0.32;
+        let hint_cy = chrome_h as f32 + span * 0.50;
+
+        Self {
+            bw,
+            bh,
+            chrome_h,
+            sentence_font,
+            sentence_cy,
+            sentence_space_w,
+            target_font,
+            target_cx: cx,
+            target_cy,
+            hint_font,
+            hint_cx: cx,
+            hint_cy,
+            cell_d,
+            cell_gap,
+            hand_gap,
+            row_x,
+            row_w,
+            row_cy,
+            bottom_cy,
+            word_cx,
+            word_w,
+            mod_cx,
+            mod_w,
+            label_font,
+        }
+    }
+}
+
 /// Look up the cell fill: primary key colour for primary targets,
 /// dot colour for secondary, idle for everything else (including
 /// errored frames where the caller zeroes the target out). Inner-
@@ -109,7 +245,11 @@ fn scaled_logo_rgb(diameter: usize) -> Vec<u8> {
 fn finger_cell_fill(cell_idx: usize, is_target: bool, is_primary: bool) -> u32 {
     if !is_target {
         let inner = cell_idx == 4 || cell_idx == 5;
-        return if inner { theme::CELL_INNER_IDLE } else { theme::CELL_IDLE };
+        return if inner {
+            theme::CELL_INNER_IDLE
+        } else {
+            theme::CELL_IDLE
+        };
     }
     if is_primary {
         theme::KEY_COLOURS[cell_idx]
@@ -222,7 +362,11 @@ fn make_tray_icon(size: u32, online: bool) -> Icon {
 
     let mut pixels = vec![0u32; w * h];
     let logo = scaled_logo_rgb(diameter);
-    let ring = if online { theme::TRAY_RING_ON } else { theme::TRAY_RING_OFF };
+    let ring = if online {
+        theme::TRAY_RING_ON
+    } else {
+        theme::TRAY_RING_OFF
+    };
     TutorApp::draw_avatar(
         &mut pixels,
         None,
@@ -597,12 +741,10 @@ impl TrayApp {
         // the content area, step hint below (small, Josefin Slab,
         // either IPA / Autospell letters or a number-mode glyph),
         // then a row of keyboard cells reflecting the current target
-        // and live key state.
-        let span = crate::tutor::ui::span(size.width, size.height);
-        let ru = self.tutor_ru;
-        let chrome_h = button_height as i32;
-        let bw = size.width as i32;
-        let bh = size.height as i32;
+        // and live key state. Geometry computed once via TutorLayout
+        // (outer positions span-only; cell + font sizes scale with ru).
+        let layout =
+            TutorLayout::compute(size.width, size.height, button_height as i32, self.tutor_ru);
 
         let word_text = self
             .tutor_state
@@ -628,7 +770,11 @@ impl TrayApp {
                 }
             })
             .unwrap_or_default();
-        let errored = self.tutor_state.as_ref().map(|s| s.errored).unwrap_or(false);
+        let errored = self
+            .tutor_state
+            .as_ref()
+            .map(|s| s.errored)
+            .unwrap_or(false);
 
         // Sentence context: the full current sentence rendered as a
         // single line, anchored so the current word stays centered.
@@ -647,14 +793,8 @@ impl TrayApp {
             .unwrap_or(0);
 
         if let Some(text) = self.text_renderer.as_mut() {
-            let cx = bw as f32 / 2.0;
-            let word_font = (span * ru / 5.0).max(24.0);
-            let cy = chrome_h as f32 + word_font;
-
             // Sentence line above the big word.
             if !sentence_words.is_empty() {
-                let line_font = (span * ru / 18.0).max(14.0);
-                let space_w = line_font * 0.4;
                 // Pass 1: measure each word by drawing it off-screen and
                 // capturing the returned width. Cosmic-text's bounds
                 // check skips every pixel write at far-negative x, so
@@ -668,7 +808,7 @@ impl TrayApp {
                             w,
                             -1.0e6,
                             -1.0e6,
-                            line_font,
+                            layout.sentence_font,
                             400,
                             0,
                             "Oxanium",
@@ -677,11 +817,10 @@ impl TrayApp {
                     .collect();
                 let mut left_w = 0.0f32;
                 for i in 0..cur_word_idx.min(widths.len()) {
-                    left_w += widths[i] + space_w;
+                    left_w += widths[i] + layout.sentence_space_w;
                 }
                 let cur_w = widths.get(cur_word_idx).copied().unwrap_or(0.0);
-                let line_x = cx - (left_w + cur_w / 2.0);
-                let line_y = chrome_h as f32 + line_font * 1.2;
+                let line_x = layout.target_cx - (left_w + cur_w / 2.0);
                 let mut x = line_x;
                 for (i, w) in sentence_words.iter().enumerate() {
                     let (colour, weight) = if i == cur_word_idx {
@@ -696,41 +835,38 @@ impl TrayApp {
                         width,
                         w,
                         x,
-                        line_y,
-                        line_font,
+                        layout.sentence_cy,
+                        layout.sentence_font,
                         weight,
                         colour,
                         "Oxanium",
                     );
-                    x += widths.get(i).copied().unwrap_or(0.0) + space_w;
+                    x += widths.get(i).copied().unwrap_or(0.0) + layout.sentence_space_w;
                 }
             }
 
             // Big centred target word. No errored colour swap — the
             // cue lives entirely in the keyboard row going dark.
-            let colour = theme::TARGET_WORD;
             text.draw_text_center_u32(
                 pixels,
                 width,
                 &word_text,
-                cx,
-                cy + word_font * 0.6,
-                word_font,
+                layout.target_cx,
+                layout.target_cy,
+                layout.target_font,
                 700,
-                colour,
+                theme::TARGET_WORD,
                 "Oxanium",
             );
 
             if !step_hint.is_empty() {
-                let hint_font = (span * ru / 14.0).max(12.0);
-                let hint_cy = cy + word_font * 1.5;
                 text.draw_text_center_u32(
                     pixels,
                     width,
                     &step_hint,
-                    cx,
-                    hint_cy,
-                    hint_font,
+                    layout.hint_cx,
+                    layout.hint_cy,
+                    layout.hint_font,
                     400,
                     theme::STEP_HINT,
                     "Josefin Slab",
@@ -749,11 +885,7 @@ impl TrayApp {
         // comes after.
         let label_data: Option<(_, [String; 10], _, _, _)> =
             if let Some(state) = self.tutor_state.as_ref() {
-                let target = state
-                    .practice
-                    .current_target()
-                    .copied()
-                    .unwrap_or_default();
+                let target = state.practice.current_target().copied().unwrap_or_default();
                 let key_state = state.key_state.clone();
                 let held_mask = key_state_to_mask(&key_state);
                 let held_word = key_state.word;
@@ -767,8 +899,7 @@ impl TrayApp {
                 // meaning when a pure integer is one slot back).
                 let mode_bits = self.mode_flags.load(Ordering::Relaxed);
                 let in_number_mode = mode_bits & crate::interpreter::MODE_FLAG_NUMBER != 0;
-                let has_number_context =
-                    mode_bits & crate::interpreter::MODE_FLAG_HAS_NUMBER != 0;
+                let has_number_context = mode_bits & crate::interpreter::MODE_FLAG_HAS_NUMBER != 0;
                 let phonemes = PhonemeTable::new();
                 let briefs = self.tutor_brief_table.as_ref();
                 const CELL_SCANS: [u8; 10] = [
@@ -813,17 +944,12 @@ impl TrayApp {
             } else {
                 *target
             };
-            let first_down = self
-                .tutor_state
-                .as_ref()
-                .and_then(|s| s.tutor_first_down);
-            let cell_d = ((span * ru / 12.0).round() as i32).max(12);
-            let cell_gap = ((span * ru / 96.0).round() as i32).max(2);
-            let hand_gap = cell_gap * 4;
-            let row_w = 10 * cell_d + 8 * cell_gap + hand_gap;
-            let row_x = (bw - row_w) / 2;
-            let row_y = bh - cell_d * 3;
-            let cy = row_y + cell_d / 2;
+            let first_down = self.tutor_state.as_ref().and_then(|s| s.tutor_first_down);
+            let cell_d = layout.cell_d;
+            let cell_gap = layout.cell_gap;
+            let hand_gap = layout.hand_gap;
+            let row_x = layout.row_x;
+            let cy = layout.row_cy;
 
             // Cell scancodes in display order; needed both for cell-
             // colour primary/secondary checks and for the label pass.
@@ -901,8 +1027,7 @@ impl TrayApp {
             for i in 0..5 {
                 let cell_idx = 5 + i;
                 let is_target = (target.right & (1u8 << right_bits[i])) != 0;
-                let fill =
-                    finger_cell_fill(cell_idx, is_target, is_primary(CELL_SCANS[cell_idx]));
+                let fill = finger_cell_fill(cell_idx, is_target, is_primary(CELL_SCANS[cell_idx]));
                 let cx_cell = x + cell_d / 2;
                 cell(
                     pixels,
@@ -924,9 +1049,9 @@ impl TrayApp {
             // aligned under R-pinky). Word = purple, mod = green —
             // distinct from the finger gradient so the thumb/word
             // roles read at a glance.
-            let bottom_cy = cy + cell_d + cell_gap;
-            let mod_w = 2 * cell_d + cell_gap;
-            let mod_cx = row_x + row_w - mod_w / 2;
+            let bottom_cy = layout.bottom_cy;
+            let mod_w = layout.mod_w;
+            let mod_cx = layout.mod_cx;
             let mod_target = (target.right & (1u8 << 4)) != 0;
             // Mod-tap-only target (thumb alone, no fingers): step
             // advances on key-UP, so cell goes dark once thumb is
@@ -940,7 +1065,11 @@ impl TrayApp {
                 let mod_primary = target.accepted_leads.is_empty()
                     || first_down.is_some()
                     || target.accepted_leads.test(crate::scan::R_THUMB);
-                if mod_primary { theme::MOD_PRIMARY } else { theme::MOD_SECONDARY }
+                if mod_primary {
+                    theme::MOD_PRIMARY
+                } else {
+                    theme::MOD_SECONDARY
+                }
             };
             let mod_pressed = key_state.right[4];
             cell_wide(
@@ -956,10 +1085,13 @@ impl TrayApp {
                 mod_pressed,
             );
 
-            let word_sep = cell_gap * 2;
-            let word_w = row_w - mod_w - word_sep;
-            let word_cx = row_x + word_w / 2;
-            let word_fill = if target.word { theme::WORD_PRIMARY } else { theme::CELL_IDLE };
+            let word_w = layout.word_w;
+            let word_cx = layout.word_cx;
+            let word_fill = if target.word {
+                theme::WORD_PRIMARY
+            } else {
+                theme::CELL_IDLE
+            };
             let word_pressed = key_state.word;
             cell_wide(
                 pixels,
@@ -979,7 +1111,7 @@ impl TrayApp {
             // in the cell. Done in its own pass so the text renderer's
             // mutable borrow doesn't collide with tutor_state.
             if let Some(text) = self.text_renderer.as_mut() {
-                let label_font = (cell_d as f32 * 0.55).max(10.0);
+                let label_font = layout.label_font;
                 for i in 0..10 {
                     if labels[i].is_empty() {
                         continue;
