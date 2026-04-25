@@ -108,21 +108,6 @@ pub const WORD_SECONDARY: u32 = fmt(0xFF_40_00_70);
 pub const MOD_PRIMARY: u32 = fmt(0xFF_40_E0_00);
 pub const MOD_SECONDARY: u32 = fmt(0xFF_20_70_00);
 
-// ── Cell bevel arithmetic ────────────────────────────────────────────────
-
-/// LSB strip mask. AND a colour with this before adding/subtracting a
-/// delta so the bottom bit of each channel can't carry into the next
-/// channel during wrap. Required because `wrapping_add` / `wrapping_sub`
-/// treat the u32 as a single integer, not four packed channels.
-pub const COLOUR_LSB_MASK: u32 = 0xFEFE_FEFE;
-/// Bevel highlight / shadow magnitude. Added to the cell fill for the
-/// raised top-left edge, subtracted for the bottom-right shadow. The
-/// edges swap when the cell is drawn pressed.
-pub const BEVEL_DELTA: u32 = 0x0020_2020;
-/// Extra darken applied to a pressed grey idle cell so the inverted
-/// bevel reads against a slightly different surface.
-pub const BEVEL_PRESS_DARKEN: u32 = 0x0010_1018;
-
 // ── Tutor text ───────────────────────────────────────────────────────────
 
 /// Sentence-context line: current word stays bright white + bold; past
@@ -150,7 +135,7 @@ pub const TEXT_SELECTION_COLOUR: u32 = fmt(0xFF_D0_D0_D0);
 
 // Generic button palette.
 pub const BUTTON_BASE: u32 = fmt(0xFF_40_40_40);
-pub const BUTTON_LIGHT_EDGE: u32 = fmt(0xFF_60_60_60);
+pub const BUTTON_LIGHT_EDGE: u32 = fmt(0xFF_40_40_40);
 pub const BUTTON_SHADOW_EDGE: u32 = fmt(0xFF_20_20_20);
 pub const BUTTON_HAIRLINE: u32 = fmt(0xFF_32_32_32);
 pub const BUTTON_BLUE: u32 = fmt(0xFF_20_30_50);

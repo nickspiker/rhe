@@ -60,8 +60,7 @@ release everything. One gesture = one word. No word key needed.
 
 496 words have rolls assigned, ranked by `frequency × phonemes_saved`.
 Right-hand-only slots (31) go to 2+ phoneme words. Two-hand slots
-(465) go to 3+ phoneme words. Effort ordering measured on real hands
-via `rhe bench`.
+(465) go to 3+ phoneme words. Effort ordering measured on real hands.
 
 Rolls can be typed on 6-key-rollover keyboards by rolling hands
 sequentially: left hand down → right hand down → left up → right up.
@@ -162,8 +161,7 @@ target keys dim to the dot colour. The brighter cell is the
 
 Mapped by frequency × measured chord effort. No voicing pairs —
 pure speed optimization. The most common consonant (T) gets the
-fastest chord (index). Assignments measured on real hands via
-`rhe bench`.
+fastest chord (index). Assignments measured on real hands.
 
 ```
 Fingers     No thumb        +Thumb
@@ -282,11 +280,13 @@ physical key change = one event = one state machine transition.
 ## Running
 
 ```
-cargo run --release -- tutor     learn the chords
-cargo run --release -- run       full engine (tray icon on macOS + Linux)
+cargo run --release              full engine (tray icon on macOS + Linux)
 cargo run --bin gen_briefs       regenerate roll assignments
 cargo test                       verify everything
 ```
+
+The interactive tutor opens from the tray icon's right-click menu
+("Open Tutor") — no separate CLI subcommand.
 
 ### macOS
 
@@ -317,7 +317,7 @@ sudo modprobe -r uinput && sudo modprobe uinput
 ```
 
 Log out and back in (or `newgrp input`) for the group change to
-apply. `rhe tutor` and `rhe run` both work on Linux.
+apply.
 
 `rhe run` shows a tray icon (StatusNotifierItem) with a right-click
 menu: mode toggle (`rhe` ↔ `keyboard`), fallback toggle
@@ -347,10 +347,11 @@ Done:
 
 - **IOHIDManager driver** (macOS) — raw HID, one event per key change
 - **evdev driver** (Linux) — pre-xkb scancode grab + uinput passthrough
-- **Interactive tutor** — step-by-step chord teaching with real-time
-  key display, error recovery, brief/phoneme mode switching
-- **Bench mode** (`rhe bench`) — measures chord speed per finger combo,
-  averages across rounds, outputs ranking for mapping optimization
+- **Interactive tutor** — GUI drill window opened from the tray
+  menu, with real-time key display, error recovery, brief/phoneme
+  mode switching, adaptive cell labels (each cell shows what its
+  press would emit in the current chord), and a scrolling sentence
+  context line above the target word
 - **Frequency-optimized phoneme mapping** — 24 consonants + 15 vowels
   assigned by measured effort × phoneme frequency. No voicing pairs.
 - **Roll system** — 496 word rolls ranked by `frequency × phonemes_saved`,
@@ -360,7 +361,7 @@ Done:
 - **Brief generator** — `gen_briefs` with stemming, proper-noun
   exclusion, and a unified greedy pass ranking candidate words by
   `frequency × (phonemes - 1)` against slots sorted by ergonomic
-  effort. Writes `src/briefs_data.rs`.
+  effort. Writes `src/preferences/briefs_data.rs`.
 - **Curated candidates file** — `data/brief_candidates.txt` is the
   editable source of truth for which words get briefs. `gen_briefs`
   writes it on first run (top-1000, savings-weighted) and reads it
@@ -375,9 +376,9 @@ Done:
   (no/know, here/hear, right/write) use symmetric same-finger-per-
   hand split chords; 3-way sets (to/too/two, for/four/fore) use
   single-hand 3- or 4-finger chords with outer-left / outer-right /
-  center leads. Curated in `src/ordered_briefs_data.rs`; the tutor
-  brightens the first-down cell so the ordering is obvious at a
-  glance.
+  center leads. Curated in `src/preferences/ordered_briefs_data.rs`;
+  the tutor brightens the first-down cell so the ordering is
+  obvious at a glance.
 - **Linux text output** — libxkbcommon reverse-map + uinput injection
   for Latin output in the user's active layout (Dvorak/Colemak/any),
   with `Ctrl+Shift+U <hex> Enter` fallback for IPA and other unicode
@@ -392,40 +393,46 @@ Done:
   or a caps-tap proxy nudge fires. Caps-lock LED tracks mode on
   macOS (off = rhe, on = keyboard); Linux uses the tray icon's color
   since xkb fights direct LED writes.
-- **Random practice text** — tutor fetches 20 random Wikipedia
-  article extracts via the MediaWiki batch API, strips brackets/
-  parentheticals/non-ASCII, dedupes, caches to
-  `~/.cache/rhe/practice_wiki.txt` for a week. Falls back to bundled
-  Alice in Wonderland if offline. Random starting sentence each run.
+- **Random practice text** — tutor pulls Wikipedia article extracts
+  via the MediaWiki random-article API, double-buffered: one batch
+  serves the current drill while the next prefetches in the
+  background, so wraparounds swap instantly. Strips brackets,
+  parentheticals, non-ASCII; falls back to bundled Alice in
+  Wonderland if offline. Random starting sentence each run.
+- **Number mode** — `word + mod` tap to enter. Ten home-row +
+  inner-index positions (G/H included) map 1-to-1 to digits 0–9;
+  mod-variants give symbols (`+`, `-`, `*`, `/`, `%`, etc.). Word
+  release commits, then six L-hand chords transform the just-emitted
+  integer into spelled cardinal / ordinal / multiplier / group /
+  fraction / prefix forms.
+- **Six physical layouts** — narrow / medium / wide × right- or
+  left-dominant. `CURRENT` in `src/preferences/layout.rs` picks the
+  active one at compile time; the rest of the engine is agnostic.
+- **Repository reorg** — user-tunable mappings live under
+  `src/preferences/` (chord_map, layout, briefs, suffixes, number
+  data, number forms); GUI + drill state under `src/tutor/` (drill,
+  wiki, ui/compositor + ui/drawing + ui/text_rasterizing + ui/theme).
+  Single `theme.rs` is the source of truth for every colour.
 
 Short-term:
 
 - **Auto chord mapping** — `gen_map` reads bench timings + phoneme
   frequencies and generates `src/chord_map_data.rs` automatically.
   Users run bench, rebuild, mapping is personalized to their hands.
-- **Number mode** — `word + mod` tap to enter. Ten physical finger
-  positions (home row extended to include the inner-index stretch
-  keys, QWERTY G + H) map 1-to-1 to digits 0–9. Mirrored 2-finger
-  chords for negate, decimal point, thousands separator; mod-variants
-  for `%`, `°`, `e`, `π`, etc.
-- **Operators and symbols** — extended chord set for math, punctuation,
-  and common programmer symbols, accessible via mode-switch chords.
+- **Operators and symbols beyond the number-mode set** — extended
+  chord set for punctuation and common programmer symbols
+  reachable from a non-number sub-mode, so they don't fight for
+  digit slots.
 - **Brief generator improvements** — rework the brief-selection
   scoring to (a) exclude natural-split 2-phoneme words where the
   brief gesture equals the phoneme gesture (wasted slot), (b) rank
   chord slots by ergonomic cost (finger count + tendon-conflict
   skip patterns), and (c) match value-ranked words to cost-ranked
   slots pairwise rather than bit-order.
-- **Shifted-right alternate layout** — the left hand stays on A S D F
-  but the right hand moves two keys right (onto L ; ' \\ instead of
-  J K L ;). Thumbs swap roles: left thumb becomes the mod/voicing
-  bit (spacebar), right thumb becomes the word key (alt / cmd).
-  Reason: wider hand separation is more ergonomic for some users,
-  the inner-index stretches (G H) are freed for number-mode digits
-  without stealing from the chord keyspace, and putting the word
-  key on the dominant-hand thumb may speed up phoneme-mode entry.
-  Switchable per-user via the eventual config file — or a build-
-  time flag until config lands.
+- **Runtime layout switching** — `CURRENT` in `layout.rs` is
+  compile-time; expose a tray-menu picker (or config file) so
+  users can swap between the six bundled layouts without
+  recompiling.
 
 Longer-term:
 
