@@ -26,6 +26,8 @@ use winit::window::{CursorIcon, ResizeDirection, Window, WindowId};
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
+use crate::drill::{TutorState, build_practice};
+use crate::hand::KeyEvent as RheKeyEvent;
 use crate::interpreter::FallbackMode;
 use crate::ui::compositor::{
     HIT_CLOSE_BUTTON, HIT_MAXIMIZE_BUTTON, HIT_MINIMIZE_BUTTON, HIT_NONE, TutorApp,
@@ -98,6 +100,94 @@ fn scaled_logo_rgb(diameter: usize) -> Vec<u8> {
     dst
 }
 
+/// Pick a cell fill colour based on whether the cell is part of the
+/// current target, whether the user has the corresponding key
+/// physically pressed, and whether the drill is currently in an
+/// errored state (mistake, waiting for hands-off to clear).
+fn cell_fill(is_target: bool, pressed: bool, errored: bool) -> u32 {
+    match (is_target, pressed, errored) {
+        // Wrong key down while errored → red.
+        (false, true, true) => 0xFF80_2020,
+        // Wrong key down (drill not yet errored — about to be).
+        (false, true, false) => 0xFF60_2020,
+        // Target lit + correctly pressed → bright lime.
+        (true, true, _) => 0xFF40_FF40,
+        // Target lit + waiting for the press → warm hint colour.
+        (true, false, _) => 0xFF80_6020,
+        // Idle.
+        (false, false, _) => 0xFF30_3038,
+    }
+}
+
+/// Pill-shaped cell via the compositor's draw_button. Square: width =
+/// height = `cell_d`.
+fn cell(
+    pixels: &mut [u32],
+    hit: &mut [u8],
+    w: usize,
+    h: usize,
+    cx: i32,
+    cy: i32,
+    cell_d: i32,
+    fill: u32,
+) {
+    if cx < cell_d / 2 + 1 || cy < cell_d / 2 + 1 {
+        return;
+    }
+    let light = (fill & 0xFEFE_FEFE).wrapping_add(0x0020_2020);
+    let shadow = (fill & 0xFEFE_FEFE).wrapping_sub(0x0020_2020);
+    crate::ui::compositor::TutorApp::draw_button(
+        pixels,
+        hit,
+        None,
+        w,
+        h,
+        cx as usize,
+        cy as usize,
+        cell_d as usize,
+        cell_d as usize,
+        crate::ui::compositor::HIT_NONE,
+        fill,
+        light,
+        shadow,
+    );
+}
+
+/// Pill-shaped cell, allowing distinct width/height (used for the
+/// thumb / mod cell which is rendered wider).
+fn cell_wide(
+    pixels: &mut [u32],
+    hit: &mut [u8],
+    w: usize,
+    h: usize,
+    cx: i32,
+    cy: i32,
+    cell_w: i32,
+    cell_h: i32,
+    fill: u32,
+) {
+    if cx < cell_w / 2 + 1 || cy < cell_h / 2 + 1 {
+        return;
+    }
+    let light = (fill & 0xFEFE_FEFE).wrapping_add(0x0020_2020);
+    let shadow = (fill & 0xFEFE_FEFE).wrapping_sub(0x0020_2020);
+    crate::ui::compositor::TutorApp::draw_button(
+        pixels,
+        hit,
+        None,
+        w,
+        h,
+        cx as usize,
+        cy as usize,
+        cell_w as usize,
+        cell_h as usize,
+        crate::ui::compositor::HIT_NONE,
+        fill,
+        light,
+        shadow,
+    );
+}
+
 /// Render the tray icon: ring around a scaled-down logo.png via the
 /// compositor's `draw_avatar` in straight-alpha mode (so the outer AA
 /// fringe carries real alpha and the icon fades to transparent
@@ -156,6 +246,11 @@ pub enum TrayEvent {
     StateChanged,
     /// A menu item was clicked.
     Menu(MenuId),
+    /// The engine thread observed a key event. Forwarded to the tutor
+    /// window if it's open so the drill state machine can advance.
+    /// Sent unconditionally — the tray drops it on the floor when no
+    /// tutor window exists.
+    DrillKey(RheKeyEvent),
 }
 
 /// Handle a tray can pass to other threads so they can wake the event loop.
@@ -225,6 +320,7 @@ struct TrayApp {
     // the window below, and must be dropped first to avoid dangling).
     tutor_renderer: Option<Renderer>,
     tutor_window: Option<Window>,
+    tutor_state: Option<TutorState>,
     text_renderer: Option<TextRenderer>,
 
     /// User zoom multiplier applied on top of span-derived sizes.
@@ -329,12 +425,29 @@ impl TrayApp {
             w_ref.focus_window();
             w_ref.request_redraw();
         }
+
+        // Build the drill state on first open. Test-mode sentences for
+        // now (no network round-trip on open). Wiki-streamed practice
+        // is a follow-up.
+        if self.tutor_state.is_none() {
+            let cmudict = crate::data::load_cmudict();
+            let lookup = crate::word_lookup::WordLookup::new(&cmudict);
+            let brief_table = crate::briefs::load_briefs();
+            let lines: Vec<String> = crate::drill::TEST_SENTENCES
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            let practice = build_practice(&lookup, &brief_table, lines, true);
+            self.tutor_state = Some(TutorState::new(practice));
+        }
     }
 
     fn close_tutor(&mut self) {
         // Order matters: renderer first (holds &'static Window), window second.
         self.tutor_renderer = None;
         self.tutor_window = None;
+        // Drop drill state too — it'll get rebuilt fresh next open.
+        self.tutor_state = None;
     }
 
     fn ensure_buffers(&mut self, size_px: usize) {
@@ -417,25 +530,178 @@ impl TrayApp {
             &crossings,
         );
 
-        // Phase B.4 placeholder: target word in Oxanium Bold, centered
-        // below the chrome strip. Phase C replaces this with the real
-        // tutor view.
+        // ── Drill view ─────────────────────────────────────────────
+        // Layout: target word (big, centered, Oxanium Bold) at top of
+        // the content area, step hint below (small, Josefin Slab,
+        // either IPA / Autospell letters or a number-mode glyph),
+        // then a row of keyboard cells reflecting the current target
+        // and live key state.
+        let span = crate::ui::span(size.width, size.height);
+        let ru = self.tutor_ru;
+        let chrome_h = button_height as i32;
+        let bw = size.width as i32;
+        let bh = size.height as i32;
+
+        let word_text = self
+            .tutor_state
+            .as_ref()
+            .and_then(|s| s.practice.current_word())
+            .map(|w| w.word.clone())
+            .unwrap_or_default();
+        let step_hint = self
+            .tutor_state
+            .as_ref()
+            .and_then(|s| s.practice.current_step())
+            .map(|step| {
+                if let Some(g) = &step.number_glyph {
+                    g.clone()
+                } else if let Some(p) = step.phoneme {
+                    p.to_ipa().to_string()
+                } else if step.space_only {
+                    "·".to_string()
+                } else if step.mod_tap_only {
+                    "#".to_string()
+                } else {
+                    String::new()
+                }
+            })
+            .unwrap_or_default();
+        let errored = self.tutor_state.as_ref().map(|s| s.errored).unwrap_or(false);
+
         if let Some(text) = self.text_renderer.as_mut() {
-            let span = crate::ui::span(size.width, size.height);
-            let font_size = span * self.tutor_ru / 4.0;
-            let chrome_h = button_height as f32;
-            let cx = width as f32 / 2.0;
-            let cy = chrome_h + (height as f32 - chrome_h) / 2.0;
+            let word_font = (span * ru / 5.0).max(24.0);
+            let cx = bw as f32 / 2.0;
+            let cy = chrome_h as f32 + word_font;
+            let colour = if errored { 0xFFFF6060 } else { 0xFFE0E0F0 };
             text.draw_text_center_u32(
                 pixels,
                 width,
-                "rhe",
+                &word_text,
                 cx,
                 cy,
-                font_size,
+                word_font,
                 700,
-                0xFFE0_E0F0,
+                colour,
                 "Oxanium",
+            );
+
+            if !step_hint.is_empty() {
+                let hint_font = (span * ru / 14.0).max(12.0);
+                let hint_cy = cy + word_font * 0.9;
+                text.draw_text_center_u32(
+                    pixels,
+                    width,
+                    &step_hint,
+                    cx,
+                    hint_cy,
+                    hint_font,
+                    400,
+                    0xFFB0B0C0,
+                    "Josefin Slab",
+                );
+            }
+        }
+
+        // Keyboard diagram: 10 home/inner cells in a row + thumb cell
+        // below the row's centre. Cell colour signals (target,
+        // pressed, errored) state.
+        if let Some(state) = self.tutor_state.as_ref() {
+            let target = state
+                .practice
+                .current_target()
+                .copied()
+                .unwrap_or_default();
+            let cell_d = ((span * ru / 12.0).round() as i32).max(12);
+            let cell_gap = ((span * ru / 96.0).round() as i32).max(2);
+            let hand_gap = cell_gap * 4;
+            let row_w = 10 * cell_d + 8 * cell_gap + hand_gap;
+            let row_x = (bw - row_w) / 2;
+            let row_y = bh - cell_d * 3;
+            let cy = row_y + cell_d / 2;
+
+            // (bit, is_left, is_pressed) per cell, in row order.
+            let left = [
+                (3usize, state.key_state.left[0]),
+                (2, state.key_state.left[1]),
+                (1, state.key_state.left[2]),
+                (0, state.key_state.left[3]),
+                (4, state.key_state.left[4]),
+            ];
+            let right = [
+                (5usize, state.key_state.right[5]),
+                (0, state.key_state.right[0]),
+                (1, state.key_state.right[1]),
+                (2, state.key_state.right[2]),
+                (3, state.key_state.right[3]),
+            ];
+
+            let mut x = row_x;
+            for (bit, pressed) in left {
+                let is_target = (target.left & (1u8 << bit)) != 0;
+                let fill = cell_fill(is_target, pressed, errored);
+                cell(
+                    pixels,
+                    &mut self.tutor_hit_test,
+                    width,
+                    height,
+                    x + cell_d / 2,
+                    cy,
+                    cell_d,
+                    fill,
+                );
+                x += cell_d + cell_gap;
+            }
+            x += hand_gap - cell_gap;
+            for (bit, pressed) in right {
+                let is_target = (target.right & (1u8 << bit)) != 0;
+                let fill = cell_fill(is_target, pressed, errored);
+                cell(
+                    pixels,
+                    &mut self.tutor_hit_test,
+                    width,
+                    height,
+                    x + cell_d / 2,
+                    cy,
+                    cell_d,
+                    fill,
+                );
+                x += cell_d + cell_gap;
+            }
+
+            // Second row below the chord cells: word bar (long, left-
+            // aligned under L-pinky) + mod cell (2 cells wide, right-
+            // aligned under R-pinky). Rough 7/8 vs 1/8 split of the
+            // row width.
+            let bottom_cy = cy + cell_d + cell_gap;
+            let mod_w = 2 * cell_d + cell_gap;
+            let mod_cx = row_x + row_w - mod_w / 2;
+            let mod_target = (target.right & (1u8 << 4)) != 0;
+            let mod_pressed = state.key_state.right[4];
+            cell_wide(
+                pixels,
+                &mut self.tutor_hit_test,
+                width,
+                height,
+                mod_cx,
+                bottom_cy,
+                mod_w,
+                cell_d,
+                cell_fill(mod_target, mod_pressed, errored),
+            );
+
+            let word_sep = cell_gap * 2;
+            let word_w = row_w - mod_w - word_sep;
+            let word_cx = row_x + word_w / 2;
+            cell_wide(
+                pixels,
+                &mut self.tutor_hit_test,
+                width,
+                height,
+                word_cx,
+                bottom_cy,
+                word_w,
+                cell_d,
+                cell_fill(target.word, state.key_state.word, errored),
             );
         }
 
@@ -816,6 +1082,14 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
         match event {
             TrayEvent::Menu(id) => self.on_menu_click(event_loop, id),
             TrayEvent::StateChanged => self.refresh_enabled_ui(),
+            TrayEvent::DrillKey(ev) => {
+                if let Some(state) = self.tutor_state.as_mut() {
+                    state.tick(ev);
+                    if let Some(w) = self.tutor_window.as_ref() {
+                        w.request_redraw();
+                    }
+                }
+            }
         }
 
         if self.quit.load(Ordering::Relaxed) {
@@ -1027,6 +1301,7 @@ pub fn run_tray(
         mac_state: None,
         tutor_renderer: None,
         tutor_window: None,
+        tutor_state: None,
         text_renderer: None,
         tutor_ru: 1.0,
         tutor_mods: ModifiersState::empty(),

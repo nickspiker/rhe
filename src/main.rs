@@ -8,6 +8,7 @@ mod ordered_briefs_data;
 mod suffixes_data;
 mod chord_map;
 mod data;
+mod drill;
 mod hand;
 mod input;
 mod key_mask;
@@ -18,7 +19,6 @@ mod output;
 mod state_machine;
 mod table_gen;
 mod tray;
-mod tutor;
 mod ui;
 mod wiki;
 mod word_lookup;
@@ -36,10 +36,7 @@ fn main() {
         Some("map") => show_map(),
         Some("briefs") => show_briefs(),
         Some("listen") => listen(),
-        Some("tutor") => tutor::run_tutor(false),
-        Some("test") => tutor::run_tutor(true),
         Some("rollover") => rollover_test(),
-        Some("bench") => tutor::run_bench(),
         Some("-h") | Some("--help") | Some("help") => show_usage(),
         Some(other) => {
             eprintln!("rhe: unknown subcommand `{other}`");
@@ -55,12 +52,10 @@ fn show_usage() {
     println!();
     println!("usage:");
     println!("  rhe           — menu bar app + full engine (default)");
+    println!("                  open the tutor from the tray menu");
     println!("  rhe map       — show phoneme-to-chord mapping");
     println!("  rhe briefs    — show word brief assignments");
     println!("  rhe listen    — show raw key events + chords");
-    println!("  rhe tutor     — interactive typing tutor (Wikipedia text)");
-    println!("  rhe test      — tutor with curated homophone/ordering drills");
-    println!("  rhe bench     — measure chord speed per finger combo");
     println!("  rhe rollover  — test simultaneous key count");
 }
 
@@ -259,7 +254,8 @@ fn run() {
 
     // Build the tray's event loop on the main thread so its proxy can be
     // handed to the engine thread before it spawns.
-    let (event_loop, _proxy) = tray::build();
+    let (event_loop, proxy) = tray::build();
+    let drill_proxy = proxy.clone();
 
     std::thread::spawn(move || {
         let cmudict = data::load_cmudict();
@@ -290,6 +286,11 @@ fn run() {
                 Ok(input::HidEvent::Quit) => break,
                 Err(_) => break,
             };
+
+            // Tee to the tutor window so the drill state machine sees
+            // the same events the interpreter does. Tray drops the
+            // event on the floor when no tutor window is open.
+            let _ = drill_proxy.send_event(tray::TrayEvent::DrillKey(event));
 
             for sm_event in sm.feed(event) {
                 match &sm_event {
@@ -352,6 +353,7 @@ fn run() {
     // tray icon/check item refresh without polling.
     let (event_loop, proxy) = tray::build();
     let toggle_proxy = proxy.clone();
+    let drill_proxy = proxy.clone();
     let on_toggle: input::evdev_backend::ToggleHook =
         Arc::new(move || {
             let _ = toggle_proxy.send_event(tray::TrayEvent::StateChanged);
@@ -401,6 +403,9 @@ fn run() {
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                     Err(_) => break,
                 };
+
+            // Tee to the tutor window — tray ignores when closed.
+            let _ = drill_proxy.send_event(tray::TrayEvent::DrillKey(event));
 
             for sm_event in sm.feed(event) {
                 if let Some(action) = interp.process(&sm_event) {
