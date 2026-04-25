@@ -35,6 +35,7 @@ use crate::tutor::ui::compositor::{
 };
 use crate::tutor::ui::renderer::Renderer;
 use crate::tutor::ui::text_rasterizing::TextRenderer;
+use crate::tutor::ui::theme;
 use crate::tutor::wiki::SentenceStream;
 use crate::word_lookup::WordLookup;
 use std::sync::Arc;
@@ -46,11 +47,6 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 /// downscale cleanly. Tray-icon 0.22 takes a single bitmap; the
 /// OS handles further scaling.
 const ICON_SIZE: u32 = 44;
-
-/// Bright lime when rhe is capturing input.
-const ICON_RING_ON: u32 = 0xFF40_FF40;
-/// Dark purple when rhe is passing keys through to the OS.
-const ICON_RING_OFF: u32 = 0xFF4A_1A72;
 
 /// Logo embedded at compile time. 1024×1024 RGB PNG.
 const LOGO_PNG_BYTES: &[u8] = include_bytes!("../logo.png");
@@ -103,62 +99,6 @@ fn scaled_logo_rgb(diameter: usize) -> Vec<u8> {
     dst
 }
 
-/// Per-cell primary highlight colour. Cyan-leaning on the left hand
-/// gradients into yellow-leaning on the right so the user can pick
-/// out which finger a target belongs to even peripherally. Indexed
-/// in display order (L pinky → R pinky); cells 4 and 5 are the
-/// inner-index keys.
-const KEY_COLORS: [u32; 10] = [
-    0xFF60_A8F0, // L pinky
-    0xFF70_A8E0, // L ring
-    0xFF80_A8D0, // L middle
-    0xFF90_A8C0, // L idx-outer
-    0xFFA0_A8B0, // L idx-inner
-    0xFFB0_A8A0, // R idx-inner
-    0xFFC0_A890, // R idx-outer
-    0xFFD0_A880, // R middle
-    0xFFE0_A870, // R ring
-    0xFFF0_A860, // R pinky
-];
-
-/// Half-brightness companion to `KEY_COLORS`. Used for ordered-brief
-/// secondary targets — cells that are part of the chord but aren't
-/// (or aren't yet) the locked-in lead finger. Picking a non-primary
-/// cell as the lead would resolve to a different word.
-const DOT_COLORS: [u32; 10] = [
-    0xFF30_5478,
-    0xFF38_5470,
-    0xFF40_5468,
-    0xFF48_5460,
-    0xFF50_5458,
-    0xFF58_5450,
-    0xFF60_5448,
-    0xFF68_5440,
-    0xFF70_5438,
-    0xFF78_5430,
-];
-
-/// Idle / non-target / errored fill for the resting-finger cells
-/// (everything except the two inner-index keys). Dark grey: present
-/// enough to anchor the row, dim enough to fade behind any active
-/// target.
-const IDLE_FILL: u32 = 0xFF30_3038;
-/// Idle fill for the two inner-index cells (idx 4, 5). Near-black so
-/// they visually drop out when not in play — they're never resting-
-/// finger keys, only used for number / future symbol modes, so off
-/// is the default state and we don't want them competing with the
-/// home row for attention.
-const INNER_IDLE_FILL: u32 = 0xFF06_0608;
-
-/// Word / mod target highlight colours. Word stays purple, mod stays
-/// green — same scheme as the old terminal renderer. Halved variants
-/// are used when the target is "secondary" (mod present in a chord
-/// alongside fingers, where mod is reachable but not the lead).
-const WORD_PRIMARY: u32 = 0xFF80_00FF;
-const WORD_SECONDARY: u32 = 0xFF40_0080;
-const MOD_PRIMARY: u32 = 0xFF00_FF00;
-const MOD_SECONDARY: u32 = 0xFF00_7F00;
-
 /// Look up the cell fill: primary key colour for primary targets,
 /// dot colour for secondary, idle for everything else (including
 /// errored frames where the caller zeroes the target out). Inner-
@@ -168,16 +108,16 @@ const MOD_SECONDARY: u32 = 0xFF00_7F00;
 fn finger_cell_fill(cell_idx: usize, is_target: bool, is_primary: bool, pressed: bool) -> u32 {
     if !is_target {
         let inner = cell_idx == 4 || cell_idx == 5;
-        let base = if inner { INNER_IDLE_FILL } else { IDLE_FILL };
+        let base = if inner { theme::CELL_INNER_IDLE } else { theme::CELL_IDLE };
         if pressed && !inner {
-            return (base & 0xFEFE_FEFE).wrapping_sub(0x0010_1018);
+            return (base & theme::COLOUR_LSB_MASK).wrapping_sub(theme::BEVEL_PRESS_DARKEN);
         }
         return base;
     }
     if is_primary {
-        KEY_COLORS[cell_idx]
+        theme::KEY_COLOURS[cell_idx]
     } else {
-        DOT_COLORS[cell_idx]
+        theme::DOT_COLOURS[cell_idx]
     }
 }
 
@@ -199,8 +139,8 @@ fn cell(
     if cx < cell_d / 2 + 1 || cy < cell_d / 2 + 1 {
         return;
     }
-    let light = (fill & 0xFEFE_FEFE).wrapping_add(0x0020_2020);
-    let shadow = (fill & 0xFEFE_FEFE).wrapping_sub(0x0020_2020);
+    let light = (fill & theme::COLOUR_LSB_MASK).wrapping_add(theme::BEVEL_DELTA);
+    let shadow = (fill & theme::COLOUR_LSB_MASK).wrapping_sub(theme::BEVEL_DELTA);
     let (top_edge, bot_edge) = if pressed { (shadow, light) } else { (light, shadow) };
     crate::tutor::ui::compositor::TutorApp::draw_button(
         pixels,
@@ -237,8 +177,8 @@ fn cell_wide(
     if cx < cell_w / 2 + 1 || cy < cell_h / 2 + 1 {
         return;
     }
-    let light = (fill & 0xFEFE_FEFE).wrapping_add(0x0020_2020);
-    let shadow = (fill & 0xFEFE_FEFE).wrapping_sub(0x0020_2020);
+    let light = (fill & theme::COLOUR_LSB_MASK).wrapping_add(theme::BEVEL_DELTA);
+    let shadow = (fill & theme::COLOUR_LSB_MASK).wrapping_sub(theme::BEVEL_DELTA);
     let (top_edge, bot_edge) = if pressed { (shadow, light) } else { (light, shadow) };
     crate::tutor::ui::compositor::TutorApp::draw_button(
         pixels,
@@ -279,7 +219,7 @@ fn make_tray_icon(size: u32, online: bool) -> Icon {
 
     let mut pixels = vec![0u32; w * h];
     let logo = scaled_logo_rgb(diameter);
-    let ring = if online { ICON_RING_ON } else { ICON_RING_OFF };
+    let ring = if online { theme::TRAY_RING_ON } else { theme::TRAY_RING_OFF };
     TutorApp::draw_avatar(
         &mut pixels,
         None,
@@ -616,7 +556,7 @@ impl TrayApp {
         // photon's edges-and-mask pass clear the squircle corners to
         // fully transparent — the compositor then shows whatever's
         // behind the window.
-        pixels.fill(0xFF10_1016);
+        pixels.fill(theme::CANVAS_BG);
         self.tutor_hit_test.fill(HIT_NONE);
         self.tutor_textbox_mask.fill(0);
 
@@ -741,11 +681,11 @@ impl TrayApp {
                 let mut x = line_x;
                 for (i, w) in sentence_words.iter().enumerate() {
                     let (colour, weight) = if i == cur_word_idx {
-                        (0xFFFF_FFFF, 700)
+                        (theme::SENTENCE_CURRENT, 700)
                     } else if i < cur_word_idx {
-                        (0xFF60_6070, 400)
+                        (theme::SENTENCE_PAST, 400)
                     } else {
-                        (0xFFB0_B0C0, 400)
+                        (theme::SENTENCE_FUTURE, 400)
                     };
                     text.draw_text_left_u32(
                         pixels,
@@ -764,7 +704,7 @@ impl TrayApp {
 
             // Big centred target word. No errored colour swap — the
             // cue lives entirely in the keyboard row going dark.
-            let colour = 0xFFE0_E0F0;
+            let colour = theme::TARGET_WORD;
             text.draw_text_center_u32(
                 pixels,
                 width,
@@ -788,7 +728,7 @@ impl TrayApp {
                     hint_cy,
                     hint_font,
                     400,
-                    0xFFB0B0C0,
+                    theme::STEP_HINT,
                     "Josefin Slab",
                 );
             }
@@ -996,12 +936,12 @@ impl TrayApp {
             // chord completes on full key-down.
             let is_mod_tap_only_target = target.right == (1u8 << 4) && target.left == 0;
             let mod_fill = if !mod_target || is_mod_tap_only_target {
-                IDLE_FILL
+                theme::CELL_IDLE
             } else {
                 let mod_primary = target.accepted_leads.is_empty()
                     || first_down.is_some()
                     || target.accepted_leads.test(crate::scan::R_THUMB);
-                if mod_primary { MOD_PRIMARY } else { MOD_SECONDARY }
+                if mod_primary { theme::MOD_PRIMARY } else { theme::MOD_SECONDARY }
             };
             let mod_pressed = key_state.right[4];
             cell_wide(
@@ -1020,7 +960,7 @@ impl TrayApp {
             let word_sep = cell_gap * 2;
             let word_w = row_w - mod_w - word_sep;
             let word_cx = row_x + word_w / 2;
-            let word_fill = if target.word { WORD_PRIMARY } else { IDLE_FILL };
+            let word_fill = if target.word { theme::WORD_PRIMARY } else { theme::CELL_IDLE };
             let word_pressed = key_state.word;
             cell_wide(
                 pixels,
@@ -1034,7 +974,7 @@ impl TrayApp {
                 word_fill,
                 word_pressed,
             );
-            let _ = WORD_SECONDARY;
+            let _ = theme::WORD_SECONDARY;
 
             // Adaptive labels: draw each cell's predicted glyph centred
             // in the cell. Done in its own pass so the text renderer's
@@ -1054,7 +994,7 @@ impl TrayApp {
                         cy_cell as f32 + label_font * 0.35,
                         label_font,
                         500,
-                        0xFFE8_E8F0,
+                        theme::CELL_LABEL,
                         "Josefin Slab",
                     );
                 }
@@ -1111,7 +1051,7 @@ impl TrayApp {
                     y,
                     counter_size,
                     400,
-                    0xFFFF_FFFF,
+                    theme::COUNTER_TEXT,
                     "Josefin Slab",
                 );
                 text.draw_text_center_u32(
@@ -1122,7 +1062,7 @@ impl TrayApp {
                     y,
                     counter_size,
                     400,
-                    0xFFFF_FFFF,
+                    theme::COUNTER_TEXT,
                     "Josefin Slab",
                 );
                 text.draw_text_right_u32(
@@ -1133,7 +1073,7 @@ impl TrayApp {
                     y,
                     counter_size,
                     400,
-                    0xFFFF_FFFF,
+                    theme::COUNTER_TEXT,
                     "Josefin Slab",
                 );
             }
