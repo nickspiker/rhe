@@ -12,55 +12,55 @@ impl TextRenderer {
         let db = font_system.db_mut();
 
         // Load Oxanium (for logo)
-        db.load_font_data(include_bytes!("../../assets/Oxanium/Oxanium-ExtraLight.ttf").to_vec());
-        db.load_font_data(include_bytes!("../../assets/Oxanium/Oxanium-Light.ttf").to_vec());
-        db.load_font_data(include_bytes!("../../assets/Oxanium/Oxanium-Regular.ttf").to_vec());
-        db.load_font_data(include_bytes!("../../assets/Oxanium/Oxanium-Medium.ttf").to_vec());
-        db.load_font_data(include_bytes!("../../assets/Oxanium/Oxanium-SemiBold.ttf").to_vec());
-        db.load_font_data(include_bytes!("../../assets/Oxanium/Oxanium-Bold.ttf").to_vec());
-        db.load_font_data(include_bytes!("../../assets/Oxanium/Oxanium-ExtraBold.ttf").to_vec());
+        db.load_font_data(include_bytes!("../../../assets/Oxanium/Oxanium-ExtraLight.ttf").to_vec());
+        db.load_font_data(include_bytes!("../../../assets/Oxanium/Oxanium-Light.ttf").to_vec());
+        db.load_font_data(include_bytes!("../../../assets/Oxanium/Oxanium-Regular.ttf").to_vec());
+        db.load_font_data(include_bytes!("../../../assets/Oxanium/Oxanium-Medium.ttf").to_vec());
+        db.load_font_data(include_bytes!("../../../assets/Oxanium/Oxanium-SemiBold.ttf").to_vec());
+        db.load_font_data(include_bytes!("../../../assets/Oxanium/Oxanium-Bold.ttf").to_vec());
+        db.load_font_data(include_bytes!("../../../assets/Oxanium/Oxanium-ExtraBold.ttf").to_vec());
 
         // Load Josefin Slab (for OS/UI elements)
         db.load_font_data(
-            include_bytes!("../../assets/Josefin_Slab/static/JosefinSlab-Thin.ttf").to_vec(),
+            include_bytes!("../../../assets/Josefin_Slab/static/JosefinSlab-Thin.ttf").to_vec(),
         );
         db.load_font_data(
-            include_bytes!("../../assets/Josefin_Slab/static/JosefinSlab-ExtraLight.ttf").to_vec(),
+            include_bytes!("../../../assets/Josefin_Slab/static/JosefinSlab-ExtraLight.ttf").to_vec(),
         );
         db.load_font_data(
-            include_bytes!("../../assets/Josefin_Slab/static/JosefinSlab-Light.ttf").to_vec(),
+            include_bytes!("../../../assets/Josefin_Slab/static/JosefinSlab-Light.ttf").to_vec(),
         );
         db.load_font_data(
-            include_bytes!("../../assets/Josefin_Slab/static/JosefinSlab-Regular.ttf").to_vec(),
+            include_bytes!("../../../assets/Josefin_Slab/static/JosefinSlab-Regular.ttf").to_vec(),
         );
         db.load_font_data(
-            include_bytes!("../../assets/Josefin_Slab/static/JosefinSlab-Medium.ttf").to_vec(),
+            include_bytes!("../../../assets/Josefin_Slab/static/JosefinSlab-Medium.ttf").to_vec(),
         );
         db.load_font_data(
-            include_bytes!("../../assets/Josefin_Slab/static/JosefinSlab-SemiBold.ttf").to_vec(),
+            include_bytes!("../../../assets/Josefin_Slab/static/JosefinSlab-SemiBold.ttf").to_vec(),
         );
         db.load_font_data(
-            include_bytes!("../../assets/Josefin_Slab/static/JosefinSlab-Bold.ttf").to_vec(),
+            include_bytes!("../../../assets/Josefin_Slab/static/JosefinSlab-Bold.ttf").to_vec(),
         );
 
         // Load Open Sans (for user-generated content)
         db.load_font_data(
-            include_bytes!("../../assets/Open_Sans/static/OpenSans-Light.ttf").to_vec(),
+            include_bytes!("../../../assets/Open_Sans/static/OpenSans-Light.ttf").to_vec(),
         );
         db.load_font_data(
-            include_bytes!("../../assets/Open_Sans/static/OpenSans-Regular.ttf").to_vec(),
+            include_bytes!("../../../assets/Open_Sans/static/OpenSans-Regular.ttf").to_vec(),
         );
         db.load_font_data(
-            include_bytes!("../../assets/Open_Sans/static/OpenSans-Medium.ttf").to_vec(),
+            include_bytes!("../../../assets/Open_Sans/static/OpenSans-Medium.ttf").to_vec(),
         );
         db.load_font_data(
-            include_bytes!("../../assets/Open_Sans/static/OpenSans-SemiBold.ttf").to_vec(),
+            include_bytes!("../../../assets/Open_Sans/static/OpenSans-SemiBold.ttf").to_vec(),
         );
         db.load_font_data(
-            include_bytes!("../../assets/Open_Sans/static/OpenSans-Bold.ttf").to_vec(),
+            include_bytes!("../../../assets/Open_Sans/static/OpenSans-Bold.ttf").to_vec(),
         );
         db.load_font_data(
-            include_bytes!("../../assets/Open_Sans/static/OpenSans-ExtraBold.ttf").to_vec(),
+            include_bytes!("../../../assets/Open_Sans/static/OpenSans-ExtraBold.ttf").to_vec(),
         );
 
         Self {

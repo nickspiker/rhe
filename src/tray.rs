@@ -27,16 +27,16 @@ use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 use crate::chord_map::{BriefTable, PhonemeTable};
-use crate::drill::{TutorState, build_practice, cell_label, key_state_to_mask};
 use crate::hand::KeyEvent as RheKeyEvent;
 use crate::interpreter::FallbackMode;
-use crate::wiki::SentenceStream;
-use crate::word_lookup::WordLookup;
-use crate::ui::compositor::{
+use crate::tutor::drill::{TutorState, build_practice, cell_label, key_state_to_mask};
+use crate::tutor::ui::compositor::{
     HIT_CLOSE_BUTTON, HIT_MAXIMIZE_BUTTON, HIT_MINIMIZE_BUTTON, HIT_NONE, TutorApp,
 };
-use crate::ui::renderer::Renderer;
-use crate::ui::text_rasterizing::TextRenderer;
+use crate::tutor::ui::renderer::Renderer;
+use crate::tutor::ui::text_rasterizing::TextRenderer;
+use crate::tutor::wiki::SentenceStream;
+use crate::word_lookup::WordLookup;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
@@ -202,7 +202,7 @@ fn cell(
     let light = (fill & 0xFEFE_FEFE).wrapping_add(0x0020_2020);
     let shadow = (fill & 0xFEFE_FEFE).wrapping_sub(0x0020_2020);
     let (top_edge, bot_edge) = if pressed { (shadow, light) } else { (light, shadow) };
-    crate::ui::compositor::TutorApp::draw_button(
+    crate::tutor::ui::compositor::TutorApp::draw_button(
         pixels,
         hit,
         None,
@@ -212,7 +212,7 @@ fn cell(
         cy as usize,
         cell_d as usize,
         cell_d as usize,
-        crate::ui::compositor::HIT_NONE,
+        crate::tutor::ui::compositor::HIT_NONE,
         fill,
         top_edge,
         bot_edge,
@@ -240,7 +240,7 @@ fn cell_wide(
     let light = (fill & 0xFEFE_FEFE).wrapping_add(0x0020_2020);
     let shadow = (fill & 0xFEFE_FEFE).wrapping_sub(0x0020_2020);
     let (top_edge, bot_edge) = if pressed { (shadow, light) } else { (light, shadow) };
-    crate::ui::compositor::TutorApp::draw_button(
+    crate::tutor::ui::compositor::TutorApp::draw_button(
         pixels,
         hit,
         None,
@@ -250,7 +250,7 @@ fn cell_wide(
         cy as usize,
         cell_w as usize,
         cell_h as usize,
-        crate::ui::compositor::HIT_NONE,
+        crate::tutor::ui::compositor::HIT_NONE,
         fill,
         top_edge,
         bot_edge,
@@ -262,7 +262,7 @@ fn cell_wide(
 /// fringe carries real alpha and the icon fades to transparent
 /// outside the ring instead of leaving an opaque half-bright ring).
 fn make_tray_icon(size: u32, online: bool) -> Icon {
-    use crate::ui::compositor::TutorApp;
+    use crate::tutor::ui::compositor::TutorApp;
 
     let w = size as usize;
     let h = size as usize;
@@ -519,7 +519,7 @@ impl TrayApp {
             let stream = SentenceStream::new();
             let initial = stream.initial();
             let lines: Vec<String> = if initial.is_empty() {
-                crate::drill::ALICE_FALLBACK
+                crate::tutor::drill::ALICE_FALLBACK
                     .iter()
                     .map(|s| s.to_string())
                     .collect()
@@ -654,7 +654,7 @@ impl TrayApp {
         // either IPA / Autospell letters or a number-mode glyph),
         // then a row of keyboard cells reflecting the current target
         // and live key state.
-        let span = crate::ui::span(size.width, size.height);
+        let span = crate::tutor::ui::span(size.width, size.height);
         let ru = self.tutor_ru;
         let chrome_h = button_height as i32;
         let bw = size.width as i32;
@@ -865,7 +865,7 @@ impl TrayApp {
             // cell goes idle, the cue being "everything dark, release
             // and try again" rather than a specific red highlight.
             let target = if *errored {
-                crate::drill::Target::default()
+                crate::tutor::drill::Target::default()
             } else {
                 *target
             };
@@ -1084,7 +1084,7 @@ impl TrayApp {
         self.tutor_frame_counter += 1;
         if self.tutor_debug {
             if let Some(text) = self.text_renderer.as_mut() {
-                let span = crate::ui::span(size.width, size.height);
+                let span = crate::tutor::ui::span(size.width, size.height);
                 let counter_size = (span / 24.0).max(10.0);
                 let strip_h = (counter_size * 2.0) as i32;
 
@@ -1150,7 +1150,7 @@ impl TrayApp {
         let size = window.inner_size();
         let x = self.tutor_cursor.x as f32;
         let y = self.tutor_cursor.y as f32;
-        let border = (crate::ui::span(size.width, size.height) / 32.0).ceil();
+        let border = (crate::tutor::ui::span(size.width, size.height) / 32.0).ceil();
         let at_left = x < border;
         let at_right = x > size.width as f32 - border;
         let at_top = y < border;

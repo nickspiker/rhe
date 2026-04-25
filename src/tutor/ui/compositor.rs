@@ -1,6 +1,6 @@
 //! Photon's chrome/button/textbox drawing primitives
 
-use crate::ui::theme;
+use crate::tutor::ui::theme;
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 const PREMULTIPLIED: bool = true;

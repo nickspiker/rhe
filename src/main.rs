@@ -8,7 +8,6 @@ mod ordered_briefs_data;
 mod suffixes_data;
 mod chord_map;
 mod data;
-mod drill;
 mod hand;
 mod input;
 mod key_mask;
@@ -19,8 +18,7 @@ mod output;
 mod state_machine;
 mod table_gen;
 mod tray;
-mod ui;
-mod wiki;
+mod tutor;
 mod word_lookup;
 
 #[cfg(target_os = "macos")]
