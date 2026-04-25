@@ -1,6 +1,6 @@
 //! Word-to-phoneme lookup from CMU dict.
 
-use crate::chord_map::Phoneme;
+use crate::preferences::chord_map::Phoneme;
 use crate::table_gen;
 
 /// Maps an English word to its phoneme sequence (for the tutor).

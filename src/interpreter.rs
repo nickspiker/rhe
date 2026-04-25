@@ -1,6 +1,6 @@
 //! Converts state machine events into output actions (emit text, backspace, suffix).
 
-use crate::chord_map::{BriefTable, Phoneme, PhonemeTable};
+use crate::preferences::chord_map::{BriefTable, Phoneme, PhonemeTable};
 use crate::state_machine::Event;
 use crate::table_gen::PhonemeDictionary;
 use std::sync::Arc;
@@ -75,8 +75,8 @@ pub enum Action {
 ///
 /// Pub so the tutor's adaptive cell labels can reuse the same
 /// chord→form mapping when `MODE_FLAG_HAS_NUMBER` is set.
-pub fn chord_to_form(key: crate::chord_map::ChordKey) -> Option<crate::number_forms::Form> {
-    use crate::number_forms::Form;
+pub fn chord_to_form(key: crate::preferences::chord_map::ChordKey) -> Option<crate::preferences::number_forms::Form> {
+    use crate::preferences::number_forms::Form;
     if key.right_bits() != 0 || key.has_mod() {
         return None;
     }
@@ -295,17 +295,17 @@ impl Interpreter {
                     //   mod, first_down = thumb → symbol ("+")
                     //   mod, first_down = finger → spelled word ("five")
                     if !key.has_mod() {
-                        return crate::number_data::chord_to_digit(*key).map(|c| {
+                        return crate::preferences::number_data::chord_to_digit(*key).map(|c| {
                             self.number_buffer.push(c);
                             self.record_emit(c.to_string())
                         });
                     } else if *first_down == Some(crate::scan::R_THUMB) {
                         self.number_buffer.clear();
-                        return crate::number_data::chord_to_symbol(*key)
+                        return crate::preferences::number_data::chord_to_symbol(*key)
                             .map(|c| self.record_emit(c.to_string()));
                     } else {
                         self.number_buffer.clear();
-                        return crate::number_data::chord_to_digit_word(*key)
+                        return crate::preferences::number_data::chord_to_digit_word(*key)
                             .map(|s| self.record_emit(s.to_string()));
                     }
                 }
@@ -319,7 +319,7 @@ impl Interpreter {
                     // Form transform check.
                     if let Some(form) = chord_to_form(*key) {
                         if let Some(ctx) = self.last_number.clone() {
-                            if let Some(out) = crate::number_forms::apply(form, &ctx.digits) {
+                            if let Some(out) = crate::preferences::number_forms::apply(form, &ctx.digits) {
                                 let after = format!("{} ", out);
                                 let before = ctx.current.clone();
                                 // Snapshot must happen BEFORE we
@@ -472,7 +472,7 @@ impl Interpreter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chord_map::ChordKey;
+    use crate::preferences::chord_map::ChordKey;
 
     fn chord_event(right: u8, left: u8, modkey: bool, space: bool) -> Event {
         Event::Chord {

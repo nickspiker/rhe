@@ -37,7 +37,7 @@
 //! scancode outside the ten positions return `None`. The interpreter
 //! treats a `None` as a silent no-op in number mode.
 
-use crate::chord_map::ChordKey;
+use super::chord_map::ChordKey;
 use crate::key_mask::KeyMask;
 use crate::scan;
 

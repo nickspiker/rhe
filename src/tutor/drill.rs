@@ -10,7 +10,7 @@
 //! Lifted out of `tutor.rs` during Phase C so the GUI window in
 //! `tray.rs` can plug into the drill without dragging in ratatui.
 
-use crate::chord_map::{BriefTable, ChordKey, Phoneme, PhonemeTable};
+use crate::preferences::chord_map::{BriefTable, ChordKey, Phoneme, PhonemeTable};
 use crate::hand::{KeyDirection, KeyEvent as RheKeyEvent};
 use crate::key_mask::KeyMask;
 use crate::scan;
@@ -626,7 +626,7 @@ pub fn build_practice(
                 };
 
                 let (suffix_steps, suffix_label) = {
-                    use crate::suffixes_data::SUFFIXES;
+                    use crate::preferences::suffixes_data::SUFFIXES;
                     let phoneme_count = phoneme_steps.iter().filter(|s| s.phoneme.is_some()).count();
                     let mut found = (None, None);
 
@@ -1085,8 +1085,8 @@ pub fn key_state_to_mask(state: &KeyState) -> KeyMask {
 /// `spell` ("five"), `tuple` ("quintuple"), `pre` ("penta"),
 /// `ord` ("fifth"), `frac` ("half"/"third"), `mul` ("once"/"twice").
 /// Refine once the labels are visible alongside real numbers.
-pub fn form_label(form: crate::number_forms::Form) -> &'static str {
-    use crate::number_forms::Form;
+pub fn form_label(form: crate::preferences::number_forms::Form) -> &'static str {
+    use crate::preferences::number_forms::Form;
     match form {
         Form::SpelledCardinal => "spell",
         Form::Group => "tuple",
@@ -1130,9 +1130,9 @@ pub fn cell_label(
         }
         let chord = ChordKey::from_mask(candidate);
         let c = if mod_held {
-            crate::number_data::chord_to_symbol(chord)
+            crate::preferences::number_data::chord_to_symbol(chord)
         } else {
-            crate::number_data::chord_to_digit(chord)
+            crate::preferences::number_data::chord_to_digit(chord)
         };
         return c.map(|ch| ch.to_string()).unwrap_or_default();
     }

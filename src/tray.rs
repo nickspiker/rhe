@@ -26,7 +26,7 @@ use winit::window::{CursorIcon, ResizeDirection, Window, WindowId};
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
-use crate::chord_map::{BriefTable, PhonemeTable};
+use crate::preferences::chord_map::{BriefTable, PhonemeTable};
 use crate::hand::KeyEvent as RheKeyEvent;
 use crate::interpreter::FallbackMode;
 use crate::tutor::drill::{TutorState, build_practice, cell_label, key_state_to_mask};
@@ -514,7 +514,7 @@ impl TrayApp {
         if self.tutor_state.is_none() {
             let cmudict = crate::data::load_cmudict();
             let lookup = WordLookup::new(&cmudict);
-            let brief_table = crate::briefs::load_briefs();
+            let brief_table = crate::preferences::briefs::load_briefs();
 
             let stream = SentenceStream::new();
             let initial = stream.initial();

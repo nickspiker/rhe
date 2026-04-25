@@ -1,7 +1,7 @@
 //! Chord detection: accumulates keys, fires on all-zero.
 //! Dual mode: per-hand (word held) vs all-zero (rolls).
 
-use crate::chord_map::ChordKey;
+use crate::preferences::chord_map::ChordKey;
 use crate::hand::{KeyDirection, KeyEvent};
 use crate::key_mask::KeyMask;
 use crate::scan;

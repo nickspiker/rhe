@@ -1,6 +1,6 @@
 //! Builds phoneme-sequence-to-word dictionary from CMU dict and frequency data.
 
-use crate::chord_map::Phoneme;
+use crate::preferences::chord_map::Phoneme;
 use std::collections::HashMap;
 
 /// Phoneme dictionary: maps a sequence of phonemes → English word.

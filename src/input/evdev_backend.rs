@@ -12,7 +12,7 @@
 
 use super::HidEvent;
 use crate::hand::{KeyDirection, KeyEvent};
-use crate::layout;
+use crate::preferences::layout;
 use std::ffi::CString;
 use std::fs;
 use std::os::unix::io::RawFd;
@@ -34,12 +34,12 @@ const BUS_VIRTUAL: u16 = 0x06;
 // Positional scancodes from linux/input-event-codes.h — these are
 // pre-xkb hardware positions, identical whether the user is on QWERTY,
 // Dvorak, Colemak, or anything else. The layout-specific chord key
-// mappings live in `crate::layout`; only non-layout keys are kept here.
+// mappings live in `crate::preferences::layout`; only non-layout keys are kept here.
 const KEY_ESC: u16 = 1;
 const KEY_CAPSLOCK: u16 = 58;
 /// Keyboard-detection probe. Any standard keyboard advertises KEY_A in
 /// its EV_KEY bitmap; mice don't. The role this position plays in rhe
-/// depends on the layout — see `layout::linux_to_role`.
+/// depends on the layout — see `crate::preferences::layout::linux_to_role`.
 const KEY_A: u16 = 30;
 const KEY_ENTER: u16 = 28;
 
@@ -252,7 +252,7 @@ fn reader_loop(
             // the user loses newline). Runs before everything else —
             // the synth is a passthrough with a rewritten code, not a
             // chord event, and it bypasses both rhe and caps-lock.
-            if let Some(synth_key) = layout::linux_enter_synth_key() {
+            if let Some(synth_key) = crate::preferences::layout::linux_enter_synth_key() {
                 if ev.code == synth_key {
                     if let Some(ufd) = uinput_fd {
                         forward_key(ufd, KEY_ENTER, ev.value);
@@ -261,13 +261,13 @@ fn reader_loop(
                 }
             }
 
-            let rhe_scan = layout::linux_to_role(ev.code);
+            let rhe_scan = crate::preferences::layout::linux_to_role(ev.code);
 
             // Auto-switch tracking: maintain the set of currently-
             // held chord keys. Transitions use it both to detect the
             // chording/typing pattern and to release stuck keys on
             // each side of the switch.
-            if layout::AUTO_SWITCH && rhe_scan.is_some() {
+            if crate::preferences::layout::AUTO_SWITCH && rhe_scan.is_some() {
                 match ev.value {
                     1 => {
                         if !auto_held.contains(&ev.code) {
@@ -281,7 +281,7 @@ fn reader_loop(
 
             // Auto-switch trigger check (only on key-down).
             let mut auto_switched = false;
-            if layout::AUTO_SWITCH && ev.value == 1 {
+            if crate::preferences::layout::AUTO_SWITCH && ev.value == 1 {
                 let (finger, word, thumb) = classify_held(&auto_held);
 
                 // Auto-enable: strong chord pattern while rhe is off.
@@ -301,7 +301,7 @@ fn reader_loop(
                     // Bring rhe's state machine up to the same known
                     // state — everything in auto_held is pressed.
                     for &scan in &auto_held {
-                        if let Some(role) = layout::linux_to_role(scan) {
+                        if let Some(role) = crate::preferences::layout::linux_to_role(scan) {
                             let _ = tx.send(HidEvent::Key(KeyEvent {
                                 scan: role,
                                 direction: KeyDirection::Down,
@@ -318,7 +318,7 @@ fn reader_loop(
                 // prose, not chording."
                 if !auto_switched
                     && rhe_scan.is_none()
-                    && layout::linux_is_non_home_row_letter(ev.code)
+                    && crate::preferences::layout::linux_is_non_home_row_letter(ev.code)
                     && enabled.load(Ordering::Relaxed)
                 {
                     enabled.store(false, Ordering::Relaxed);
@@ -327,7 +327,7 @@ fn reader_loop(
                     // tracking — otherwise the state machine leaves
                     // them pressed forever.
                     for &scan in &auto_held {
-                        if let Some(role) = layout::linux_to_role(scan) {
+                        if let Some(role) = crate::preferences::layout::linux_to_role(scan) {
                             let _ = tx.send(HidEvent::Key(KeyEvent {
                                 scan: role,
                                 direction: KeyDirection::Up,
@@ -432,7 +432,7 @@ fn classify_held(held: &[u16]) -> (u8, bool, bool) {
     let mut word = false;
     let mut thumb = false;
     for &scan in held {
-        if let Some(role) = layout::linux_to_role(scan) {
+        if let Some(role) = crate::preferences::layout::linux_to_role(scan) {
             if role == crate::scan::R_THUMB {
                 thumb = true;
             } else if role == crate::scan::WORD {

@@ -1,20 +1,13 @@
 //! CLI entry point and subcommand dispatch.
 
-mod briefs;
-mod briefs_data;
-mod number_data;
-mod number_forms;
-mod ordered_briefs_data;
-mod suffixes_data;
-mod chord_map;
 mod data;
 mod hand;
 mod input;
-mod key_mask;
-mod layout;
-mod scan;
 mod interpreter;
+mod key_mask;
 mod output;
+mod preferences;
+mod scan;
 mod state_machine;
 mod table_gen;
 mod tray;
@@ -74,7 +67,7 @@ fn show_map() {
     println!("{:<10} {:<5} {:<6} {}", "Fingers", "⌘", "IPA", "Phoneme");
     println!("{}", "-".repeat(35));
 
-    use chord_map::Phoneme;
+    use crate::preferences::chord_map::Phoneme;
     let consonants = [
         Phoneme::T,
         Phoneme::S,
@@ -151,7 +144,7 @@ fn show_map() {
 }
 
 fn show_briefs() {
-    let brief_table = briefs::load_briefs();
+    let brief_table = crate::preferences::briefs::load_briefs();
 
     let finger = ["I", "M", "R", "P"];
     let combo_label = |bits: u8| -> String {
@@ -199,7 +192,7 @@ fn listen() {
     println!("right hand = consonants | left hand = vowels | ⌘ = mod | space = word");
     println!();
 
-    let phonemes = chord_map::PhonemeTable::new();
+    let phonemes = crate::preferences::chord_map::PhonemeTable::new();
     let mut input =
         input::rdev_backend::RdevInput::start_listen().expect("failed to start key capture");
     let mut sm = state_machine::StateMachine::new();
@@ -261,9 +254,9 @@ fn run() {
         let cmudict = data::load_cmudict();
         let freq = data::load_word_freq();
 
-        let phoneme_table = chord_map::PhonemeTable::new();
+        let phoneme_table = crate::preferences::chord_map::PhonemeTable::new();
         let dictionary = table_gen::PhonemeDictionary::build(&cmudict, &freq);
-        let brief_table = briefs::load_briefs();
+        let brief_table = crate::preferences::briefs::load_briefs();
 
         let mut interp = interpreter::Interpreter::with_fallback_and_modes(
             phoneme_table,
@@ -366,9 +359,9 @@ fn run() {
         let cmudict = data::load_cmudict();
         let freq = data::load_word_freq();
 
-        let phoneme_table = chord_map::PhonemeTable::new();
+        let phoneme_table = crate::preferences::chord_map::PhonemeTable::new();
         let dictionary = table_gen::PhonemeDictionary::build(&cmudict, &freq);
-        let brief_table = briefs::load_briefs();
+        let brief_table = crate::preferences::briefs::load_briefs();
 
         let mut interp = interpreter::Interpreter::with_fallback_and_modes(
             phoneme_table,

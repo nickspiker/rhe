@@ -1,9 +1,9 @@
 //! Loads brief and suffix tables from compile-time const arrays.
 
-use crate::briefs_data::BRIEFS;
-use crate::chord_map::{BriefTable, ChordKey};
-use crate::ordered_briefs_data::ORDERED_BRIEFS;
-use crate::suffixes_data::SUFFIXES;
+use super::briefs_data::BRIEFS;
+use super::chord_map::{BriefTable, ChordKey};
+use super::ordered_briefs_data::ORDERED_BRIEFS;
+use super::suffixes_data::SUFFIXES;
 
 /// Build the brief table from the compile-time BRIEFS / ORDERED_BRIEFS /
 /// SUFFIXES arrays.

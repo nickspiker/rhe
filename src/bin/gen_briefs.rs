@@ -1,4 +1,4 @@
-//! Generates `src/briefs_data.rs` — optimized brief (chord→word) assignments.
+//! Generates `src/preferences/briefs_data.rs` — optimized brief (chord→word) assignments.
 //!
 //! Run with: `cargo run --bin gen_briefs`
 
@@ -265,7 +265,7 @@ fn main() {
     let freq_path = project.join("data/en_freq.txt");
     let candidates_path = project.join("data/brief_candidates.txt");
     let homophones_path = project.join("data/homophones.txt");
-    let out_path = project.join("src/briefs_data.rs");
+    let out_path = project.join("src/preferences/briefs_data.rs");
 
     // 1. Load CMU dict (word → phoneme list)
     let mut cmu: HashMap<String, Vec<String>> = HashMap::new();
@@ -445,7 +445,7 @@ fn main() {
 
     let pinned: &[(u8, u8, &str)] = &[];
 
-    // Mirror of `ORDERED_BRIEFS` in src/ordered_briefs_data.rs. Used here
+    // Mirror of `ORDERED_BRIEFS` in src/preferences/ordered_briefs_data.rs. Used here
     // for two things:
     //   1. Mark the (right, left) slots as occupied so unordered briefs
     //      don't collide with them.
@@ -615,7 +615,7 @@ fn main() {
 /// Group CMU words by phoneme sequence and report collisions where at
 /// least one member is in the candidate pool. Output goes to
 /// `data/homophones.txt` for the user to browse and decide which pairs
-/// warrant ordered-brief entries in `src/ordered_briefs_data.rs`.
+/// warrant ordered-brief entries in `src/preferences/ordered_briefs_data.rs`.
 ///
 /// Only words that appear in `en_freq.txt` are included (filters out
 /// obscure CMU entries that would otherwise dominate the report).
@@ -668,7 +668,7 @@ fn write_homophone_report(
          #\n\
          # Each line is a phoneme sequence followed by every CMU word\n\
          # that pronounces to it (with frequency). Use this list to\n\
-         # pick candidates for ordered briefs (src/ordered_briefs_data.rs).\n\
+         # pick candidates for ordered briefs (src/preferences/ordered_briefs_data.rs).\n\
          #\n\
          # Phoneme path can only reach the most-frequent word of each\n\
          # set — the others require a brief (ordered or unordered).\n\

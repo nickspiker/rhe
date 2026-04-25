@@ -350,7 +350,7 @@ extern "C" fn hid_callback(
         // gets remapped to synthesize Return (otherwise the user
         // loses newline). Runs before everything else — it's just a
         // passthrough with a rewritten code, not a rhe event.
-        if let Some(synth_usage) = crate::layout::hid_enter_synth_usage() {
+        if let Some(synth_usage) = crate::preferences::layout::hid_enter_synth_usage() {
             if usage == synth_usage {
                 // HID 0x28 = Return, virtual keycode 0x24.
                 reinject_key(0x24, 0x28, pressed != 0, &ctx.modifier_flags);
@@ -360,11 +360,11 @@ extern "C" fn hid_callback(
 
         // Auto-switch: flip `enabled` based on chord-key patterns so
         // rhe self-corrects when the user forgot to toggle it. See
-        // `crate::layout::AUTO_SWITCH` for the rule. On a switch,
+        // `crate::preferences::layout::AUTO_SWITCH` for the rule. On a switch,
         // release the held keys from whichever side didn't see their
         // down so they don't stay stuck after the ownership flip.
         let mut auto_switched = false;
-        if crate::layout::AUTO_SWITCH {
+        if crate::preferences::layout::AUTO_SWITCH {
             let rhe_role = hid_usage_to_scan(usage);
             let mut sw = ctx.auto_switch.lock().unwrap();
             if rhe_role.is_some() {
@@ -408,7 +408,7 @@ extern "C" fn hid_callback(
                 // Auto-disable.
                 if !auto_switched
                     && rhe_role.is_none()
-                    && crate::layout::hid_is_non_home_row_letter(usage)
+                    && crate::preferences::layout::hid_is_non_home_row_letter(usage)
                     && ctx.enabled.load(Ordering::Relaxed)
                 {
                     ctx.enabled.store(false, Ordering::Relaxed);
@@ -629,7 +629,7 @@ fn hid_usage_to_virtual_keycode(usage: u32) -> Option<u16> {
 }
 
 /// Map HID usage codes to rhe canonical scancodes. The per-layout
-/// table lives in `crate::layout`; this is just a thin wrapper so the
+/// table lives in `crate::preferences::layout`; this is just a thin wrapper so the
 /// callers can stay in HID-land.
 /// Classify a set of held HID usages into the three tally buckets
 /// the auto-switch heuristic cares about. Mirrors `classify_held`
@@ -639,7 +639,7 @@ fn classify_hid_held(held: &[u32]) -> (u8, bool, bool) {
     let mut word = false;
     let mut thumb = false;
     for &u in held {
-        if let Some(role) = crate::layout::hid_to_role(u) {
+        if let Some(role) = crate::preferences::layout::hid_to_role(u) {
             if role == crate::scan::R_THUMB {
                 thumb = true;
             } else if role == crate::scan::WORD {
@@ -653,7 +653,7 @@ fn classify_hid_held(held: &[u32]) -> (u8, bool, bool) {
 }
 
 fn hid_usage_to_scan(usage: u32) -> Option<u8> {
-    crate::layout::hid_to_role(usage)
+    crate::preferences::layout::hid_to_role(usage)
 }
 
 /// Build a matching dictionary for keyboard devices.
