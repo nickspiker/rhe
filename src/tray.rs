@@ -27,8 +27,8 @@ use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 use crate::interpreter::FallbackMode;
-use crate::ui::photon_chrome::{
-    HIT_CLOSE_BUTTON, HIT_MAXIMIZE_BUTTON, HIT_MINIMIZE_BUTTON, HIT_NONE, PhotonApp,
+use crate::ui::compositor::{
+    HIT_CLOSE_BUTTON, HIT_MAXIMIZE_BUTTON, HIT_MINIMIZE_BUTTON, HIT_NONE, TutorApp,
 };
 use crate::ui::renderer::Renderer;
 use crate::ui::text_rasterizing::TextRenderer;
@@ -96,19 +96,16 @@ fn scaled_logo_rgb(diameter: usize) -> Vec<u8> {
     dst
 }
 
-/// Render the tray icon: ring around a scaled-down logo.png via
-/// photon's draw_avatar. Ring colour signals rhe's enabled state.
+/// Render the tray icon: ring around a scaled-down logo.png via the
+/// compositor's `draw_avatar` in straight-alpha mode (so the outer AA
+/// fringe carries real alpha and the icon fades to transparent
+/// outside the ring instead of leaving an opaque half-bright ring).
 fn make_tray_icon(size: u32, online: bool) -> Icon {
-    use crate::ui::photon_chrome::PhotonApp;
+    use crate::ui::compositor::TutorApp;
 
     let w = size as usize;
     let h = size as usize;
-
-    // Photon's draw_avatar AA fringe assumes the ring radius leaves
-    // room for stroke + outer AA pixel. At size=22 the ring is
-    // stroke_width = radius/16 + 2 = 2, plus 1 AA pixel on each side →
-    // total 4px. Set radius so the ring outer edge lands ~1px shy of
-    // the icon bounds.
+    // Leave 3px of breathing room past the outer AA pixel.
     let radius = (size as isize) / 2 - 3;
     let diameter = (radius * 2) as usize;
     let cx = (size / 2) as isize;
@@ -116,9 +113,8 @@ fn make_tray_icon(size: u32, online: bool) -> Icon {
 
     let mut pixels = vec![0u32; w * h];
     let logo = scaled_logo_rgb(diameter);
-
     let ring = if online { ICON_RING_ON } else { ICON_RING_OFF };
-    PhotonApp::draw_avatar(
+    TutorApp::draw_avatar(
         &mut pixels,
         None,
         w,
@@ -129,6 +125,7 @@ fn make_tray_icon(size: u32, online: bool) -> Icon {
         Some(&logo),
         Some(ring),
         false,
+        true, // straight_alpha — tray icons need real edge alpha
     );
 
     // u32 ARGB → RGBA bytes for tray-icon's Icon::from_rgba.
@@ -350,15 +347,6 @@ impl TrayApp {
         if width == 0 || height == 0 {
             return;
         }
-        eprintln!(
-            "rhe tutor: redraw w={} h={} ru={:.2} debug={} hit_test={} tbm={}",
-            width,
-            height,
-            self.tutor_ru,
-            self.tutor_debug,
-            self.tutor_debug_hit_test,
-            self.tutor_show_textbox_mask,
-        );
 
         if self.text_renderer.is_none() {
             self.text_renderer = Some(TextRenderer::new());
@@ -369,6 +357,17 @@ impl TrayApp {
         let Some(renderer) = self.tutor_renderer.as_mut() else {
             return;
         };
+
+        // CRITICAL: mark the whole frame dirty on the Renderer BEFORE
+        // locking the buffer. Photon's Linux softbuffer path only
+        // copies rows in the current dirty range to the compositor
+        // buffer on present(); after the first frame that range is
+        // empty unless we re-mark, so every subsequent redraw would
+        // otherwise silently present zero bytes and the screen would
+        // freeze at the initial frame. The `buf.mark_all()` method on
+        // the SoftbufferBuffer guard is a stub — it has to be called
+        // on the Renderer itself.
+        renderer.mark_all();
 
         let mut buf = renderer.lock_buffer();
         let pixels = buf.as_mut();
@@ -383,14 +382,14 @@ impl TrayApp {
 
         // Photon's chrome. window_controls returns the squircle bounds
         // that edges_and_mask + button_hairlines both need.
-        let (start, crossings, button_x_start, button_height) = PhotonApp::draw_window_controls(
+        let (start, crossings, button_x_start, button_height) = TutorApp::draw_window_controls(
             pixels,
             &mut self.tutor_hit_test,
             size.width,
             size.height,
             self.tutor_ru,
         );
-        PhotonApp::draw_window_edges_and_mask(
+        TutorApp::draw_window_edges_and_mask(
             pixels,
             &mut self.tutor_hit_test,
             size.width,
@@ -398,7 +397,7 @@ impl TrayApp {
             start,
             &crossings,
         );
-        PhotonApp::draw_button_hairlines(
+        TutorApp::draw_button_hairlines(
             pixels,
             &mut self.tutor_hit_test,
             size.width,
@@ -510,7 +509,6 @@ impl TrayApp {
             }
         }
 
-        buf.mark_all();
         let _ = buf.present();
     }
 
@@ -556,17 +554,6 @@ impl TrayApp {
         if matches!(event.logical_key, Key::Named(NamedKey::Control)) {
             self.tutor_ctrl_held = event.state == ElementState::Pressed;
         }
-        // Loud diagnostic so we can see exactly what reaches the
-        // tutor window. If nothing prints on key press the window
-        // isn't getting keyboard focus at all.
-        eprintln!(
-            "rhe tutor kbd: state={:?} logical={:?} mods.ctrl={} manual_ctrl={}",
-            event.state,
-            event.logical_key,
-            self.tutor_mods.control_key(),
-            self.tutor_ctrl_held,
-        );
-
         if event.state != ElementState::Pressed {
             return;
         }
@@ -625,13 +612,6 @@ impl TrayApp {
             false
         };
         if matched {
-            eprintln!(
-                "rhe tutor: shortcut matched → debug={} hit_test={} tbm={} ru={:.2}",
-                self.tutor_debug,
-                self.tutor_debug_hit_test,
-                self.tutor_show_textbox_mask,
-                self.tutor_ru,
-            );
             if let Some(w) = self.tutor_window.as_ref() {
                 w.request_redraw();
             }

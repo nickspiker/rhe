@@ -1,9 +1,4 @@
-//! Photon's chrome/button/textbox drawing primitives, lifted verbatim
-//! via cp from photon/src/ui/compositing.rs. The only edits are at the
-//! top of the file — import paths adapted to rhe's module tree, the
-//! render() state machine and other app-specific methods stripped, a
-//! zero-sized PhotonApp type introduced so the impl block compiles.
-//! Everything below the impl block is photon code unchanged.
+//! Photon's chrome/button/textbox drawing primitives
 
 use crate::ui::theme;
 
@@ -12,8 +7,6 @@ const PREMULTIPLIED: bool = true;
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 const PREMULTIPLIED: bool = false;
 
-// Hit-test IDs — copied from photon/src/ui/app.rs so the draw fns stay
-// byte-identical to photon. rhe only cares about the chrome IDs.
 pub const HIT_NONE: u8 = 0;
 pub const HIT_MINIMIZE_BUTTON: u8 = 1;
 pub const HIT_MAXIMIZE_BUTTON: u8 = 2;
@@ -22,11 +15,9 @@ pub const HIT_HANDLE_TEXTBOX: u8 = 4;
 pub const HIT_PRIMARY_BUTTON: u8 = 5;
 pub const HIT_AVATAR: u8 = 7;
 
-/// Zero-sized carrier so photon's static `impl` methods keep their
-/// `PhotonApp::` call prefix. No state — all methods below are static.
-pub struct PhotonApp;
+pub struct TutorApp;
 
-impl PhotonApp {
+impl TutorApp {
 
     /// Calculate window control bounds without drawing.
     /// Returns (start, crossings, button_x_start, button_height) needed for edges/hairlines.
@@ -2490,6 +2481,16 @@ impl PhotonApp {
     ///
     /// Coordinates are isize to support scrolling (can be partially/fully off-screen).
     /// Computes intersection of avatar bounds with screen - loop bounds prove safety.
+    /// `straight_alpha = false`: forces alpha to 0xFF on every written
+    /// pixel — the photon-window mode where the destination is an
+    /// opaque surface and AA pixels at the outer fringe are composited
+    /// against the existing buffer contents.
+    ///
+    /// `straight_alpha = true`: writes proper non-premultiplied alpha
+    /// at the AA fringes (0 outside the ring, fading up to 0xFF
+    /// inside) so the result can be handed to a tray-icon API that
+    /// expects real alpha. Logo-only pixels and the solid ring still
+    /// write 0xFF; only the outer AA pixels carry sub-255 alpha.
     pub fn draw_avatar(
         pixels: &mut [u32],
         mut hit_test_map: Option<&mut [u8]>,
@@ -2501,10 +2502,10 @@ impl PhotonApp {
         avatar_scaled: Option<&[u8]>,
         ring_colour: Option<u32>,
         brighten: bool,
+        straight_alpha: bool,
     ) {
         let r = radius;
         let diameter = (radius * 2) as usize;
-        // rhe tweak vs photon: +2 floor so the ring stays visible
         // at tiny (22px tray-icon) radii where radius/16 rounds to 0.
         let stroke_width = radius / 16 + 2;
 
@@ -2580,11 +2581,19 @@ impl PhotonApp {
                         // Solid ring (r_inner to r_outer)
                         pixels[idx] = 0xFF000000 | ring;
                     } else if dist2 <= r_outer_outer2 {
-                        // Outer AA edge (r_outer to r_outer_outer) - blend ring to background
-                        // PROOF: dist2 ∈ (r_outer2, r_outer_outer2], so numerator ∈ [0, diff_outer<<8)
-                        // Division maps to [0, 256), cast to u8 is safe (max 255)
+                        // Outer AA edge (r_outer to r_outer_outer)
                         let alpha = (((r_outer_outer2 - dist2) << 8) / diff_outer) as u8;
-                        pixels[idx] = blend_rgb_only(pixels[idx], ring, 255 - alpha, alpha);
+                        if straight_alpha {
+                            // Tray-icon mode: full ring RGB, fade alpha
+                            // to zero so the fringe goes transparent
+                            // when the icon is composited.
+                            let (rb, gb, bb, _) = unpack_argb(ring);
+                            pixels[idx] = pack_argb(rb, gb, bb, alpha);
+                        } else {
+                            // Window mode: blend opaque ring color with
+                            // whatever's behind, alpha forced to 0xFF.
+                            pixels[idx] = blend_rgb_only(pixels[idx], ring, 255 - alpha, alpha);
+                        }
                     }
                 }
             }

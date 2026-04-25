@@ -18,9 +18,8 @@ pub mod renderer_linux_softbuffer;
 pub mod renderer_macos_softbuffer;
 
 pub mod text_rasterizing;
-pub mod primitives;
 pub mod theme;
-pub mod photon_chrome;
+pub mod compositor;
 
 #[cfg(target_os = "linux")]
 pub use renderer_linux_softbuffer as renderer;
@@ -34,7 +33,7 @@ pub use renderer_macos_softbuffer as renderer;
 pub fn span(width: u32, height: u32) -> f32 {
     let w = width.max(1) as f32;
     let h = height.max(1) as f32;
-    2.0 * w * h / (w + h)
+    2. * w * h / (w + h)
 }
 
 /// Convert a fractional unit (span divisor) into an integer pixel
