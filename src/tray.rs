@@ -103,27 +103,88 @@ fn scaled_logo_rgb(diameter: usize) -> Vec<u8> {
     dst
 }
 
-/// Pick a cell fill colour based on whether the cell is part of the
-/// current target, whether the user has the corresponding key
-/// physically pressed, and whether the drill is currently in an
-/// errored state (mistake, waiting for hands-off to clear).
-fn cell_fill(is_target: bool, pressed: bool, errored: bool) -> u32 {
-    match (is_target, pressed, errored) {
-        // Wrong key down while errored → red.
-        (false, true, true) => 0xFF80_2020,
-        // Wrong key down (drill not yet errored — about to be).
-        (false, true, false) => 0xFF60_2020,
-        // Target lit + correctly pressed → bright lime.
-        (true, true, _) => 0xFF40_FF40,
-        // Target lit + waiting for the press → warm hint colour.
-        (true, false, _) => 0xFF80_6020,
-        // Idle.
-        (false, false, _) => 0xFF30_3038,
+/// Per-cell primary highlight colour. Cyan-leaning on the left hand
+/// gradients into yellow-leaning on the right so the user can pick
+/// out which finger a target belongs to even peripherally. Indexed
+/// in display order (L pinky → R pinky); cells 4 and 5 are the
+/// inner-index keys.
+const KEY_COLORS: [u32; 10] = [
+    0xFF60_A8F0, // L pinky
+    0xFF70_A8E0, // L ring
+    0xFF80_A8D0, // L middle
+    0xFF90_A8C0, // L idx-outer
+    0xFFA0_A8B0, // L idx-inner
+    0xFFB0_A8A0, // R idx-inner
+    0xFFC0_A890, // R idx-outer
+    0xFFD0_A880, // R middle
+    0xFFE0_A870, // R ring
+    0xFFF0_A860, // R pinky
+];
+
+/// Half-brightness companion to `KEY_COLORS`. Used for ordered-brief
+/// secondary targets — cells that are part of the chord but aren't
+/// (or aren't yet) the locked-in lead finger. Picking a non-primary
+/// cell as the lead would resolve to a different word.
+const DOT_COLORS: [u32; 10] = [
+    0xFF30_5478,
+    0xFF38_5470,
+    0xFF40_5468,
+    0xFF48_5460,
+    0xFF50_5458,
+    0xFF58_5450,
+    0xFF60_5448,
+    0xFF68_5440,
+    0xFF70_5438,
+    0xFF78_5430,
+];
+
+/// Idle / non-target / errored fill for the resting-finger cells
+/// (everything except the two inner-index keys). Dark grey: present
+/// enough to anchor the row, dim enough to fade behind any active
+/// target.
+const IDLE_FILL: u32 = 0xFF30_3038;
+/// Idle fill for the two inner-index cells (idx 4, 5). Near-black so
+/// they visually drop out when not in play — they're never resting-
+/// finger keys, only used for number / future symbol modes, so off
+/// is the default state and we don't want them competing with the
+/// home row for attention.
+const INNER_IDLE_FILL: u32 = 0xFF06_0608;
+
+/// Word / mod target highlight colours. Word stays purple, mod stays
+/// green — same scheme as the old terminal renderer. Halved variants
+/// are used when the target is "secondary" (mod present in a chord
+/// alongside fingers, where mod is reachable but not the lead).
+const WORD_PRIMARY: u32 = 0xFF80_00FF;
+const WORD_SECONDARY: u32 = 0xFF40_0080;
+const MOD_PRIMARY: u32 = 0xFF00_FF00;
+const MOD_SECONDARY: u32 = 0xFF00_7F00;
+
+/// Look up the cell fill: primary key colour for primary targets,
+/// dot colour for secondary, idle for everything else (including
+/// errored frames where the caller zeroes the target out). Inner-
+/// index cells (4, 5) idle to near-black; resting fingers idle to
+/// dark grey, with `pressed` darkening the grey a touch so the
+/// pressed bevel reads against a slightly different surface.
+fn finger_cell_fill(cell_idx: usize, is_target: bool, is_primary: bool, pressed: bool) -> u32 {
+    if !is_target {
+        let inner = cell_idx == 4 || cell_idx == 5;
+        let base = if inner { INNER_IDLE_FILL } else { IDLE_FILL };
+        if pressed && !inner {
+            return (base & 0xFEFE_FEFE).wrapping_sub(0x0010_1018);
+        }
+        return base;
+    }
+    if is_primary {
+        KEY_COLORS[cell_idx]
+    } else {
+        DOT_COLORS[cell_idx]
     }
 }
 
 /// Pill-shaped cell via the compositor's draw_button. Square: width =
-/// height = `cell_d`.
+/// height = `cell_d`. `pressed` swaps the bevel highlight/shadow so
+/// the cell reads as pushed-in instead of raised — mirrors the
+/// physical key state for live feedback.
 fn cell(
     pixels: &mut [u32],
     hit: &mut [u8],
@@ -133,12 +194,14 @@ fn cell(
     cy: i32,
     cell_d: i32,
     fill: u32,
+    pressed: bool,
 ) {
     if cx < cell_d / 2 + 1 || cy < cell_d / 2 + 1 {
         return;
     }
     let light = (fill & 0xFEFE_FEFE).wrapping_add(0x0020_2020);
     let shadow = (fill & 0xFEFE_FEFE).wrapping_sub(0x0020_2020);
+    let (top_edge, bot_edge) = if pressed { (shadow, light) } else { (light, shadow) };
     crate::ui::compositor::TutorApp::draw_button(
         pixels,
         hit,
@@ -151,13 +214,14 @@ fn cell(
         cell_d as usize,
         crate::ui::compositor::HIT_NONE,
         fill,
-        light,
-        shadow,
+        top_edge,
+        bot_edge,
     );
 }
 
 /// Pill-shaped cell, allowing distinct width/height (used for the
-/// thumb / mod cell which is rendered wider).
+/// thumb / mod cell which is rendered wider). `pressed` flips the
+/// bevels same as `cell`.
 fn cell_wide(
     pixels: &mut [u32],
     hit: &mut [u8],
@@ -168,12 +232,14 @@ fn cell_wide(
     cell_w: i32,
     cell_h: i32,
     fill: u32,
+    pressed: bool,
 ) {
     if cx < cell_w / 2 + 1 || cy < cell_h / 2 + 1 {
         return;
     }
     let light = (fill & 0xFEFE_FEFE).wrapping_add(0x0020_2020);
     let shadow = (fill & 0xFEFE_FEFE).wrapping_sub(0x0020_2020);
+    let (top_edge, bot_edge) = if pressed { (shadow, light) } else { (light, shadow) };
     crate::ui::compositor::TutorApp::draw_button(
         pixels,
         hit,
@@ -186,8 +252,8 @@ fn cell_wide(
         cell_h as usize,
         crate::ui::compositor::HIT_NONE,
         fill,
-        light,
-        shadow,
+        top_edge,
+        bot_edge,
     );
 }
 
@@ -675,10 +741,7 @@ impl TrayApp {
                 let mut x = line_x;
                 for (i, w) in sentence_words.iter().enumerate() {
                     let (colour, weight) = if i == cur_word_idx {
-                        (
-                            if errored { 0xFFFF6060 } else { 0xFFFFFFFF },
-                            700,
-                        )
+                        (0xFFFF_FFFF, 700)
                     } else if i < cur_word_idx {
                         (0xFF60_6070, 400)
                     } else {
@@ -699,8 +762,9 @@ impl TrayApp {
                 }
             }
 
-            // Big centred target word.
-            let colour = if errored { 0xFFFF6060 } else { 0xFFE0E0F0 };
+            // Big centred target word. No errored colour swap — the
+            // cue lives entirely in the keyboard row going dark.
+            let colour = 0xFFE0_E0F0;
             text.draw_text_center_u32(
                 pixels,
                 width,
@@ -797,8 +861,18 @@ impl TrayApp {
             };
 
         if let Some((target, labels, key_state, errored, _)) = label_data.as_ref() {
-            let target = *target;
-            let errored = *errored;
+            // Errored frames render as if there were no target — every
+            // cell goes idle, the cue being "everything dark, release
+            // and try again" rather than a specific red highlight.
+            let target = if *errored {
+                crate::drill::Target::default()
+            } else {
+                *target
+            };
+            let first_down = self
+                .tutor_state
+                .as_ref()
+                .and_then(|s| s.tutor_first_down);
             let cell_d = ((span * ru / 12.0).round() as i32).max(12);
             let cell_gap = ((span * ru / 96.0).round() as i32).max(2);
             let hand_gap = cell_gap * 4;
@@ -807,31 +881,64 @@ impl TrayApp {
             let row_y = bh - cell_d * 3;
             let cy = row_y + cell_d / 2;
 
-            // (bit, is_left, is_pressed) per cell, in row order.
-            let left = [
-                (3usize, key_state.left[0]),
-                (2, key_state.left[1]),
-                (1, key_state.left[2]),
-                (0, key_state.left[3]),
-                (4, key_state.left[4]),
+            // Cell scancodes in display order; needed both for cell-
+            // colour primary/secondary checks and for the label pass.
+            const CELL_SCANS: [u8; 10] = [
+                crate::scan::L_PINKY,
+                crate::scan::L_RING,
+                crate::scan::L_MID,
+                crate::scan::L_IDX,
+                crate::scan::L_IDX_INNER,
+                crate::scan::R_IDX_INNER,
+                crate::scan::R_IDX,
+                crate::scan::R_MID,
+                crate::scan::R_RING,
+                crate::scan::R_PINKY,
             ];
-            let right = [
-                (5usize, key_state.right[5]),
-                (0, key_state.right[0]),
-                (1, key_state.right[1]),
-                (2, key_state.right[2]),
-                (3, key_state.right[3]),
-            ];
+            // Primary = bright key colour. Every target cell is primary
+            // when there's no ordering constraint, OR once the user has
+            // committed to a lead (any key down). Otherwise only cells
+            // listed in target.accepted_leads are bright; the rest dim
+            // to dot_color as a "press one of these first" cue.
+            let is_primary = |cell_scan: u8| -> bool {
+                if target.accepted_leads.is_empty() {
+                    return true;
+                }
+                if first_down.is_some() {
+                    return true;
+                }
+                target.accepted_leads.test(cell_scan)
+            };
 
             // Cell rectangles in display order (left 0..5, right 5..10),
             // captured during drawing so the label pass can reuse the
             // exact centres without repeating the layout math.
             let mut cell_centres: [(i32, i32); 10] = [(0, 0); 10];
 
+            // Per-cell pressed state in display order. Drives both the
+            // press-darken on idle grey and the bevel reversal in
+            // `cell()` so any held key reads as pushed-in.
+            let pressed: [bool; 10] = [
+                key_state.left[0],  // L pinky
+                key_state.left[1],  // L ring
+                key_state.left[2],  // L mid
+                key_state.left[3],  // L idx
+                key_state.left[4],  // L idx-inner
+                key_state.right[5], // R idx-inner
+                key_state.right[0], // R idx
+                key_state.right[1], // R mid
+                key_state.right[2], // R ring
+                key_state.right[3], // R pinky
+            ];
+
+            let left_bits = [3usize, 2, 1, 0, 4];
+            let right_bits = [5usize, 0, 1, 2, 3];
+
             let mut x = row_x;
-            for (i, (bit, pressed)) in left.iter().enumerate() {
-                let is_target = (target.left & (1u8 << bit)) != 0;
-                let fill = cell_fill(is_target, *pressed, errored);
+            for i in 0..5 {
+                let is_target = (target.left & (1u8 << left_bits[i])) != 0;
+                let fill =
+                    finger_cell_fill(i, is_target, is_primary(CELL_SCANS[i]), pressed[i]);
                 let cx_cell = x + cell_d / 2;
                 cell(
                     pixels,
@@ -842,14 +949,21 @@ impl TrayApp {
                     cy,
                     cell_d,
                     fill,
+                    pressed[i],
                 );
                 cell_centres[i] = (cx_cell, cy);
                 x += cell_d + cell_gap;
             }
             x += hand_gap - cell_gap;
-            for (i, (bit, pressed)) in right.iter().enumerate() {
-                let is_target = (target.right & (1u8 << bit)) != 0;
-                let fill = cell_fill(is_target, *pressed, errored);
+            for i in 0..5 {
+                let cell_idx = 5 + i;
+                let is_target = (target.right & (1u8 << right_bits[i])) != 0;
+                let fill = finger_cell_fill(
+                    cell_idx,
+                    is_target,
+                    is_primary(CELL_SCANS[cell_idx]),
+                    pressed[cell_idx],
+                );
                 let cx_cell = x + cell_d / 2;
                 cell(
                     pixels,
@@ -860,19 +974,35 @@ impl TrayApp {
                     cy,
                     cell_d,
                     fill,
+                    pressed[cell_idx],
                 );
-                cell_centres[5 + i] = (cx_cell, cy);
+                cell_centres[cell_idx] = (cx_cell, cy);
                 x += cell_d + cell_gap;
             }
 
             // Second row below the chord cells: word bar (long, left-
             // aligned under L-pinky) + mod cell (2 cells wide, right-
-            // aligned under R-pinky). Rough 7/8 vs 1/8 split of the
-            // row width.
+            // aligned under R-pinky). Word = purple, mod = green —
+            // distinct from the finger gradient so the thumb/word
+            // roles read at a glance.
             let bottom_cy = cy + cell_d + cell_gap;
             let mod_w = 2 * cell_d + cell_gap;
             let mod_cx = row_x + row_w - mod_w / 2;
             let mod_target = (target.right & (1u8 << 4)) != 0;
+            // Mod-tap-only target (thumb alone, no fingers): step
+            // advances on key-UP, so cell goes dark once thumb is
+            // held — "got it, release to fire". A chord that
+            // includes mod alongside fingers stays bright until the
+            // chord completes on full key-down.
+            let is_mod_tap_only_target = target.right == (1u8 << 4) && target.left == 0;
+            let mod_fill = if !mod_target || is_mod_tap_only_target {
+                IDLE_FILL
+            } else {
+                let mod_primary = target.accepted_leads.is_empty()
+                    || first_down.is_some()
+                    || target.accepted_leads.test(crate::scan::R_THUMB);
+                if mod_primary { MOD_PRIMARY } else { MOD_SECONDARY }
+            };
             let mod_pressed = key_state.right[4];
             cell_wide(
                 pixels,
@@ -883,12 +1013,15 @@ impl TrayApp {
                 bottom_cy,
                 mod_w,
                 cell_d,
-                cell_fill(mod_target, mod_pressed, errored),
+                mod_fill,
+                mod_pressed,
             );
 
             let word_sep = cell_gap * 2;
             let word_w = row_w - mod_w - word_sep;
             let word_cx = row_x + word_w / 2;
+            let word_fill = if target.word { WORD_PRIMARY } else { IDLE_FILL };
+            let word_pressed = key_state.word;
             cell_wide(
                 pixels,
                 &mut self.tutor_hit_test,
@@ -898,8 +1031,10 @@ impl TrayApp {
                 bottom_cy,
                 word_w,
                 cell_d,
-                cell_fill(target.word, key_state.word, errored),
+                word_fill,
+                word_pressed,
             );
+            let _ = WORD_SECONDARY;
 
             // Adaptive labels: draw each cell's predicted glyph centred
             // in the cell. Done in its own pass so the text renderer's
