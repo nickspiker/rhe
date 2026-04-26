@@ -249,6 +249,7 @@ fn run() {
     // handed to the engine thread before it spawns.
     let (event_loop, proxy) = tray::build();
     let drill_proxy = proxy.clone();
+    let caps_proxy = proxy.clone();
 
     std::thread::spawn(move || {
         let cmudict = data::load_cmudict();
@@ -270,7 +271,8 @@ fn run() {
 
         let out = output::macos::MacOSOutput::new();
 
-        let input = input::cgevent_backend::CgEventInput::start_grab(enabled_engine, false)
+        let input = input::cgevent_backend::CgEventInput::start_grab(
+                enabled_engine, false, Some(caps_proxy))
             .expect("failed to start key capture");
         let mut sm = state_machine::StateMachine::new();
 

@@ -92,6 +92,8 @@ mod ffi {
             field: CGEventField,
         ) -> i64;
 
+        pub fn CGEventGetFlags(event: CGEventRef) -> u64;
+
         pub fn CGEventSetIntegerValueField(
             event: CGEventRef,
             field: CGEventField,
@@ -135,6 +137,8 @@ struct CallbackContext {
     esc_quits: bool,
     /// IOHIDManager opened WITHOUT seize, just for caps lock LED control
     led_manager: *mut c_void,
+    /// Proxy to wake the tray event loop on state changes
+    tray_proxy: Option<crate::tray::TrayProxy>,
 }
 
 pub struct CgEventInput {
@@ -142,7 +146,11 @@ pub struct CgEventInput {
 }
 
 impl CgEventInput {
-    pub fn start_grab(enabled: Arc<AtomicBool>, esc_quits: bool) -> Result<Self, String> {
+    pub fn start_grab(
+        enabled: Arc<AtomicBool>,
+        esc_quits: bool,
+        tray_proxy: Option<crate::tray::TrayProxy>,
+    ) -> Result<Self, String> {
         // Disable caps lock firmware debounce
         let _ = std::process::Command::new("hidutil")
             .args(["property", "--set", r#"{"CapsLockDelayOverride":0}"#])
@@ -152,27 +160,12 @@ impl CgEventInput {
 
         std::thread::spawn(move || {
             unsafe {
-                // Open IOHIDManager without seize — just for LED control
-                use super::iohid_backend::ffi as hid_ffi;
-                let led_manager = hid_ffi::IOHIDManagerCreate(hid_ffi::kCFAllocatorDefault, 0);
-                if !led_manager.is_null() {
-                    let matching = super::iohid_backend::create_keyboard_matching();
-                    hid_ffi::IOHIDManagerSetDeviceMatching(
-                        led_manager,
-                        matching as hid_ffi::CFDictionaryRef,
-                    );
-                    // Open WITHOUT seize (0 = no options)
-                    hid_ffi::IOHIDManagerOpen(led_manager, 0);
-                    // Set initial LED state
-                    let initial_enabled = enabled.load(Ordering::Relaxed);
-                    super::iohid_backend::set_caps_lock_led(led_manager, !initial_enabled);
-                }
-
                 let ctx = Box::into_raw(Box::new(CallbackContext {
                     tx,
                     enabled,
                     esc_quits,
-                    led_manager,
+                    led_manager: std::ptr::null_mut(),
+                    tray_proxy,
                 }));
 
                 let mask = (1u64 << ffi::kCGEventKeyDown)
@@ -246,11 +239,14 @@ extern "C" fn event_callback(
 
         let vk = ffi::CGEventGetIntegerValueField(event, ffi::kCGKeyboardEventKeycode) as u16;
 
-        // Caps lock toggle (comes as FlagsChanged)
+        // Caps lock toggle — one event per press
         if is_flags && is_caps_lock(vk) {
             let was_enabled = ctx.enabled.load(Ordering::Relaxed);
             let now_enabled = !was_enabled;
             ctx.enabled.store(now_enabled, Ordering::Relaxed);
+            if let Some(proxy) = &ctx.tray_proxy {
+                let _ = proxy.send_event(crate::tray::TrayEvent::StateChanged);
+            }
             // Toggle LED: ON when rhe is OFF (keyboard mode)
             if !ctx.led_manager.is_null() {
                 super::iohid_backend::set_caps_lock_led(ctx.led_manager, !now_enabled);
