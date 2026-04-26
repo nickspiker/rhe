@@ -25,5 +25,8 @@ pub mod rdev_backend;
 #[cfg(target_os = "macos")]
 pub mod iohid_backend;
 
+#[cfg(target_os = "macos")]
+pub mod cgevent_backend;
+
 #[cfg(target_os = "linux")]
 pub mod evdev_backend;

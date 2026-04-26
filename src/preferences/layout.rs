@@ -313,6 +313,80 @@ pub const fn linux_enter_synth_key() -> Option<u16> {
 
 // ─── HID mappings (macOS) ───
 
+/// Map macOS virtual keycode → rhe scan code. For CGEventTap backend.
+/// Converts VK to HID usage first, then uses the layout's HID mapping.
+pub fn vk_to_role(vk: u16) -> Option<u8> {
+    let hid = vk_to_hid(vk)?;
+    hid_to_role(hid)
+}
+
+/// macOS virtual keycode → HID usage code. Positional (QWERTY-based).
+fn vk_to_hid(vk: u16) -> Option<u32> {
+    Some(match vk {
+        0x00 => hid::A,
+        0x01 => hid::S,
+        0x02 => hid::D,
+        0x03 => hid::F,
+        0x04 => hid::H,
+        0x05 => hid::G,
+        0x06 => 0x1D, // Z
+        0x07 => 0x1B, // X
+        0x08 => 0x06, // C
+        0x09 => 0x19, // V
+        0x0B => 0x05, // B
+        0x0C => 0x14, // Q
+        0x0D => 0x1A, // W
+        0x0E => 0x08, // E
+        0x0F => 0x15, // R
+        0x10 => 0x1C, // Y
+        0x11 => 0x17, // T
+        0x12 => 0x1E, // 1
+        0x13 => 0x1F, // 2
+        0x14 => 0x20, // 3
+        0x15 => 0x21, // 4
+        0x16 => 0x23, // 6
+        0x17 => 0x22, // 5
+        0x18 => 0x2E, // =
+        0x19 => 0x26, // 9
+        0x1A => 0x24, // 7
+        0x1B => 0x2D, // -
+        0x1C => 0x25, // 8
+        0x1D => 0x27, // 0
+        0x1E => 0x30, // ]
+        0x1F => 0x12, // O
+        0x20 => 0x18, // U
+        0x21 => 0x2F, // [
+        0x22 => 0x0C, // I
+        0x23 => 0x13, // P
+        0x24 => hid::RETURN,
+        0x25 => hid::L,
+        0x26 => hid::J,
+        0x27 => hid::APOSTROPHE,
+        0x28 => hid::K,
+        0x29 => hid::SEMICOLON,
+        0x2A => 0x31, // backslash
+        0x2B => 0x36, // ,
+        0x2C => 0x38, // /
+        0x2D => 0x11, // N
+        0x2E => 0x10, // M
+        0x2F => 0x37, // .
+        0x30 => 0x2B, // Tab
+        0x31 => hid::SPACEBAR,
+        0x32 => 0x35, // `
+        0x33 => 0x2A, // Backspace
+        0x35 => 0x29, // Escape
+        0x36 => hid::RIGHT_GUI,
+        0x37 => hid::LEFT_GUI,
+        0x38 => hid::LEFT_SHIFT,
+        0x3A => hid::LEFT_ALT,
+        0x3B => 0xE0, // Left Control
+        0x3C => hid::RIGHT_SHIFT,
+        0x3D => hid::RIGHT_ALT,
+        0x3E => 0xE4, // Right Control
+        _ => return None,
+    })
+}
+
 pub const fn hid_to_role(usage: u32) -> Option<u8> {
     match CURRENT {
         Layout::NarrowR => hid_narrow_r(usage),

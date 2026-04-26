@@ -270,7 +270,7 @@ fn run() {
 
         let out = output::macos::MacOSOutput::new();
 
-        let input = input::iohid_backend::IoHidInput::start_grab(enabled_engine, false)
+        let input = input::cgevent_backend::CgEventInput::start_grab(enabled_engine, false)
             .expect("failed to start key capture");
         let mut sm = state_machine::StateMachine::new();
 
@@ -324,7 +324,7 @@ fn run() {
         }
     });
 
-    tray::run_tray(event_loop, enabled, quit, fallback);
+    tray::run_tray(event_loop, enabled, quit, fallback, mode_flags);
 }
 
 /// Full engine on Linux — evdev grab + uinput output + tray menu.

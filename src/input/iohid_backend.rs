@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 
 // IOKit / CoreFoundation FFI — only what we need.
-mod ffi {
+pub(crate) mod ffi {
     #![allow(non_upper_case_globals, non_camel_case_types, dead_code)]
     use std::ffi::c_void;
 
@@ -219,6 +219,11 @@ impl Drop for IoHidInput {
 
 impl IoHidInput {
     pub fn start_grab(enabled: Arc<AtomicBool>, esc_quits: bool) -> Result<Self, String> {
+        // Disable macOS caps lock firmware debounce so it acts as an instant key
+        let _ = std::process::Command::new("hidutil")
+            .args(["property", "--set", r#"{"CapsLockDelayOverride":0}"#])
+            .output();
+
         let (tx, rx) = mpsc::channel();
         // Wrapper to send raw pointer across thread boundary
         struct SendPtr(*mut std::ffi::c_void);
@@ -307,9 +312,9 @@ extern "C" fn hid_callback(
         let usage = ffi::IOHIDElementGetUsage(element);
         let pressed = ffi::IOHIDValueGetIntegerValue(value);
 
-        // Non-keyboard usage pages (consumer control, etc.) — let them through
+        // Non-keyboard usage pages (consumer control, etc.)
         if usage_page != ffi::kHIDPage_KeyboardOrKeypad {
-            return; // IOHIDManager doesn't suppress non-keyboard elements
+            return;
         }
         // Skip rollover/sentinel elements within the keyboard page
         if usage <= 0x03 || usage == 0xffffffff {
@@ -498,7 +503,7 @@ unsafe fn reinject_key(vk: u16, usage: u32, key_down: bool, modifier_flags: &std
 
 /// Toggle the caps lock LED on all keyboard devices.
 /// LED page = 0x08, usage = 0x02 (Caps Lock).
-unsafe fn set_caps_lock_led(manager: ffi::IOHIDManagerRef, on: bool) {
+pub(crate) unsafe fn set_caps_lock_led(manager: ffi::IOHIDManagerRef, on: bool) {
     let devices = ffi::IOHIDManagerCopyDevices(manager);
     if devices.is_null() { return; }
 
@@ -657,7 +662,7 @@ fn hid_usage_to_scan(usage: u32) -> Option<u8> {
 }
 
 /// Build a matching dictionary for keyboard devices.
-unsafe fn create_keyboard_matching() -> ffi::CFMutableDictionaryRef {
+pub(crate) unsafe fn create_keyboard_matching() -> ffi::CFMutableDictionaryRef {
     unsafe {
         let dict = ffi::CFDictionaryCreateMutable(
             ffi::kCFAllocatorDefault,
