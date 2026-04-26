@@ -93,6 +93,7 @@ mod ffi {
         ) -> i64;
 
         pub fn CGEventGetFlags(event: CGEventRef) -> u64;
+        pub fn CGEventSetFlags(event: CGEventRef, flags: u64);
 
         pub fn CGEventSetIntegerValueField(
             event: CGEventRef,
@@ -232,14 +233,20 @@ extern "C" fn event_callback(
 
         let ctx = &*(user_info as *const CallbackContext);
 
-        // Only process key down/up, not flags changed
+        // Strip caps lock flag from EVERY event — caps lock is rhe's
+        // private mode toggle, never the OS text-level caps lock.
+        let flags = ffi::CGEventGetFlags(event);
+        if flags & 0x10000 != 0 {
+            ffi::CGEventSetFlags(event, flags & !0x10000);
+        }
+
         let is_down = event_type == ffi::kCGEventKeyDown;
         let is_up = event_type == ffi::kCGEventKeyUp;
         let is_flags = event_type == ffi::kCGEventFlagsChanged;
 
         let vk = ffi::CGEventGetIntegerValueField(event, ffi::kCGKeyboardEventKeycode) as u16;
 
-        // Caps lock toggle — one event per press
+        // Caps lock toggle — one event per press, fully suppressed from OS
         if is_flags && is_caps_lock(vk) {
             let was_enabled = ctx.enabled.load(Ordering::Relaxed);
             let now_enabled = !was_enabled;
@@ -247,12 +254,7 @@ extern "C" fn event_callback(
             if let Some(proxy) = &ctx.tray_proxy {
                 let _ = proxy.send_event(crate::tray::TrayEvent::StateChanged);
             }
-            // Toggle LED: ON when rhe is OFF (keyboard mode)
-            if !ctx.led_manager.is_null() {
-                super::iohid_backend::set_caps_lock_led(ctx.led_manager, !now_enabled);
-            }
-            // Suppress the caps lock event so OS doesn't toggle its own state
-            return std::ptr::null_mut();
+            return std::ptr::null_mut(); // fully suppress — OS never sees caps lock
         }
 
         // Escape handling
