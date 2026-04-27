@@ -91,7 +91,7 @@ pub struct PracticeWord {
     pub number_steps: Option<Vec<Step>>, // mod-tap entry + per-char + commit
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WordMode {
     Brief,
     Phoneme,
@@ -233,8 +233,8 @@ impl Practice {
 /// Curated drill lines used by `rhe test`. Reproducible, offline,
 /// short enough to cycle thru while iterating on chord designs.
 pub const TEST_SENTENCES: &[&str] = &[
-    "count 0 1 2 3 4 5 6 7 8 9 and then stop",
     "the answer is 42 and pi is about 3.14 today",
+    "count 0 1 2 3 4 5 6 7 8 9 and then stop",
     "add 1+2 and 7+8 to get 3 and 15 as a result",
     "try 9-4 and 6-1 or 100-50 just for practice",
     "compute 2*3 and 4*5 to get 6 and 20 quickly",
@@ -429,67 +429,44 @@ pub fn build_number_steps(word: &str) -> Option<Vec<Step>> {
     }
 
     let mut steps: Vec<Step> = Vec::new();
-    let mod_tap_target = Target {
-        right: 1 << 4,
-        left: 0,
-        word: true,
-        accepted_leads: KeyMask::EMPTY,
-    };
-    let release_step = || Step {
-        target: Target {
-            right: 0,
-            left: 0,
-            word: true,
-            accepted_leads: KeyMask::EMPTY,
-        },
-        ..Step::default()
-    };
+    let word_only = Target { right: 0, left: 0, word: true, accepted_leads: KeyMask::EMPTY };
 
+    // Step 1: +mod +word
     steps.push(Step {
-        target: mod_tap_target,
-        mod_tap_only: true,
+        target: Target { right: 1 << 4, left: 0, word: true, accepted_leads: KeyMask::EMPTY },
         number_glyph: None,
         ..Step::default()
     });
+    // Step 2: -mod (word still held)
+    steps.push(Step { target: word_only, ..Step::default() });
 
-    let mut prev_needs_release = false;
     for c in word.chars() {
         if c == '.' {
-            if prev_needs_release {
-                steps.push(release_step());
-            }
+            // Decimal: re-tap mod
             steps.push(Step {
-                target: mod_tap_target,
-                mod_tap_only: true,
+                target: Target { right: 1 << 4, left: 0, word: true, accepted_leads: KeyMask::EMPTY },
                 number_glyph: Some(".".to_string()),
                 ..Step::default()
             });
-            prev_needs_release = false;
+            steps.push(Step { target: word_only, ..Step::default() });
             continue;
-        }
-        if prev_needs_release {
-            steps.push(release_step());
         }
         let (right, left, needs_mod) = number_char_target(c).unwrap();
         let adjusted_right = right | if needs_mod { 1 << 4 } else { 0 };
+        // +finger
         steps.push(Step {
-            target: Target {
-                right: adjusted_right,
-                left,
-                word: true,
-                accepted_leads: KeyMask::EMPTY,
-            },
+            target: Target { right: adjusted_right, left, word: true, accepted_leads: KeyMask::EMPTY },
             number_glyph: Some(c.to_string()),
             ..Step::default()
         });
-        prev_needs_release = true;
+        // -finger (word still held)
+        steps.push(Step { target: word_only, ..Step::default() });
     }
 
-    steps.push(Step {
-        target: Target::default(),
-        space_only: true,
-        ..Step::default()
-    });
+    // Replace last word_only with all-off (release word too)
+    if let Some(last) = steps.last_mut() {
+        last.target = Target::default();
+    }
 
     Some(steps)
 }
@@ -876,6 +853,21 @@ impl TutorState {
 
             if step_advanced_by_modtap {
                 // already advanced above; fall through to step-transition reseed
+            } else if self.practice.mode == WordMode::Number {
+                // Number mode: pure state matching. Advance when
+                // current key state exactly equals the target.
+                if let Some(target) = self.practice.current_target() {
+                    let target = *target;
+                    let state_right = self.key_state.right_bits();
+                    let state_left = self.key_state.left_bits();
+                    let state_word = self.key_state.word;
+                    if state_right == target.right
+                        && state_left == target.left
+                        && state_word == target.word
+                    {
+                        self.practice.advance_step();
+                    }
+                }
             } else if let Some(target) = self.practice.current_target() {
                 let target = *target;
                 let step = self.practice.current_step().unwrap();

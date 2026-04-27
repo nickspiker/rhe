@@ -580,6 +580,7 @@ pub fn build() -> (EventLoop<TrayEvent>, TrayProxy) {
 #[derive(Clone)]
 struct TrayIds {
     tutor: MenuId,
+    test_text: MenuId,
     mode: MenuId,
     enabled: MenuId,
     quit: MenuId,
@@ -1236,18 +1237,7 @@ impl TrayApp {
             let mod_w = layout.mod_w;
             let mod_cx = layout.mod_cx;
             let mod_target = (target.right & (1u8 << 4)) != 0;
-            let mod_fill = if !mod_target {
-                theme::CELL_IDLE
-            } else {
-                let mod_primary = target.accepted_leads.is_empty()
-                    || first_down.is_some()
-                    || target.accepted_leads.test(crate::scan::R_THUMB);
-                if mod_primary {
-                    theme::MOD_PRIMARY
-                } else {
-                    theme::MOD_SECONDARY
-                }
-            };
+            let mod_fill = if mod_target { theme::MOD_PRIMARY } else { theme::CELL_IDLE };
             let mod_pressed = key_state.right[4];
             cell_wide(
                 pixels,
@@ -1707,6 +1697,27 @@ impl TrayApp {
     fn on_menu_click(&mut self, event_loop: &ActiveEventLoop, id: MenuId) {
         if id == self.ids.tutor {
             self.open_tutor(event_loop);
+        } else if id == self.ids.test_text {
+            self.open_tutor(event_loop);
+            if self.tutor_word_lookup.is_none() {
+                let cmudict = crate::data::load_cmudict();
+                self.tutor_word_lookup = Some(WordLookup::new(&cmudict));
+                self.tutor_brief_table = Some(crate::preferences::briefs::load_briefs());
+            }
+            if let (Some(lookup), Some(briefs)) =
+                (self.tutor_word_lookup.as_ref(), self.tutor_brief_table.as_ref())
+            {
+                let lines: Vec<String> = crate::tutor::drill::TEST_SENTENCES
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
+                let practice = build_practice(lookup, briefs, lines, true);
+                self.tutor_state = Some(TutorState::new(practice));
+                self.tutor_wiki_stream = None;
+                if let Some(w) = self.tutor_window.as_ref() {
+                    w.request_redraw();
+                }
+            }
         } else if id == self.ids.mode {
             let current = FallbackMode::from_u8(self.fallback.load(Ordering::Relaxed));
             let next = match current {
@@ -2049,6 +2060,7 @@ fn build_mac_tray(
     // Rebuild MenuItems with the IDs we pre-allocated so that the
     // winit thread can match click events.
     let tutor_item = MenuItem::with_id(ids.tutor.clone(), "Open Tutor", true, None);
+    let test_item = MenuItem::with_id(ids.test_text.clone(), "Test Text", true, None);
     let mode_item = MenuItem::with_id(
         ids.mode.clone(),
         if is_autospell { "Autospell" } else { "IPA" },
@@ -2065,6 +2077,7 @@ fn build_mac_tray(
 
     let menu = Menu::new();
     menu.append(&tutor_item).ok();
+    menu.append(&test_item).ok();
     menu.append(&PredefinedMenuItem::separator()).ok();
     menu.append(&mode_item).ok();
     menu.append(&enabled_item).ok();
@@ -2114,6 +2127,7 @@ fn spawn_linux_tray_thread(
         let is_autospell = initial_fallback == FallbackMode::Autospell;
 
         let tutor_item = MenuItem::with_id(ids.tutor.clone(), "Open Tutor", true, None);
+        let test_item = MenuItem::with_id(ids.test_text.clone(), "Test Text", true, None);
         let mode_item = MenuItem::with_id(
             ids.mode.clone(),
             if is_autospell { "Autospell" } else { "IPA" },
@@ -2130,6 +2144,7 @@ fn spawn_linux_tray_thread(
 
         let menu = Menu::new();
         menu.append(&tutor_item).ok();
+        menu.append(&test_item).ok();
         menu.append(&PredefinedMenuItem::separator()).ok();
         menu.append(&mode_item).ok();
         menu.append(&enabled_item).ok();
@@ -2197,6 +2212,7 @@ pub fn run_tray(
 ) {
     let ids = TrayIds {
         tutor: MenuId::new("rhe.tutor"),
+        test_text: MenuId::new("rhe.test_text"),
         mode: MenuId::new("rhe.mode"),
         enabled: MenuId::new("rhe.enabled"),
         quit: MenuId::new("rhe.quit"),
