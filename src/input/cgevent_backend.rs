@@ -339,6 +339,13 @@ extern "C" fn event_callback(
             return std::ptr::null_mut();
         }
 
+        // If Ctrl is held, pass through — lets Ctrl+D/H/T debug
+        // shortcuts reach the window even while rhe is active.
+        let flags = ffi::CGEventGetFlags(event);
+        if flags & 0x40000 != 0 {
+            return event;
+        }
+
         // Check if it's one of our keys
         if let Some(scan) = vk_to_scan(vk) {
             let direction = if is_down {

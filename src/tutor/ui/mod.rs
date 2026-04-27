@@ -15,6 +15,8 @@
 pub mod renderer_linux_softbuffer;
 
 #[cfg(target_os = "macos")]
+pub mod renderer_macos;
+#[cfg(target_os = "macos")]
 pub mod renderer_macos_softbuffer;
 
 pub mod compositor;
@@ -26,7 +28,7 @@ pub mod theme;
 pub use renderer_linux_softbuffer as renderer;
 
 #[cfg(target_os = "macos")]
-pub use renderer_macos_softbuffer as renderer;
+pub use renderer_macos as renderer;
 
 /// Harmonic-mean scale invariant. Responsive, orientation-agnostic —
 /// both landscape and portrait of the same diagonal pick the same span.

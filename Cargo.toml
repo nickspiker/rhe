@@ -32,6 +32,8 @@ rdev = { version = "0.5", features = ["unstable_grab"] }
 core-graphics = "0.24"
 core-foundation = "0.10"
 foreign-types = "0.5"
+wgpu = { version = "28", default-features = false, features = ["metal"] }
+pollster = "0.4"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"

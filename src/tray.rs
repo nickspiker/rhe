@@ -514,6 +514,7 @@ struct TrayApp {
     tutor_debug_hit_test: bool,
     tutor_show_textbox_mask: bool,
     tutor_debug_hit_colours: Vec<(u8, u8, u8)>,
+    tutor_debug_colour_seed: u32,
     /// Manual Ctrl tracking derived from KeyboardInput events. Used as
     /// a fallback when winit's ModifiersChanged doesn't fire on some
     /// Wayland compositors (or before the window has keyboard focus).
@@ -568,7 +569,7 @@ impl TrayApp {
             .with_inner_size(PhysicalSize::new(800u32, 500u32))
             .with_decorations(false)
             .with_transparent(true)
-            .with_resizable(true);
+            .with_resizable(cfg!(not(target_os = "macos")));
         let window = match event_loop.create_window(attrs) {
             Ok(w) => w,
             Err(e) => {
@@ -586,6 +587,11 @@ impl TrayApp {
         //   2. We never move tutor_window out of self except to drop it
         //      (close path assigns None; renderer is cleared first).
         if let Some(w_ref) = self.tutor_window.as_ref() {
+            #[cfg(target_os = "macos")]
+            {
+                use winit::platform::macos::WindowExtMacOS;
+                w_ref.set_has_shadow(false);
+            }
             self.tutor_renderer = Some(Renderer::new(w_ref, size.width, size.height));
             // Explicit focus request — needed on some compositors
             // (Wayland in particular) to start delivering
@@ -1219,6 +1225,11 @@ impl TrayApp {
     /// the cursor is inside the `span/32` border strip on any side or
     /// corner of the window. Mirrors photon's `get_resize_edge`.
     fn resize_edge_at_cursor(&self) -> Option<ResizeDirection> {
+        // Chrome buttons take priority — no resize over close/max/min.
+        let hit = self.hit_at_cursor();
+        if hit == HIT_CLOSE_BUTTON || hit == HIT_MAXIMIZE_BUTTON || hit == HIT_MINIMIZE_BUTTON {
+            return None;
+        }
         let window = self.tutor_window.as_ref()?;
         let size = window.inner_size();
         let x = self.tutor_cursor.x as f32;
@@ -1287,8 +1298,11 @@ impl TrayApp {
         } else if c == "2" || c.eq_ignore_ascii_case("h") {
             self.tutor_debug_hit_test = !self.tutor_debug_hit_test;
             self.tutor_show_textbox_mask = false;
-            if self.tutor_debug_hit_test && self.tutor_debug_hit_colours.is_empty() {
-                let mut seed: u32 = 0x9E3779B9;
+            if self.tutor_debug_hit_test {
+                // Cycle colours each toggle so regions are
+                // distinguishable across presses.
+                self.tutor_debug_hit_colours.clear();
+                let mut seed: u32 = self.tutor_debug_colour_seed;
                 for _ in 0..=255u8 {
                     seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
                     let r = (seed >> 16) as u8;
@@ -1296,6 +1310,7 @@ impl TrayApp {
                     let b = seed as u8;
                     self.tutor_debug_hit_colours.push((r, g, b));
                 }
+                self.tutor_debug_colour_seed = seed;
             }
             true
         } else if c == "3" || c.eq_ignore_ascii_case("t") {
@@ -1401,6 +1416,11 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                     renderer.resize(size.width, size.height);
                 }
                 if let Some(w) = self.tutor_window.as_ref() {
+                    // macOS: re-disable resizable after the drag
+                    // completes so the OS doesn't show its own
+                    // resize cursors at the edges.
+                    #[cfg(target_os = "macos")]
+                    w.set_resizable(false);
                     w.request_redraw();
                 }
             }
@@ -1463,6 +1483,11 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                     }
 
                     if let Some(dir) = self.resize_edge_at_cursor() {
+                        // macOS: temporarily enable resizable so
+                        // drag_resize_window works, then the OS
+                        // resets it on mouse-up.
+                        #[cfg(target_os = "macos")]
+                        window.set_resizable(true);
                         let _ = window.drag_resize_window(dir);
                         return;
                     }
@@ -1747,6 +1772,7 @@ pub fn run_tray(
         tutor_debug_hit_test: false,
         tutor_show_textbox_mask: false,
         tutor_debug_hit_colours: Vec::new(),
+        tutor_debug_colour_seed: 0x9E3779B9,
         tutor_frame_counter: 0,
         tutor_redraw_counter: 0,
         tutor_ctrl_held: false,
