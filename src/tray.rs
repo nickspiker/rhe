@@ -1084,13 +1084,7 @@ impl TrayApp {
             let mod_w = layout.mod_w;
             let mod_cx = layout.mod_cx;
             let mod_target = (target.right & (1u8 << 4)) != 0;
-            // Mod-tap-only target (thumb alone, no fingers): step
-            // advances on key-UP, so cell goes dark once thumb is
-            // held — "got it, release to fire". A chord that
-            // includes mod alongside fingers stays bright until the
-            // chord completes on full key-down.
-            let is_mod_tap_only_target = target.right == (1u8 << 4) && target.left == 0;
-            let mod_fill = if !mod_target || is_mod_tap_only_target {
+            let mod_fill = if !mod_target {
                 theme::CELL_IDLE
             } else {
                 let mod_primary = target.accepted_leads.is_empty()
