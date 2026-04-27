@@ -611,6 +611,13 @@ impl TrayApp {
             .with_position(PhysicalPosition::new(window_x, window_y))
             .with_decorations(false)
             .with_transparent(true)
+            // Request activation on creation so a tray-menu launch
+            // (which doesn't naturally hand focus to a brand-new
+            // window) pops to the front instead of opening behind
+            // whatever app the user was in. NOT AlwaysOnTop — that
+            // confuses some compositors into stranding other windows
+            // on top after the level swap.
+            .with_active(true)
             .with_resizable(cfg!(not(target_os = "macos")));
         let window = match event_loop.create_window(attrs) {
             Ok(w) => w,
