@@ -587,9 +587,28 @@ impl TrayApp {
             return;
         }
 
+        // Size and position the window from the primary monitor so it
+        // looks right at any DPI / resolution. Mirrors photon's
+        // resumed() — query the monitor, take a fraction of its size,
+        // centre on screen. Falls back to a fixed pair only if we
+        // somehow can't get a monitor.
+        let (window_width, window_height, window_x, window_y) = event_loop
+            .primary_monitor()
+            .or_else(|| event_loop.available_monitors().next())
+            .map(|monitor| {
+                let s = monitor.size();
+                let w = s.width / 2;
+                let h = s.height / 2;
+                let x = (s.width - w) / 2;
+                let y = (s.height - h) / 2;
+                (w, h, x as i32, y as i32)
+            })
+            .unwrap_or((800, 500, 0, 0));
+
         let attrs = Window::default_attributes()
             .with_title("rhe tutor")
-            .with_inner_size(PhysicalSize::new(800u32, 500u32))
+            .with_inner_size(PhysicalSize::new(window_width, window_height))
+            .with_position(PhysicalPosition::new(window_x, window_y))
             .with_decorations(false)
             .with_transparent(true)
             .with_resizable(cfg!(not(target_os = "macos")));
