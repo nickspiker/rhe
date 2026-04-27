@@ -856,6 +856,7 @@ impl TutorState {
             } else if self.practice.mode == WordMode::Number {
                 // Number mode: pure state matching. Advance when
                 // current key state exactly equals the target.
+                // Reset on any extra key that overshoots the target.
                 if let Some(target) = self.practice.current_target() {
                     let target = *target;
                     let state_right = self.key_state.right_bits();
@@ -866,6 +867,15 @@ impl TutorState {
                         && state_word == target.word
                     {
                         self.practice.advance_step();
+                    } else if is_key_down {
+                        let extra_right = state_right & !target.right;
+                        let extra_left = state_left & !target.left;
+                        let extra_word = state_word && !target.word;
+                        if extra_right != 0 || extra_left != 0 || extra_word {
+                            self.practice.reset_word();
+                            self.last_was_botch = true;
+                            self.errored = true;
+                        }
                     }
                 }
             } else if let Some(target) = self.practice.current_target() {
