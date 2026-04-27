@@ -290,17 +290,29 @@ The interactive tutor opens from the tray icon's right-click menu
 
 ### macOS
 
-Requires Input Monitoring permission (keyboard seizure via
-IOHIDManager). Run with `sudo` or add your terminal to System
-Settings → Privacy & Security → Input Monitoring.
+Requires Accessibility permission. Add your terminal (or the rhe
+binary) to System Settings → Privacy & Security → Accessibility.
+No sudo needed.
+
+One-time setup — disable the caps lock on-screen indicator and
+firmware debounce (requires restart):
+
+```
+sudo defaults write /Library/Preferences/FeatureFlags/Domain/UIKit.plist \
+    redesigned_text_cursor -dict-add Enabled -bool NO
+```
+
+Restart macOS. The caps lock indicator (blue arrow HUD) will no
+longer appear, and caps lock responds instantly without the
+built-in delay.
 
 `rhe run` shows a menu bar item with a right-click menu: mode toggle
 (`rhe` ↔ `keyboard`), fallback toggle (`Autospell` ↔ `IPA`), and
-`Exit`. Tapping Caps Lock also toggles rhe/keyboard, and the
-caps-lock LED reflects the current mode — LED off = rhe active,
-LED on = keyboard passthrough. Modifiers (Shift/Ctrl/Alt/Cmd) are
-tracked and re-applied to passthrough events, so keyboard mode
-behaves like a normal keyboard.
+`Exit`. Tapping Caps Lock toggles rhe/keyboard mode. OS caps lock
+is fully suppressed — rhe strips the alpha-shift flag from every
+event, so caps lock only affects rhe's mode, never the OS text
+layer. Media keys (volume, brightness, play/pause) pass through
+natively.
 
 ### Linux
 
