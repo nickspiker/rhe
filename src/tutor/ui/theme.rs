@@ -93,11 +93,11 @@ pub const DOT_COLOURS: [u32; 10] = [
 /// Idle / non-target / errored fill for the eight resting-finger
 /// cells. Dark grey: present enough to anchor the row, dim enough to
 /// fade behind any active target.
-pub const CELL_IDLE: u32 = fmt(0xFF_20_20_20);
+pub const CELL_IDLE: u32 = fmt(0xFF_30_30_30);
 /// Idle fill for the two inner-index cells (idx 4, 5). Near-black so
 /// they visually drop out when not in play — they're never resting-
 /// finger keys, only used for number / symbol modes.
-pub const CELL_INNER_IDLE: u32 = fmt(0xFF_00_00_00);
+pub const CELL_INNER_IDLE: u32 = fmt(0xFF_18_18_18);
 
 /// Word-mode bar (left thumb): purple when an active target,
 /// half-brightness for ordered-brief secondary.

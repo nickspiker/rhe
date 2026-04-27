@@ -146,6 +146,32 @@ pub struct CgEventInput {
     pub rx: mpsc::Receiver<HidEvent>,
 }
 
+impl Drop for CgEventInput {
+    fn drop(&mut self) {
+        // Clear any stuck OS caps lock state on exit
+        unsafe {
+            use super::iohid_backend::ffi as hid_ffi;
+            let source = hid_ffi::CGEventSourceCreate(hid_ffi::kCGEventSourceStateHIDSystemState);
+            if !source.is_null() {
+                let dummy = hid_ffi::CGEventCreateKeyboardEvent(source, 0, false);
+                if !dummy.is_null() {
+                    let flags = hid_ffi::CGEventGetFlags(dummy);
+                    if flags & 0x10000 != 0 {
+                        let down = hid_ffi::CGEventCreateKeyboardEvent(source, 0x39, true);
+                        let up = hid_ffi::CGEventCreateKeyboardEvent(source, 0x39, false);
+                        if !down.is_null() {
+                            hid_ffi::CGEventPost(hid_ffi::kCGSessionEventTap, down);
+                        }
+                        if !up.is_null() {
+                            hid_ffi::CGEventPost(hid_ffi::kCGSessionEventTap, up);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 impl CgEventInput {
     pub fn start_grab(
         enabled: Arc<AtomicBool>,
@@ -272,7 +298,34 @@ extern "C" fn event_callback(
             return event;
         }
 
-        // Not a key down or up? Pass through (modifiers etc)
+        // FlagsChanged for modifier keys that rhe owns (e.g. left command = word)
+        if is_flags && !is_caps_lock(vk) {
+            if let Some(scan) = vk_to_scan(vk) {
+                // Detect down/up from flags: check if the modifier's flag is now set
+                let flags = ffi::CGEventGetFlags(event);
+                let modifier_down = match vk {
+                    0x37 => flags & 0x100000 != 0,  // left command
+                    0x36 => flags & 0x100000 != 0,  // right command
+                    0x3A => flags & 0x80000 != 0,   // left alt/option
+                    0x3D => flags & 0x80000 != 0,   // right alt/option
+                    0x38 => flags & 0x20000 != 0,   // left shift
+                    0x3C => flags & 0x20000 != 0,   // right shift
+                    0x3B => flags & 0x40000 != 0,   // left control
+                    0x3E => flags & 0x40000 != 0,   // right control
+                    _ => return event,
+                };
+                let direction = if modifier_down {
+                    KeyDirection::Down
+                } else {
+                    KeyDirection::Up
+                };
+                let _ = ctx.tx.send(HidEvent::Key(KeyEvent { scan, direction }));
+                return std::ptr::null_mut(); // suppress — rhe owns this modifier
+            }
+            return event; // not our modifier, pass through
+        }
+
+        // Not a key down or up? Pass through
         if !is_down && !is_up {
             return event;
         }
@@ -283,7 +336,7 @@ extern "C" fn event_callback(
             ffi::kCGKeyboardEventAutorepeat,
         ) != 0;
         if is_repeat {
-            return std::ptr::null_mut(); // suppress repeats for our keys
+            return std::ptr::null_mut();
         }
 
         // Check if it's one of our keys

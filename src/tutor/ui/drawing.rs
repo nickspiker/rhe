@@ -43,10 +43,14 @@ pub fn draw_background_texture(
     fullscreen: bool,
     scroll_offset: isize,
 ) {
+    // Clamp height to actual buffer size to prevent OOB on macOS
+    let max_rows = pixels.len() / width.max(1);
+    let height = height.min(max_rows);
+
     let (row_start, row_end, x_start, x_end) = if fullscreen {
         (0, height, 0, width)
     } else {
-        (1, height - 1, 1, width - 1)
+        (1, height.saturating_sub(1), 1, width.saturating_sub(1))
     };
 
     for row_idx in row_start..row_end {

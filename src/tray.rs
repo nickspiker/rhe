@@ -567,7 +567,8 @@ impl TrayApp {
             .with_title("rhe tutor")
             .with_inner_size(PhysicalSize::new(800u32, 500u32))
             .with_decorations(false)
-            .with_transparent(true);
+            .with_transparent(true)
+            .with_resizable(true);
         let window = match event_loop.create_window(attrs) {
             Ok(w) => w,
             Err(e) => {
@@ -684,6 +685,7 @@ impl TrayApp {
         let Some(renderer) = self.tutor_renderer.as_mut() else {
             return;
         };
+        renderer.resize(width as u32, height as u32);
 
         // CRITICAL: mark the whole frame dirty on the Renderer BEFORE
         // locking the buffer. Photon's Linux softbuffer path only
