@@ -99,14 +99,12 @@ pub const CELL_IDLE: u32 = fmt(0xFF_30_30_30);
 /// finger keys, only used for number / symbol modes.
 pub const CELL_INNER_IDLE: u32 = fmt(0xFF_18_18_18);
 
-/// Word-mode bar (left thumb): purple when an active target,
-/// half-brightness for ordered-brief secondary.
-pub const WORD_PRIMARY: u32 = fmt(0xFF_80_00_E0);
-pub const WORD_SECONDARY: u32 = fmt(0xFF_40_00_70);
-/// Mod-key bar (right thumb): green when an active target,
-/// half-brightness for secondary.
-pub const MOD_PRIMARY: u32 = fmt(0xFF_40_E0_00);
-pub const MOD_SECONDARY: u32 = fmt(0xFF_20_70_00);
+/// Word-mode bar (left thumb)
+pub const WORD_PRIMARY: u32 = fmt(0xFF_40_E0_00);
+pub const WORD_SECONDARY: u32 = fmt(0xFF_20_70_00);
+/// Mod-key bar (right thumb)
+pub const MOD_PRIMARY: u32 = fmt(0xFF_80_00_E0);
+pub const MOD_SECONDARY: u32 = fmt(0xFF_40_00_70);
 
 // ── Tutor text ───────────────────────────────────────────────────────────
 

@@ -110,43 +110,62 @@ fn scaled_logo_rgb(diameter: usize) -> Vec<u8> {
     dst
 }
 
-/// Geometry for every element the tutor draws — chord row,
-/// word/mod bar, target word, step hint, sentence line, cell labels.
-/// Computed once per redraw from `(window, ru, chrome_h)`.
+/// Geometry for every element the tutor draws.
 ///
-/// Design split:
-///   - **Outer positions / row width** depend on `span` only — the
-///     chord row sits in the same place at any zoom, the sentence
-///     line / target word / step hint anchor to the same span-derived
-///     Y values, and the row's outer width is fixed in span.
-///   - **Inner sizes** (cell edge, fonts, label font) scale with
-///     `ru`. As `ru` shrinks the cells get smaller and the gaps
-///     between them widen to keep `row_w` fixed; the bottom row's
-///     word bar + 2-cell mod pill follow the same gap.
-///   - **Gaps absorb the slack**: `row_w = 10·cell_d + 8·cell_gap +
-///     hand_gap`, with `hand_gap = 4·cell_gap`, so 12 gap-units total.
-///     Solving for `cell_gap` gives an auto-fitting result that
-///     widens as `cell_d` shrinks.
+/// **Vertical layout — proportional sections + gaps** that sum to
+/// however-many units, then `unit = bh / total_units`. Adding or
+/// removing a section just changes the total; nothing else has to
+/// move. Current section weights:
+///
+/// ```text
+///   1   — top padding         (UNIT_PAD)
+///   0.5 — gap                 (UNIT_GAP)
+///   1   — paragraph           (top sentence-context line)
+///   0.5 — gap
+///   3   — target word
+///   0.5 — gap
+///   2   — phoneme line        (target word's phoneme strip)
+///   0.5 — gap
+///   0.5 — adaptive cell labels
+///   0.5 — gap
+///   2   — chord row           (10 finger cells)
+///   0.5 — gap
+///   2   — bottom row          (word bar + mod pill)
+///   0.5 — gap
+///   1   — bottom padding
+/// ```
+///
+/// Each section's `*_cy` field is its vertical centre. Horizontal
+/// geometry (row_w, cell_d, hand_gap = cell_d, cell_gap = slack)
+/// stays span/ru-derived. `cell_d` is also clamped to the chord
+/// row's section height so pills never overflow a section and
+/// scribble outside the pixel buffer.
 struct TutorLayout {
     // Window
     bw: i32,
     bh: i32,
     chrome_h: i32,
 
-    // Sentence-context line above the target word.
+    // Top sentence-context line.
     sentence_font: f32,
     sentence_cy: f32,
     sentence_space_w: f32,
 
-    // Big centred drill word + step hint.
+    // Big centred drill word.
     target_font: f32,
     target_cx: f32,
     target_cy: f32,
-    hint_font: f32,
-    hint_cx: f32,
-    hint_cy: f32,
 
-    // Chord row (10 finger cells).
+    // Phoneme line for the current target word.
+    phoneme_font: f32,
+    phoneme_cy: f32,
+    phoneme_space_w: f32,
+
+    // Adaptive cell labels — strip above the chord row.
+    label_font: f32,
+    label_cy: f32,
+
+    // Chord row (10 finger cells, hand_gap = cell_d wide between).
     cell_d: i32,
     cell_gap: i32,
     hand_gap: i32,
@@ -154,15 +173,18 @@ struct TutorLayout {
     row_w: i32,
     row_cy: i32,
 
+    // Step-hint glyph rendered in the hand-gap centre between the
+    // two finger groups (same Y as the chord row).
+    hint_font: f32,
+    hint_cx: f32,
+    hint_cy: f32,
+
     // Bottom row: long word bar + 2-cell mod pill on the right.
     bottom_cy: i32,
     word_cx: i32,
     word_w: i32,
     mod_cx: i32,
     mod_w: i32,
-
-    // Adaptive cell labels (centred in each chord cell).
-    label_font: f32,
 }
 
 impl TutorLayout {
@@ -172,26 +194,106 @@ impl TutorLayout {
         let span = crate::tutor::ui::span(window_w, window_h);
         let cx = bw as f32 / 2.0;
 
-        // ── Outer (span-only) ────────────────────────────────────
-        // Row width 23/24·span — picked to match the ru=1.0 layout
-        // we had before this struct (10·span/12 + 12·span/96 = 23/24·span)
-        // so the visual at full zoom is unchanged.
-        let row_w = ((span * 23.0 / 24.0).round() as i32).max(48);
-        let row_x = (bw - row_w) / 2;
-        let row_cy = bh - (span * 0.21).round() as i32;
-        let bottom_cy = row_cy + (span * 0.094).round() as i32;
+        // ── Vertical sections ────────────────────────────────────
+        // Walk a running cursor through the section + gap weights,
+        // recording each section's [top, bottom] band as we go.
+        // `total_units` is computed by summing the same weights so
+        // `unit = bh / total_units` self-balances if a section is
+        // added/removed/resized — there's no fixed grand total to
+        // get out of sync with the field list.
+        const TOP_PAD: f32 = 1.0;
+        const GAP: f32 = 0.5;
+        const PARAGRAPH: f32 = 1.0;
+        const TARGET: f32 = 3.0;
+        const PHONEME: f32 = 2.0;
+        const LABELS: f32 = 0.5;
+        const CHORD_ROW: f32 = 2.0;
+        const BOTTOM_ROW: f32 = 2.0;
+        const BOTTOM_PAD: f32 = 1.0;
 
-        // ── Inner (ru-scaled), with row-fit clamp ────────────────
-        // Cell size: natural `span·ru/12`, clamped so the row can
-        // still hold 10 cells + 12 gap-units of at least 2px.
-        let cell_d_natural = (span * ru / 12.0).round() as i32;
-        let cell_d_max = ((row_w - 12 * 2) / 10).max(12);
+        // Sections in render order. Inserts/reorders go here.
+        let sections: [f32; 7] = [
+            PARAGRAPH, TARGET, PHONEME, LABELS, CHORD_ROW, BOTTOM_ROW, // content
+            // bottom pad goes outside this list (no leading gap)
+            BOTTOM_PAD,
+        ];
+        let _ = sections; // shape-only (kept so the doc lines up); the
+                          // sum below mirrors it explicitly so a future
+                          // refactor can read either form.
+
+        let total_units = TOP_PAD
+            + GAP
+            + PARAGRAPH
+            + GAP
+            + TARGET
+            + GAP
+            + PHONEME
+            + GAP
+            + LABELS
+            + GAP
+            + CHORD_ROW
+            + GAP
+            + BOTTOM_ROW
+            + GAP
+            + BOTTOM_PAD;
+        let unit = (bh as f32) / total_units;
+
+        // Walk the sections in order, recording each band's centre.
+        let mut y = TOP_PAD * unit;
+        let advance = |y: &mut f32, w: f32| {
+            let top = *y;
+            *y += w * unit;
+            (top + *y) * 0.5
+        };
+
+        y += GAP * unit;
+        let sentence_cy = advance(&mut y, PARAGRAPH);
+        y += GAP * unit;
+        let target_cy = advance(&mut y, TARGET);
+        y += GAP * unit;
+        let phoneme_cy = advance(&mut y, PHONEME);
+        y += GAP * unit;
+        let label_cy = advance(&mut y, LABELS);
+        y += GAP * unit;
+        let row_top = y;
+        let row_cy_f = advance(&mut y, CHORD_ROW);
+        y += GAP * unit;
+        let bottom_cy_f = advance(&mut y, BOTTOM_ROW);
+        // The remaining GAP + BOTTOM_PAD lands right at bh — no
+        // need to read it, but the unit math depends on it.
+
+        // ── Horizontal geometry ──────────────────────────────────
+        // Outer padding mirrors the vertical pad weight (1 unit on
+        // each side) so the chord row has visible breathing room
+        // from the window edges at any zoom. row_w (= "inner row
+        // width") is what's left over for the 11 slots.
+        const H_PAD_UNITS: f32 = 1.0;
+        let h_pad = (H_PAD_UNITS * unit).round() as i32;
+        let row_w = (bw - 2 * h_pad).max(48);
+        let row_x = h_pad;
+
+        // ── Cell sizing: ru-scaled, clamped both ways ────────────
+        // 11 uniform slots (slot 5 is the invisible "between-hands"
+        // button so spacing reads identical end-to-end). At ru=1.0
+        // the button takes 2/3 of its slot and the gap takes 1/3:
+        //   slot = cell_d + cell_gap = (3/2)·cell_d
+        //   row_w = 11·cell_d + 10·cell_gap = 11·cell_d + 5·cell_d
+        //         = 16·cell_d
+        //   ∴ cell_d_at_ru1 = row_w / 16
+        // Below ru=1 the buttons shrink and the gaps absorb the
+        // slack; above ru=1 we cap at the slot fit / vertical fit.
+        let cell_d_natural = ((row_w as f32 / 16.0) * ru).round() as i32;
+        let cell_d_h_max = ((row_w - 10 * 2) / 11).max(12);
+        let cell_d_v_max = ((CHORD_ROW * unit).round() as i32).max(12);
+        let cell_d_max = cell_d_h_max.min(cell_d_v_max);
         let cell_d = cell_d_natural.clamp(12, cell_d_max);
+        let cell_gap = ((row_w - 11 * cell_d) / 10).max(2);
+        // hand_gap kept as a name but it's just slot 5's width now,
+        // not a separate "extra gap" between hand groups.
+        let hand_gap = cell_d;
 
-        // Gaps fill whatever's left. 8 cell-cell gaps + a 4-unit
-        // hand gap = 12 gap-units total.
-        let cell_gap = ((row_w - 10 * cell_d) / 12).max(2);
-        let hand_gap = cell_gap * 4;
+        let row_cy = row_cy_f.round() as i32;
+        let bottom_cy = bottom_cy_f.round() as i32;
 
         // Bottom-row pills (mod right-aligned, word fills the rest).
         let mod_w = 2 * cell_d + cell_gap;
@@ -200,22 +302,31 @@ impl TutorLayout {
         let word_w = row_w - mod_w - word_sep;
         let word_cx = row_x + word_w / 2;
 
-        // ── Text fonts (ru-scaled) ───────────────────────────────
-        let target_font = (span * ru / 5.0).max(24.0);
-        let hint_font = (span * ru / 14.0).max(12.0);
-        let sentence_font = (span * ru / 18.0).max(14.0);
-        let sentence_space_w = sentence_font * 0.4;
-        let label_font = (cell_d as f32 * 0.55).max(10.0);
+        // ── Fonts: section-derived heights × ru, capped at the
+        // section so they never bleed into adjacent bands ────────
+        let target_font_natural = TARGET * unit * 0.6 * ru;
+        let target_font = target_font_natural.min(TARGET * unit * 0.9).max(14.0);
+        let phoneme_font_natural = PHONEME * unit * 0.5 * ru;
+        let phoneme_font = phoneme_font_natural.min(PHONEME * unit * 0.85).max(12.0);
+        let sentence_font_natural = PARAGRAPH * unit * 0.7 * ru;
+        let sentence_font = sentence_font_natural.min(PARAGRAPH * unit * 0.95).max(12.0);
+        let label_font_natural = LABELS * unit * 0.85 * ru;
+        let label_font = label_font_natural.min(LABELS * unit * 0.95).max(8.0);
 
-        // ── Text vertical positions (span-only) ──────────────────
-        // Chosen to match the prior ru=1.0 anchors: sentence line
-        // centred at chrome_h + 1.2·sentence_font; target word at
-        // chrome_h + 1.6·target_font; hint at chrome_h + 2.5·target_font.
-        // Substituting the ru=1.0 fonts gives 0.067·span / 0.32·span /
-        // 0.50·span respectively.
-        let sentence_cy = chrome_h as f32 + span * 0.067;
-        let target_cy = chrome_h as f32 + span * 0.32;
-        let hint_cy = chrome_h as f32 + span * 0.50;
+        // Hint sits inside the hand_gap (= cell_d wide); size to fit
+        // with a touch of margin so the glyph never spills into a
+        // neighbouring cell.
+        let hint_font = (cell_d as f32 * 0.65).max(12.0);
+
+        let sentence_space_w = sentence_font * 0.4;
+        let phoneme_space_w = phoneme_font * 0.5;
+
+        // Hint glyph centres on slot 5 (the invisible 11th button).
+        // Slot k's centre = row_x + k·(cell_d + cell_gap) + cell_d/2.
+        let hint_cx =
+            (row_x as f32) + 5.0 * (cell_d + cell_gap) as f32 + (cell_d as f32) / 2.0;
+        let hint_cy = row_cy_f;
+        let _ = row_top; // reserved for future per-cell label box bounds
 
         Self {
             bw,
@@ -227,21 +338,25 @@ impl TutorLayout {
             target_font,
             target_cx: cx,
             target_cy,
-            hint_font,
-            hint_cx: cx,
-            hint_cy,
+            phoneme_font,
+            phoneme_cy,
+            phoneme_space_w,
+            label_font,
+            label_cy,
             cell_d,
             cell_gap,
             hand_gap,
             row_x,
             row_w,
             row_cy,
+            hint_font,
+            hint_cx,
+            hint_cy,
             bottom_cy,
             word_cx,
             word_w,
             mod_cx,
             mod_w,
-            label_font,
         }
     }
 }
@@ -504,6 +619,11 @@ struct TrayApp {
     /// User zoom multiplier applied on top of span-derived sizes.
     /// Adjusted live by Ctrl+scroll; 1.0 is the default.
     tutor_ru: f32,
+    /// While `Some(deadline)` and `now < deadline`, the top-left
+    /// zoom-percentage hint renders. Bumped on every ru change to
+    /// `now + 1s`. about_to_wait schedules a `WaitUntil(deadline)`
+    /// so the hint auto-fades without further user input.
+    tutor_zoom_hint_until: Option<std::time::Instant>,
     /// Last observed modifier state for the tutor window. Updated on
     /// every ModifiersChanged event so MouseWheel can consult it.
     tutor_mods: ModifiersState,
@@ -686,6 +806,15 @@ impl TrayApp {
         self.tutor_wiki_stream = None;
         self.tutor_word_lookup = None;
         self.tutor_brief_table = None;
+        self.tutor_zoom_hint_until = None;
+    }
+
+    /// Show the top-left zoom-percentage hint and arm a 1-second
+    /// auto-fade. Called from every ru-changing site (Ctrl+= / Ctrl+- /
+    /// Ctrl+0 / Ctrl+scroll).
+    fn bump_zoom_hint(&mut self) {
+        self.tutor_zoom_hint_until =
+            Some(std::time::Instant::now() + std::time::Duration::from_millis(1000));
     }
 
     /// On wraparound, swap the drill to the next prefetched wiki batch
@@ -917,6 +1046,10 @@ impl TrayApp {
             );
 
             if !step_hint.is_empty() {
+                // Hint glyph now lands in the hand_gap centre between
+                // cells 4 and 5 (same Y as the chord row). Bumped to
+                // 700 weight so it reads clearly against any
+                // KEY_COLOURS-bright cell next to it.
                 text.draw_text_center_u32(
                     pixels,
                     width,
@@ -924,8 +1057,8 @@ impl TrayApp {
                     layout.hint_cx,
                     layout.hint_cy,
                     layout.hint_font,
-                    400,
-                    theme::STEP_HINT,
+                    700,
+                    theme::TARGET_WORD,
                     "Josefin Slab",
                 );
             }
@@ -1061,31 +1194,22 @@ impl TrayApp {
             let left_bits = [3usize, 2, 1, 0, 4];
             let right_bits = [5usize, 0, 1, 2, 3];
 
-            let mut x = row_x;
-            for i in 0..5 {
-                let is_target = (target.left & (1u8 << left_bits[i])) != 0;
-                let fill = finger_cell_fill(i, is_target, is_primary(CELL_SCANS[i]));
-                let cx_cell = x + cell_d / 2;
-                cell(
-                    pixels,
-                    &mut self.tutor_hit_test,
-                    width,
-                    height,
-                    cx_cell,
-                    cy,
-                    cell_d,
-                    fill,
-                    pressed[i],
-                );
-                cell_centres[i] = (cx_cell, cy);
-                x += cell_d + cell_gap;
-            }
-            x += hand_gap - cell_gap;
-            for i in 0..5 {
-                let cell_idx = 5 + i;
-                let is_target = (target.right & (1u8 << right_bits[i])) != 0;
-                let fill = finger_cell_fill(cell_idx, is_target, is_primary(CELL_SCANS[cell_idx]));
-                let cx_cell = x + cell_d / 2;
+            // 11 slots, uniform cell_d + cell_gap step. Slot 5 is
+            // the invisible "between hands" slot — skip rendering,
+            // its space holds the in-hand-gap step-hint glyph.
+            for slot in 0..11usize {
+                let cx_cell = row_x + slot as i32 * (cell_d + cell_gap) + cell_d / 2;
+                if slot == 5 {
+                    continue;
+                }
+                let cell_idx = if slot < 5 { slot } else { slot - 1 };
+                let is_target = if cell_idx < 5 {
+                    (target.left & (1u8 << left_bits[cell_idx])) != 0
+                } else {
+                    (target.right & (1u8 << right_bits[cell_idx - 5])) != 0
+                };
+                let fill =
+                    finger_cell_fill(cell_idx, is_target, is_primary(CELL_SCANS[cell_idx]));
                 cell(
                     pixels,
                     &mut self.tutor_hit_test,
@@ -1098,8 +1222,10 @@ impl TrayApp {
                     pressed[cell_idx],
                 );
                 cell_centres[cell_idx] = (cx_cell, cy);
-                x += cell_d + cell_gap;
             }
+            let _ = hand_gap; // slot 5 width is implicit in the slot
+                              // walk above; field kept for callers
+                              // that want the in-gap centre Y.
 
             // Second row below the chord cells: word bar (long, left-
             // aligned under L-pinky) + mod cell (2 cells wide, right-
@@ -1158,22 +1284,22 @@ impl TrayApp {
             );
             let _ = theme::WORD_SECONDARY;
 
-            // Adaptive labels: draw each cell's predicted glyph centred
-            // in the cell. Done in its own pass so the text renderer's
-            // mutable borrow doesn't collide with tutor_state.
+            // Adaptive labels: drawn ABOVE each key (not on top), so
+            // the cell pill stays clean and the label sits in the
+            // strip between the chord row and whatever's above it.
             if let Some(text) = self.text_renderer.as_mut() {
                 let label_font = layout.label_font;
                 for i in 0..10 {
                     if labels[i].is_empty() {
                         continue;
                     }
-                    let (cx_cell, cy_cell) = cell_centres[i];
+                    let (cx_cell, _cy_cell) = cell_centres[i];
                     text.draw_text_center_u32(
                         pixels,
                         width,
                         &labels[i],
                         cx_cell as f32,
-                        cy_cell as f32 + label_font * 0.35,
+                        layout.label_cy,
                         label_font,
                         500,
                         theme::CELL_LABEL,
@@ -1196,6 +1322,35 @@ impl TrayApp {
             for (idx, &a) in self.tutor_textbox_mask.iter().enumerate() {
                 let v = a as u32;
                 pixels[idx] = 0xFF00_0000 | (v << 16) | (v << 8) | v;
+            }
+        }
+
+        // Top-left zoom-percentage hint. Bumped to `now + 1s` on
+        // every ru change (Ctrl+= / Ctrl+- / Ctrl+0 / Ctrl+scroll);
+        // about_to_wait schedules a wake at the deadline so this
+        // disappears on its own. Photon-parity with theme::ZOOM_HINT_TEXT
+        // for the colour.
+        if let Some(until) = self.tutor_zoom_hint_until {
+            if std::time::Instant::now() < until {
+                if let Some(text) = self.text_renderer.as_mut() {
+                    let span = crate::tutor::ui::span(size.width, size.height);
+                    let hint_size = (span / 24.0).max(10.0);
+                    let zoom_text = format!("{:.0}%", self.tutor_ru * 100.0);
+                    let chrome_h = (span / 16.0).max(8.0);
+                    text.draw_text_left_u32(
+                        pixels,
+                        width,
+                        &zoom_text,
+                        hint_size,
+                        chrome_h + hint_size,
+                        hint_size,
+                        500,
+                        theme::ZOOM_HINT_TEXT,
+                        "Josefin Slab",
+                    );
+                }
+            } else {
+                self.tutor_zoom_hint_until = None;
             }
         }
 
@@ -1307,8 +1462,12 @@ impl TrayApp {
     /// Compute and apply the new window size/position from the current
     /// cursor vs the drag start point. Ported from Photon's apply_resize.
     fn apply_resize(&self) {
-        let Some(window) = self.tutor_window.as_ref() else { return };
-        let Some(window_pos) = window.outer_position().ok() else { return };
+        let Some(window) = self.tutor_window.as_ref() else {
+            return;
+        };
+        let Some(window_pos) = window.outer_position().ok() else {
+            return;
+        };
         let cur_x = window_pos.x as f64 + self.tutor_cursor.x;
         let cur_y = window_pos.y as f64 + self.tutor_cursor.y;
         let dx = (cur_x - self.tutor_drag_start_screen_pos.0) as f32;
@@ -1318,16 +1477,12 @@ impl TrayApp {
         let (wx, wy) = self.tutor_drag_start_window_pos;
 
         let (nw, nh, do_move, nx, ny) = match self.tutor_resize_edge {
-            Some(ResizeDirection::East) => {
-                ((sw as f32 + dx).max(min) as u32, sh, false, 0, 0)
-            }
+            Some(ResizeDirection::East) => ((sw as f32 + dx).max(min) as u32, sh, false, 0, 0),
             Some(ResizeDirection::West) => {
                 let w = (sw as f32 - dx).max(min) as u32;
                 (w, sh, true, wx + sw as i32 - w as i32, wy)
             }
-            Some(ResizeDirection::South) => {
-                (sw, (sh as f32 + dy).max(min) as u32, false, 0, 0)
-            }
+            Some(ResizeDirection::South) => (sw, (sh as f32 + dy).max(min) as u32, false, 0, 0),
             Some(ResizeDirection::North) => {
                 let h = (sh as f32 - dy).max(min) as u32;
                 (sw, h, true, wx, wy + sh as i32 - h as i32)
@@ -1340,7 +1495,13 @@ impl TrayApp {
             Some(ResizeDirection::NorthWest) => {
                 let w = (sw as f32 - dx).max(min) as u32;
                 let h = (sh as f32 - dy).max(min) as u32;
-                (w, h, true, wx + sw as i32 - w as i32, wy + sh as i32 - h as i32)
+                (
+                    w,
+                    h,
+                    true,
+                    wx + sw as i32 - w as i32,
+                    wy + sh as i32 - h as i32,
+                )
             }
             Some(ResizeDirection::SouthEast) => {
                 let w = (sw as f32 + dx).max(min) as u32;
@@ -1369,11 +1530,16 @@ impl TrayApp {
     fn poll_macos_drag(&mut self) -> bool {
         use std::ffi::{c_char, c_void};
 
-        let Some(window) = self.tutor_window.as_ref() else { return false };
+        let Some(window) = self.tutor_window.as_ref() else {
+            return false;
+        };
 
         #[repr(C)]
         #[derive(Clone, Copy)]
-        struct NSPoint { x: f64, y: f64 }
+        struct NSPoint {
+            x: f64,
+            y: f64,
+        }
 
         unsafe extern "C" {
             fn objc_msgSend(receiver: *const c_void, sel: *const c_void) -> usize;
@@ -1399,7 +1565,10 @@ impl TrayApp {
             let main_screen = objc_msgSend(screen_cls, sel_main) as *const c_void;
             #[repr(C)]
             #[derive(Clone, Copy)]
-            struct NSRect { origin: NSPoint, size: NSPoint }
+            struct NSRect {
+                origin: NSPoint,
+                size: NSPoint,
+            }
             let sel_frame = sel_registerName(b"frame\0".as_ptr() as *const c_char);
             let screen_frame: extern "C" fn(*const c_void, *const c_void) -> NSRect =
                 std::mem::transmute(objc_msgSend as *const ());
@@ -1410,10 +1579,8 @@ impl TrayApp {
             let phys_y = screen_h - ns_point.y * scale;
 
             if let Ok(wp) = window.outer_position() {
-                self.tutor_cursor = PhysicalPosition::new(
-                    phys_x - wp.x as f64,
-                    phys_y - wp.y as f64,
-                );
+                self.tutor_cursor =
+                    PhysicalPosition::new(phys_x - wp.x as f64, phys_y - wp.y as f64);
             }
 
             if !left_held {
@@ -1499,12 +1666,15 @@ impl TrayApp {
             true
         } else if c == "=" || c == "+" {
             self.tutor_ru = (self.tutor_ru * 1.1).clamp(0.3, 5.0);
+            self.bump_zoom_hint();
             true
         } else if c == "-" {
             self.tutor_ru = (self.tutor_ru / 1.1).clamp(0.3, 5.0);
+            self.bump_zoom_hint();
             true
         } else if c == "0" {
             self.tutor_ru = 1.0;
+            self.bump_zoom_hint();
             true
         } else {
             false
@@ -1640,23 +1810,24 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                     let is_button = hit == HIT_CLOSE_BUTTON
                         || hit == HIT_MAXIMIZE_BUTTON
                         || hit == HIT_MINIMIZE_BUTTON;
-                    let icon = if is_button {
-                        CursorIcon::Pointer
-                    } else {
-                        match self.resize_edge_at_cursor() {
-                            Some(ResizeDirection::NorthWest)
-                            | Some(ResizeDirection::SouthEast) => CursorIcon::NwseResize,
-                            Some(ResizeDirection::NorthEast)
-                            | Some(ResizeDirection::SouthWest) => CursorIcon::NeswResize,
-                            Some(ResizeDirection::North) | Some(ResizeDirection::South) => {
-                                CursorIcon::NsResize
+                    let icon =
+                        if is_button {
+                            CursorIcon::Pointer
+                        } else {
+                            match self.resize_edge_at_cursor() {
+                                Some(ResizeDirection::NorthWest)
+                                | Some(ResizeDirection::SouthEast) => CursorIcon::NwseResize,
+                                Some(ResizeDirection::NorthEast)
+                                | Some(ResizeDirection::SouthWest) => CursorIcon::NeswResize,
+                                Some(ResizeDirection::North) | Some(ResizeDirection::South) => {
+                                    CursorIcon::NsResize
+                                }
+                                Some(ResizeDirection::East) | Some(ResizeDirection::West) => {
+                                    CursorIcon::EwResize
+                                }
+                                Some(_) | None => CursorIcon::Default,
                             }
-                            Some(ResizeDirection::East) | Some(ResizeDirection::West) => {
-                                CursorIcon::EwResize
-                            }
-                            Some(_) | None => CursorIcon::Default,
-                        }
-                    };
+                        };
                     w.set_cursor(icon);
 
                     // Hover fill: add/sub brightness delta on button pixels
@@ -1694,7 +1865,9 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
-                if button != MouseButton::Left { return; }
+                if button != MouseButton::Left {
+                    return;
+                }
 
                 if state == ElementState::Released {
                     self.tutor_dragging_resize = false;
@@ -1769,6 +1942,7 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                         // into the abyss.
                         let factor = 1.1f32.powf(steps);
                         self.tutor_ru = (self.tutor_ru * factor).clamp(0.3, 5.0);
+                        self.bump_zoom_hint();
                         if let Some(w) = self.tutor_window.as_ref() {
                             w.request_redraw();
                         }
@@ -1822,6 +1996,23 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                 std::time::Instant::now() + std::time::Duration::from_millis(8),
             ));
             return;
+        }
+
+        // Zoom hint auto-fade. While the hint is armed, schedule a
+        // wake at its deadline so we redraw and clear it without
+        // any user input. If the deadline already passed, kick a
+        // redraw immediately so the next frame draws without it.
+        if let Some(until) = self.tutor_zoom_hint_until {
+            let now = std::time::Instant::now();
+            if now >= until {
+                self.tutor_zoom_hint_until = None;
+                if let Some(w) = self.tutor_window.as_ref() {
+                    w.request_redraw();
+                }
+            } else {
+                event_loop.set_control_flow(ControlFlow::WaitUntil(until));
+                return;
+            }
         }
 
         event_loop.set_control_flow(ControlFlow::Wait);
@@ -2032,6 +2223,7 @@ pub fn run_tray(
         tutor_word_lookup: None,
         tutor_brief_table: None,
         tutor_ru: 1.0,
+        tutor_zoom_hint_until: None,
         tutor_mods: ModifiersState::empty(),
         tutor_cursor: PhysicalPosition::new(0.0, 0.0),
         tutor_hit_test: Vec::new(),
