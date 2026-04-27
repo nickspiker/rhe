@@ -40,6 +40,16 @@ use crate::tutor::ui::theme;
 use crate::tutor::wiki::SentenceStream;
 use crate::word_lookup::WordLookup;
 use std::sync::Arc;
+
+/// Hover brightness delta for a chrome button hit-test ID.
+fn hover_delta(hit: u8) -> u32 {
+    match hit {
+        HIT_CLOSE_BUTTON => theme::CLOSE_HOVER,
+        HIT_MAXIMIZE_BUTTON => theme::MAXIMIZE_HOVER,
+        HIT_MINIMIZE_BUTTON => theme::MINIMIZE_HOVER,
+        _ => 0,
+    }
+}
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 /// Rendered tray-icon bitmap dimensions. 44 = 2× the conventional
@@ -519,6 +529,19 @@ struct TrayApp {
     /// a fallback when winit's ModifiersChanged doesn't fire on some
     /// Wayland compositors (or before the window has keyboard focus).
     tutor_ctrl_held: bool,
+
+    /// Currently hovered chrome button (for hover fill effect).
+    tutor_hovered_button: u8,
+
+    // Manual resize/move drag state (Photon parity — winit's
+    // drag_resize_window is unreliable on macOS).
+    tutor_dragging_resize: bool,
+    tutor_dragging_move: bool,
+    tutor_mouse_pressed: bool,
+    tutor_resize_edge: Option<ResizeDirection>,
+    tutor_drag_start_size: (u32, u32),
+    tutor_drag_start_window_pos: (i32, i32),
+    tutor_drag_start_screen_pos: (f64, f64),
 
     // Frame/redraw counters for the debug HUD.
     tutor_frame_counter: u64,
@@ -1261,6 +1284,143 @@ impl TrayApp {
         Some(dir)
     }
 
+    /// Compute and apply the new window size/position from the current
+    /// cursor vs the drag start point. Ported from Photon's apply_resize.
+    fn apply_resize(&self) {
+        let Some(window) = self.tutor_window.as_ref() else { return };
+        let Some(window_pos) = window.outer_position().ok() else { return };
+        let cur_x = window_pos.x as f64 + self.tutor_cursor.x;
+        let cur_y = window_pos.y as f64 + self.tutor_cursor.y;
+        let dx = (cur_x - self.tutor_drag_start_screen_pos.0) as f32;
+        let dy = (cur_y - self.tutor_drag_start_screen_pos.1) as f32;
+        let min = 128f32;
+        let (sw, sh) = self.tutor_drag_start_size;
+        let (wx, wy) = self.tutor_drag_start_window_pos;
+
+        let (nw, nh, do_move, nx, ny) = match self.tutor_resize_edge {
+            Some(ResizeDirection::East) => {
+                ((sw as f32 + dx).max(min) as u32, sh, false, 0, 0)
+            }
+            Some(ResizeDirection::West) => {
+                let w = (sw as f32 - dx).max(min) as u32;
+                (w, sh, true, wx + sw as i32 - w as i32, wy)
+            }
+            Some(ResizeDirection::South) => {
+                (sw, (sh as f32 + dy).max(min) as u32, false, 0, 0)
+            }
+            Some(ResizeDirection::North) => {
+                let h = (sh as f32 - dy).max(min) as u32;
+                (sw, h, true, wx, wy + sh as i32 - h as i32)
+            }
+            Some(ResizeDirection::NorthEast) => {
+                let w = (sw as f32 + dx).max(min) as u32;
+                let h = (sh as f32 - dy).max(min) as u32;
+                (w, h, true, wx, wy + sh as i32 - h as i32)
+            }
+            Some(ResizeDirection::NorthWest) => {
+                let w = (sw as f32 - dx).max(min) as u32;
+                let h = (sh as f32 - dy).max(min) as u32;
+                (w, h, true, wx + sw as i32 - w as i32, wy + sh as i32 - h as i32)
+            }
+            Some(ResizeDirection::SouthEast) => {
+                let w = (sw as f32 + dx).max(min) as u32;
+                let h = (sh as f32 + dy).max(min) as u32;
+                (w, h, false, 0, 0)
+            }
+            Some(ResizeDirection::SouthWest) => {
+                let w = (sw as f32 - dx).max(min) as u32;
+                let h = (sh as f32 + dy).max(min) as u32;
+                (w, h, true, wx + sw as i32 - w as i32, wy)
+            }
+            _ => (sw, sh, false, 0, 0),
+        };
+
+        if do_move {
+            let _ = window.set_outer_position(PhysicalPosition::new(nx, ny));
+        }
+        let _ = window.request_inner_size(PhysicalSize::new(nw, nh));
+    }
+
+    /// macOS: poll mouse position and button state directly from AppKit.
+    /// winit stops delivering CursorMoved when the cursor leaves the
+    /// window during a drag, so we query NSEvent directly.
+    /// Returns true if the drag ended (caller should request redraw).
+    #[cfg(target_os = "macos")]
+    fn poll_macos_drag(&mut self) -> bool {
+        use std::ffi::{c_char, c_void};
+
+        let Some(window) = self.tutor_window.as_ref() else { return false };
+
+        #[repr(C)]
+        #[derive(Clone, Copy)]
+        struct NSPoint { x: f64, y: f64 }
+
+        unsafe extern "C" {
+            fn objc_msgSend(receiver: *const c_void, sel: *const c_void) -> usize;
+            fn sel_registerName(name: *const c_char) -> *const c_void;
+            fn objc_getClass(name: *const c_char) -> *const c_void;
+        }
+
+        unsafe {
+            let cls = objc_getClass(b"NSEvent\0".as_ptr() as *const c_char);
+            let sel_loc = sel_registerName(b"mouseLocation\0".as_ptr() as *const c_char);
+            let mouse_location: extern "C" fn(*const c_void, *const c_void) -> NSPoint =
+                std::mem::transmute(objc_msgSend as *const ());
+            let ns_point = mouse_location(cls, sel_loc);
+
+            let sel_btn = sel_registerName(b"pressedMouseButtons\0".as_ptr() as *const c_char);
+            let buttons = objc_msgSend(cls, sel_btn);
+            let left_held = buttons & 1 != 0;
+
+            // Convert AppKit coords (logical, bottom-left) → physical top-left
+            let scale = window.scale_factor();
+            let screen_cls = objc_getClass(b"NSScreen\0".as_ptr() as *const c_char);
+            let sel_main = sel_registerName(b"mainScreen\0".as_ptr() as *const c_char);
+            let main_screen = objc_msgSend(screen_cls, sel_main) as *const c_void;
+            #[repr(C)]
+            #[derive(Clone, Copy)]
+            struct NSRect { origin: NSPoint, size: NSPoint }
+            let sel_frame = sel_registerName(b"frame\0".as_ptr() as *const c_char);
+            let screen_frame: extern "C" fn(*const c_void, *const c_void) -> NSRect =
+                std::mem::transmute(objc_msgSend as *const ());
+            let frame = screen_frame(main_screen, sel_frame);
+            let screen_h = (frame.size.y * scale) as f64;
+
+            let phys_x = ns_point.x * scale;
+            let phys_y = screen_h - ns_point.y * scale;
+
+            if let Ok(wp) = window.outer_position() {
+                self.tutor_cursor = PhysicalPosition::new(
+                    phys_x - wp.x as f64,
+                    phys_y - wp.y as f64,
+                );
+            }
+
+            if !left_held {
+                self.tutor_dragging_resize = false;
+                self.tutor_dragging_move = false;
+                self.tutor_mouse_pressed = false;
+                self.tutor_resize_edge = None;
+                return true;
+            }
+
+            if self.tutor_dragging_resize {
+                self.apply_resize();
+            } else if self.tutor_dragging_move {
+                if let Ok(wp) = window.outer_position() {
+                    let sx = wp.x as f64 + self.tutor_cursor.x;
+                    let sy = wp.y as f64 + self.tutor_cursor.y;
+                    let dx = (sx - self.tutor_drag_start_screen_pos.0) as i32;
+                    let dy = (sy - self.tutor_drag_start_screen_pos.1) as i32;
+                    let nx = self.tutor_drag_start_window_pos.0 + dx;
+                    let ny = self.tutor_drag_start_window_pos.1 + dy;
+                    let _ = window.set_outer_position(PhysicalPosition::new(nx, ny));
+                }
+            }
+        }
+        false
+    }
+
     fn handle_keyboard(&mut self, event: KeyEvent) {
         // Track Ctrl via the key event directly — ModifiersChanged can
         // skip events on some Wayland compositors until after the
@@ -1416,11 +1576,6 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                     renderer.resize(size.width, size.height);
                 }
                 if let Some(w) = self.tutor_window.as_ref() {
-                    // macOS: re-disable resizable after the drag
-                    // completes so the OS doesn't show its own
-                    // resize cursors at the edges.
-                    #[cfg(target_os = "macos")]
-                    w.set_resizable(false);
                     w.request_redraw();
                 }
             }
@@ -1429,72 +1584,147 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.tutor_cursor = position;
+
+                // Safety net: if we missed a release, clear stale drag.
+                if !self.tutor_mouse_pressed {
+                    self.tutor_dragging_resize = false;
+                    self.tutor_dragging_move = false;
+                    self.tutor_resize_edge = None;
+                }
+
+                // Active move drag
+                if self.tutor_dragging_move {
+                    if let Some(w) = self.tutor_window.as_ref() {
+                        if let Ok(wp) = w.outer_position() {
+                            let sx = wp.x as f64 + position.x;
+                            let sy = wp.y as f64 + position.y;
+                            let dx = (sx - self.tutor_drag_start_screen_pos.0) as i32;
+                            let dy = (sy - self.tutor_drag_start_screen_pos.1) as i32;
+                            let nx = self.tutor_drag_start_window_pos.0 + dx;
+                            let ny = self.tutor_drag_start_window_pos.1 + dy;
+                            let _ = w.set_outer_position(PhysicalPosition::new(nx, ny));
+                        }
+                    }
+                    return;
+                }
+
+                // Active resize drag
+                if self.tutor_dragging_resize {
+                    self.apply_resize();
+                    return;
+                }
+
+                // Hover cursor — chrome buttons → resize edges → default
                 if let Some(w) = self.tutor_window.as_ref() {
-                    // Cursor priority (matches photon):
-                    //   chrome buttons → Pointer
-                    //   resize edges   → direction arrow
-                    //   else           → Default
                     let hit = self.hit_at_cursor();
-                    let icon =
-                        if hit == HIT_CLOSE_BUTTON
-                            || hit == HIT_MAXIMIZE_BUTTON
-                            || hit == HIT_MINIMIZE_BUTTON
-                        {
-                            CursorIcon::Pointer
-                        } else {
-                            match self.resize_edge_at_cursor() {
-                                Some(ResizeDirection::NorthWest)
-                                | Some(ResizeDirection::SouthEast) => CursorIcon::NwseResize,
-                                Some(ResizeDirection::NorthEast)
-                                | Some(ResizeDirection::SouthWest) => CursorIcon::NeswResize,
-                                Some(ResizeDirection::North) | Some(ResizeDirection::South) => {
-                                    CursorIcon::NsResize
-                                }
-                                Some(ResizeDirection::East) | Some(ResizeDirection::West) => {
-                                    CursorIcon::EwResize
-                                }
-                                Some(_) | None => CursorIcon::Default,
+                    let is_button = hit == HIT_CLOSE_BUTTON
+                        || hit == HIT_MAXIMIZE_BUTTON
+                        || hit == HIT_MINIMIZE_BUTTON;
+                    let icon = if is_button {
+                        CursorIcon::Pointer
+                    } else {
+                        match self.resize_edge_at_cursor() {
+                            Some(ResizeDirection::NorthWest)
+                            | Some(ResizeDirection::SouthEast) => CursorIcon::NwseResize,
+                            Some(ResizeDirection::NorthEast)
+                            | Some(ResizeDirection::SouthWest) => CursorIcon::NeswResize,
+                            Some(ResizeDirection::North) | Some(ResizeDirection::South) => {
+                                CursorIcon::NsResize
                             }
-                        };
+                            Some(ResizeDirection::East) | Some(ResizeDirection::West) => {
+                                CursorIcon::EwResize
+                            }
+                            Some(_) | None => CursorIcon::Default,
+                        }
+                    };
                     w.set_cursor(icon);
+
+                    // Hover fill: add/sub brightness delta on button pixels
+                    let new_hover = if is_button { hit } else { HIT_NONE };
+                    if new_hover != self.tutor_hovered_button {
+                        if let Some(renderer) = self.tutor_renderer.as_mut() {
+                            let mut buf = renderer.lock_buffer();
+                            let pixels = buf.as_mut();
+                            // Unapply previous hover
+                            if self.tutor_hovered_button != HIT_NONE {
+                                let delta = hover_delta(self.tutor_hovered_button);
+                                for (idx, &h) in self.tutor_hit_test.iter().enumerate() {
+                                    if h == self.tutor_hovered_button {
+                                        if let Some(p) = pixels.get_mut(idx) {
+                                            *p = p.wrapping_sub(delta);
+                                        }
+                                    }
+                                }
+                            }
+                            // Apply new hover
+                            if new_hover != HIT_NONE {
+                                let delta = hover_delta(new_hover);
+                                for (idx, &h) in self.tutor_hit_test.iter().enumerate() {
+                                    if h == new_hover {
+                                        if let Some(p) = pixels.get_mut(idx) {
+                                            *p = p.wrapping_add(delta);
+                                        }
+                                    }
+                                }
+                            }
+                            let _ = buf.present();
+                        }
+                        self.tutor_hovered_button = new_hover;
+                    }
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
-                if state == ElementState::Pressed && button == MouseButton::Left {
-                    let Some(window) = self.tutor_window.as_ref() else {
-                        return;
-                    };
-                    // Priority: chrome buttons → resize edges → drag.
-                    // Photon's `handle_mouse_click` uses the same
-                    // ordering.
-                    let hit = self.hit_at_cursor();
-                    if hit == HIT_CLOSE_BUTTON {
-                        self.close_tutor();
-                        return;
-                    }
-                    if hit == HIT_MAXIMIZE_BUTTON {
-                        let was_max = window.is_maximized();
-                        window.set_maximized(!was_max);
-                        return;
-                    }
-                    if hit == HIT_MINIMIZE_BUTTON {
-                        window.set_minimized(true);
-                        return;
-                    }
+                if button != MouseButton::Left { return; }
 
-                    if let Some(dir) = self.resize_edge_at_cursor() {
-                        // macOS: temporarily enable resizable so
-                        // drag_resize_window works, then the OS
-                        // resets it on mouse-up.
-                        #[cfg(target_os = "macos")]
-                        window.set_resizable(true);
-                        let _ = window.drag_resize_window(dir);
-                        return;
-                    }
-
-                    // Nothing hit — drag-move the window.
-                    let _ = window.drag_window();
+                if state == ElementState::Released {
+                    self.tutor_dragging_resize = false;
+                    self.tutor_dragging_move = false;
+                    self.tutor_mouse_pressed = false;
+                    self.tutor_resize_edge = None;
+                    return;
                 }
+
+                // Pressed
+                self.tutor_mouse_pressed = true;
+                let Some(window) = self.tutor_window.as_ref() else {
+                    return;
+                };
+
+                // Priority: chrome buttons → resize edges → drag-move.
+                let hit = self.hit_at_cursor();
+                if hit == HIT_CLOSE_BUTTON {
+                    self.close_tutor();
+                    return;
+                }
+                if hit == HIT_MAXIMIZE_BUTTON {
+                    let was_max = window.is_maximized();
+                    window.set_maximized(!was_max);
+                    return;
+                }
+                if hit == HIT_MINIMIZE_BUTTON {
+                    window.set_minimized(true);
+                    return;
+                }
+
+                // Capture drag start state (shared by resize and move)
+                let size = window.inner_size();
+                self.tutor_drag_start_size = (size.width, size.height);
+                if let Ok(wp) = window.outer_position() {
+                    self.tutor_drag_start_window_pos = (wp.x, wp.y);
+                    self.tutor_drag_start_screen_pos = (
+                        wp.x as f64 + self.tutor_cursor.x,
+                        wp.y as f64 + self.tutor_cursor.y,
+                    );
+                }
+
+                if let Some(dir) = self.resize_edge_at_cursor() {
+                    self.tutor_dragging_resize = true;
+                    self.tutor_resize_edge = Some(dir);
+                    return;
+                }
+
+                // Nothing hit — drag-move the window.
+                self.tutor_dragging_move = true;
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 self.handle_keyboard(event);
@@ -1555,7 +1785,25 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         if self.quit.load(Ordering::Relaxed) {
             event_loop.exit();
+            return;
         }
+
+        // macOS: poll mouse during resize/move drag — winit stops
+        // delivering CursorMoved when the cursor leaves the window.
+        #[cfg(target_os = "macos")]
+        if self.tutor_dragging_resize || self.tutor_dragging_move {
+            let ended = self.poll_macos_drag();
+            if ended {
+                if let Some(w) = self.tutor_window.as_ref() {
+                    w.request_redraw();
+                }
+            }
+            event_loop.set_control_flow(ControlFlow::WaitUntil(
+                std::time::Instant::now() + std::time::Duration::from_millis(8),
+            ));
+            return;
+        }
+
         event_loop.set_control_flow(ControlFlow::Wait);
     }
 }
@@ -1773,6 +2021,14 @@ pub fn run_tray(
         tutor_show_textbox_mask: false,
         tutor_debug_hit_colours: Vec::new(),
         tutor_debug_colour_seed: 0x9E3779B9,
+        tutor_hovered_button: HIT_NONE,
+        tutor_dragging_resize: false,
+        tutor_dragging_move: false,
+        tutor_mouse_pressed: false,
+        tutor_resize_edge: None,
+        tutor_drag_start_size: (0, 0),
+        tutor_drag_start_window_pos: (0, 0),
+        tutor_drag_start_screen_pos: (0.0, 0.0),
         tutor_frame_counter: 0,
         tutor_redraw_counter: 0,
         tutor_ctrl_held: false,
