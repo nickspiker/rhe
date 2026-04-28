@@ -21,6 +21,7 @@ exclude = [
 
 [dependencies]
 ureq = "2"
+zstd = "0.13"
 tray-icon = "0.22"
 winit = "0.30.12"
 softbuffer = "0.4"
