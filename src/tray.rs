@@ -975,8 +975,11 @@ impl TrayApp {
                     true,
                 );
 
-                // Forward walk (future glyphs, weight 400).
-                let mut x = cur_x + cur_w + layout.phoneme_space_w;
+                // Forward walk (future glyphs, weight 400). Phonemes
+                // pack flush against each other — no inter-glyph
+                // spacing — since the strip is the spelling of the
+                // word, not a sentence of separate tokens.
+                let mut x = cur_x + cur_w;
                 for g in phoneme_glyphs.iter().skip(cur_phon_idx + 1) {
                     let w = text.draw_text_left_u32(
                         pixels,
@@ -1002,11 +1005,11 @@ impl TrayApp {
                         "Bona Nova",
                         true,
                     );
-                    x += w + layout.phoneme_space_w;
+                    x += w;
                 }
 
                 // Backward walk (past glyphs, weight 400).
-                let mut x_right = cur_x - layout.phoneme_space_w;
+                let mut x_right = cur_x;
                 for g in phoneme_glyphs[..cur_phon_idx].iter().rev() {
                     let w = text.draw_text_left_u32(
                         pixels,
@@ -1033,7 +1036,7 @@ impl TrayApp {
                         "Bona Nova",
                         true,
                     );
-                    x_right = xl - layout.phoneme_space_w;
+                    x_right = xl;
                 }
             }
 
