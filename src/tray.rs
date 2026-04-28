@@ -110,302 +110,7 @@ fn scaled_logo_rgb(diameter: usize) -> Vec<u8> {
     dst
 }
 
-/// Geometry for every element the tutor draws.
-///
-/// **Vertical layout — proportional sections + gaps** that sum to
-/// however-many units, then `unit = bh / total_units`. Adding or
-/// removing a section just changes the total; nothing else has to
-/// move. Current section weights:
-///
-/// ```text
-///   1   — top padding         (UNIT_PAD)
-///   0.5 — gap                 (UNIT_GAP)
-///   1   — paragraph           (top sentence-context line)
-///   0.5 — gap
-///   3   — target word
-///   0.5 — gap
-///   2   — phoneme line        (target word's phoneme strip)
-///   0.5 — gap
-///   0.5 — adaptive cell labels
-///   0.5 — gap
-///   2   — chord row           (10 finger cells)
-///   0.5 — gap
-///   2   — bottom row          (word bar + mod pill)
-///   0.5 — gap
-///   1   — bottom padding
-/// ```
-///
-/// Each section's `*_cy` field is its vertical centre. Horizontal
-/// geometry (row_w, cell_d, hand_gap = cell_d, cell_gap = slack)
-/// stays span/ru-derived. `cell_d` is also clamped to the chord
-/// row's section height so pills never overflow a section and
-/// scribble outside the pixel buffer.
-struct TutorLayout {
-    // Window
-    bw: i32,
-    bh: i32,
-    chrome_h: i32,
-
-    // Top sentence-context line.
-    sentence_font: f32,
-    sentence_cy: f32,
-    sentence_space_w: f32,
-
-    // Big centred drill word.
-    target_font: f32,
-    target_cx: f32,
-    target_cy: f32,
-
-    // Phoneme line for the current target word.
-    phoneme_font: f32,
-    phoneme_cy: f32,
-    phoneme_space_w: f32,
-
-    // Adaptive cell labels — strip above the chord row.
-    label_font: f32,
-    label_cy: f32,
-
-    // Chord row (10 finger cells, hand_gap = cell_d wide between).
-    cell_d: i32,
-    cell_gap: i32,
-    hand_gap: i32,
-    row_x: i32,
-    row_w: i32,
-    row_cy: i32,
-
-    // Step-hint glyph rendered in the hand-gap centre between the
-    // two finger groups (same Y as the chord row).
-    hint_font: f32,
-    hint_cx: f32,
-    hint_cy: f32,
-
-    // Bottom row: long word bar + 2-cell mod pill on the right.
-    bottom_cy: i32,
-    word_cx: i32,
-    word_w: i32,
-    mod_cx: i32,
-    mod_w: i32,
-
-    // Hairline Y rows — one per gap *between content elements*
-    // (top/bottom padding boundaries skipped). Walked top-to-bottom
-    // so the order is paragraph↔target, target↔phoneme,
-    // phoneme↔labels, labels↔chord row, chord row↔bottom row.
-    hairlines: [i32; 5],
-}
-
-impl TutorLayout {
-    fn compute(window_w: u32, window_h: u32, chrome_h: i32, ru: f32) -> Self {
-        let bw = window_w as i32;
-        let bh = window_h as i32;
-        let span = crate::tutor::ui::span(window_w, window_h);
-        let cx = bw as f32 / 2.0;
-
-        // ── Vertical sections ────────────────────────────────────
-        // Walk a running cursor through the section + gap weights,
-        // recording each section's [top, bottom] band as we go.
-        // `total_units` is computed by summing the same weights so
-        // `unit = bh / total_units` self-balances if a section is
-        // added/removed/resized — there's no fixed grand total to
-        // get out of sync with the field list.
-        const TOP_PAD: f32 = 1.0;
-        const GAP: f32 = 0.5;
-        const PARAGRAPH: f32 = 1.0;
-        const TARGET: f32 = 3.0;
-        const PHONEME: f32 = 2.0;
-        const LABELS: f32 = 0.5;
-        const CHORD_ROW: f32 = 2.0;
-        const BOTTOM_ROW: f32 = 2.0;
-        const BOTTOM_PAD: f32 = 1.0;
-
-        // Sections in render order. Inserts/reorders go here.
-        let sections: [f32; 7] = [
-            PARAGRAPH, TARGET, PHONEME, LABELS, CHORD_ROW, BOTTOM_ROW, // content
-            // bottom pad goes outside this list (no leading gap)
-            BOTTOM_PAD,
-        ];
-        let _ = sections; // shape-only (kept so the doc lines up); the
-                          // sum below mirrors it explicitly so a future
-                          // refactor can read either form.
-
-        let total_units = TOP_PAD
-            + GAP
-            + PARAGRAPH
-            + GAP
-            + TARGET
-            + GAP
-            + PHONEME
-            + GAP
-            + LABELS
-            + GAP
-            + CHORD_ROW
-            + GAP
-            + BOTTOM_ROW
-            + GAP
-            + BOTTOM_PAD;
-        let unit = (bh as f32) / total_units;
-
-        // Walk the sections in order, recording each band's centre
-        // and (for inter-element gaps) the gap midpoint Y for the
-        // hairline pass.
-        let mut y = TOP_PAD * unit;
-        let advance = |y: &mut f32, w: f32| {
-            let top = *y;
-            *y += w * unit;
-            (top + *y) * 0.5
-        };
-        let gap_mid = |y: &mut f32| -> i32 {
-            let top = *y;
-            *y += GAP * unit;
-            ((top + *y) * 0.5).round() as i32
-        };
-
-        // Leading gap into the content: not a between-elements
-        // hairline, just walk past it.
-        y += GAP * unit;
-        let sentence_cy = advance(&mut y, PARAGRAPH);
-        let h0 = gap_mid(&mut y);
-        let target_cy = advance(&mut y, TARGET);
-        let h1 = gap_mid(&mut y);
-        let phoneme_cy = advance(&mut y, PHONEME);
-        let h2 = gap_mid(&mut y);
-        let label_cy = advance(&mut y, LABELS);
-        let h3 = gap_mid(&mut y);
-        let row_top = y;
-        let row_cy_f = advance(&mut y, CHORD_ROW);
-        let h4 = gap_mid(&mut y);
-        let bottom_cy_f = advance(&mut y, BOTTOM_ROW);
-        // The remaining GAP + BOTTOM_PAD lands right at bh — no
-        // need to read it, but the unit math depends on it.
-        let hairlines = [h0, h1, h2, h3, h4];
-
-        // ── Horizontal geometry ──────────────────────────────────
-        // Outer padding mirrors the vertical pad weight (1 unit on
-        // each side) so the chord row has visible breathing room
-        // from the window edges at any zoom. row_w (= "inner row
-        // width") is what's left over for the 11 slots.
-        const H_PAD_UNITS: f32 = 1.0;
-        let h_pad = (H_PAD_UNITS * unit).round() as i32;
-        let row_w = (bw - 2 * h_pad).max(48);
-        let row_x = h_pad;
-
-        // ── Cell sizing: ru-scaled, clamped both ways ────────────
-        // 11 uniform slots (slot 5 is the invisible "between-hands"
-        // button so spacing reads identical end-to-end). At ru=1.0
-        // the button takes 2/3 of its slot and the gap takes 1/3:
-        //   slot = cell_d + cell_gap = (3/2)·cell_d
-        //   row_w = 11·cell_d + 10·cell_gap = 11·cell_d + 5·cell_d
-        //         = 16·cell_d
-        //   ∴ cell_d_at_ru1 = row_w / 16
-        // Below ru=1 the buttons shrink and the gaps absorb the
-        // slack; above ru=1 we cap at the slot fit / vertical fit.
-        let cell_d_natural = ((row_w as f32 / 16.0) * ru).round() as i32;
-        let cell_d_h_max = ((row_w - 10 * 2) / 11).max(12);
-        let cell_d_v_max = ((CHORD_ROW * unit).round() as i32).max(12);
-        let cell_d_max = cell_d_h_max.min(cell_d_v_max);
-        let cell_d = cell_d_natural.clamp(12, cell_d_max);
-        let cell_gap = ((row_w - 11 * cell_d) / 10).max(2);
-        // hand_gap kept as a name but it's just slot 5's width now,
-        // not a separate "extra gap" between hand groups.
-        let hand_gap = cell_d;
-
-        let row_cy = row_cy_f.round() as i32;
-        let bottom_cy = bottom_cy_f.round() as i32;
-
-        // Bottom-row pills (mod right-aligned, word fills the rest).
-        let mod_w = 2 * cell_d + cell_gap;
-        let mod_cx = row_x + row_w - mod_w / 2;
-        let word_sep = cell_gap * 2;
-        let word_w = row_w - mod_w - word_sep;
-        let word_cx = row_x + word_w / 2;
-
-        // ── Fonts: section-derived heights × ru, capped at the
-        // section so they never bleed into adjacent bands ────────
-        // Uniform multiplier (0.6) and uniform cap (0.9·section) so
-        // every element saturates at the same ru (= 0.9 / 0.6 = 1.5).
-        // The keyboard / mouse zoom handlers cap the upper bound at
-        // 1.5 too, so Ctrl+= never silently does nothing — the
-        // visible saturation aligns with the user-visible ceiling.
-        const FONT_MULT: f32 = 0.6;
-        const FONT_CAP_FRAC: f32 = 0.9;
-        let font_for = |section_units: f32, min: f32| -> f32 {
-            let natural = section_units * unit * FONT_MULT * ru;
-            let cap = section_units * unit * FONT_CAP_FRAC;
-            natural.min(cap).max(min)
-        };
-        let target_font = font_for(TARGET, 14.0);
-        let phoneme_font = font_for(PHONEME, 12.0);
-        let sentence_font = font_for(PARAGRAPH, 12.0);
-        // Labels intentionally render at 2× the section-derived size
-        // (mult and cap both doubled). The 0.5-unit section is a
-        // visual anchor, not a hard ceiling — the labels overflow
-        // into the half-unit gaps above and below, which both
-        // empty space, so nothing visually collides. Width-overflow
-        // is handled per-label at draw time by measure-then-trim.
-        let label_font_natural = LABELS * unit * FONT_MULT * 2.0 * ru;
-        let label_font_cap = LABELS * unit * FONT_CAP_FRAC * 2.0;
-        let label_font = label_font_natural.min(label_font_cap).max(8.0);
-
-        // Hint sits inside the hand_gap (= cell_d wide); size to fit
-        // with a touch of margin so the glyph never spills into a
-        // neighbouring cell.
-        let hint_font = (cell_d as f32 * 0.65).max(12.0);
-
-        let sentence_space_w = sentence_font * 0.4;
-        let phoneme_space_w = phoneme_font * 0.5;
-
-        // Hint glyph centres on slot 5 (the invisible 11th button).
-        // Slot k's centre = row_x + k·(cell_d + cell_gap) + cell_d/2.
-        let hint_cx =
-            (row_x as f32) + 5.0 * (cell_d + cell_gap) as f32 + (cell_d as f32) / 2.0;
-        let hint_cy = row_cy_f;
-        let _ = row_top; // reserved for future per-cell label box bounds
-
-        Self {
-            bw,
-            bh,
-            chrome_h,
-            sentence_font,
-            sentence_cy,
-            sentence_space_w,
-            target_font,
-            target_cx: cx,
-            target_cy,
-            phoneme_font,
-            phoneme_cy,
-            phoneme_space_w,
-            label_font,
-            label_cy,
-            cell_d,
-            cell_gap,
-            hand_gap,
-            row_x,
-            row_w,
-            row_cy,
-            hint_font,
-            hint_cx,
-            hint_cy,
-            bottom_cy,
-            word_cx,
-            word_w,
-            mod_cx,
-            mod_w,
-            hairlines,
-        }
-    }
-}
-
-/// Brighten a single packed-ARGB pixel by `delta` per RGB channel
-/// with saturating-add per byte so a near-white pixel can't carry
-/// into the next channel. Alpha untouched.
-#[inline]
-fn brighten_rgb_saturating(p: u32, delta: u8) -> u32 {
-    let a = p & 0xFF000000;
-    let r = (((p >> 16) & 0xFF) as u8).saturating_add(delta) as u32;
-    let g = (((p >> 8) & 0xFF) as u8).saturating_add(delta) as u32;
-    let b = ((p & 0xFF) as u8).saturating_add(delta) as u32;
-    a | (r << 16) | (g << 8) | b
-}
-
+use crate::tutor::ui::layout::TutorLayout;
 
 /// Press marker on a chord cell — uses photon's anti-aliased
 /// `draw_filled_circle` in additive / subtractive mode so the dot
@@ -788,8 +493,8 @@ impl TrayApp {
             .or_else(|| event_loop.available_monitors().next())
             .map(|monitor| {
                 let s = monitor.size();
-                let w = s.width / 2;
-                let h = s.height / 2;
+                let w = s.width / crate::tutor::ui::layout::WINDOW_W_FRAC;
+                let h = s.height / crate::tutor::ui::layout::WINDOW_H_FRAC;
                 let x = (s.width - w) / 2;
                 let y = (s.height - h) / 2;
                 (w, h, x as i32, y as i32)
@@ -993,6 +698,22 @@ impl TrayApp {
             &crossings,
         );
 
+        // Chrome-button hover fill: brighten every pixel tagged
+        // with the currently-hovered button's hit id by the photon
+        // hover delta. Done after chrome is drawn so the delta lands
+        // on top of the chrome fill / glyph, not under it.
+        if self.tutor_hovered_button != HIT_NONE {
+            let delta = hover_delta(self.tutor_hovered_button);
+            let target_id = self.tutor_hovered_button;
+            for (idx, &h) in self.tutor_hit_test.iter().enumerate() {
+                if h == target_id {
+                    if let Some(p) = pixels.get_mut(idx) {
+                        *p = p.wrapping_add(delta);
+                    }
+                }
+            }
+        }
+
         // ── Drill view ─────────────────────────────────────────────
         // Layout: target word (big, centered, Oxanium Bold) at top of
         // the content area, step hint below (small, Josefin Slab,
@@ -1002,20 +723,6 @@ impl TrayApp {
         // (outer positions span-only; cell + font sizes scale with ru).
         let layout =
             TutorLayout::compute(size.width, size.height, button_height as i32, self.tutor_ru);
-
-        // Hairlines between content sections — one row per inter-
-        // element gap, brightened by 0x10 RGB. Drawn after chrome
-        // so they sit on the bg texture but don't occlude the cell
-        // pills / text drawn after.
-        for &hy in &layout.hairlines {
-            if hy < 0 || (hy as usize) >= height {
-                continue;
-            }
-            let row_start = (hy as usize) * width;
-            for px in &mut pixels[row_start..row_start + width] {
-                *px = brighten_rgb_saturating(*px, 0x10);
-            }
-        }
 
         let word_text = self
             .tutor_state
@@ -1049,73 +756,179 @@ impl TrayApp {
         // single line, anchored so the current word stays centered.
         // As word_idx advances the line shifts left, sliding completed
         // words off and bringing upcoming words in.
-        let sentence_words: Vec<String> = self
-            .tutor_state
-            .as_ref()
-            .and_then(|s| s.practice.sentences.get(s.practice.sentence_idx))
-            .map(|s| s.iter().map(|w| w.word.clone()).collect())
-            .unwrap_or_default();
-        let cur_word_idx = self
-            .tutor_state
-            .as_ref()
-            .map(|s| s.practice.word_idx)
-            .unwrap_or(0);
+        // Flat word list across every sentence in the practice
+        // (no sentence boundaries / no line returns), with the
+        // current word's index in the flat list. Used by the top
+        // line render which walks outward from the current word
+        // until it spills past the window edges, so the strip is
+        // continuous text in both directions regardless of how the
+        // wiki batch was split into sentences.
+        let (sentence_words, cur_word_idx): (Vec<String>, usize) = {
+            let mut flat: Vec<String> = Vec::new();
+            let mut cur = 0usize;
+            if let Some(state) = self.tutor_state.as_ref() {
+                let practice = &state.practice;
+                let cs = practice.sentence_idx;
+                let cw = practice.word_idx;
+                for (si, sentence) in practice.sentences.iter().enumerate() {
+                    for (wi, w) in sentence.iter().enumerate() {
+                        if si == cs && wi == cw {
+                            cur = flat.len();
+                        }
+                        flat.push(w.word.clone());
+                    }
+                }
+            }
+            (flat, cur)
+        };
+
+        // Phoneme line: every chord-firing step in the current
+        // target word's `current_steps()`, filtered to only those
+        // with a displayable glyph (phoneme IPA or number_glyph).
+        // Skips entry-only mod_tap_only and space_only commits so
+        // the strip is just content, not state markers. cur_phon_idx
+        // is the position of the current step in the filtered list,
+        // pinned at the most-recent displayable step ≤ step_idx so
+        // the highlight tracks the user's progress through commits /
+        // entry steps too.
+        let (phoneme_glyphs, cur_phon_idx): (Vec<String>, usize) = {
+            let mut glyphs: Vec<String> = Vec::new();
+            let mut cur = 0usize;
+            if let Some(state) = self.tutor_state.as_ref() {
+                if let Some(steps) = state.practice.current_steps() {
+                    let cur_step = state.practice.step_idx;
+                    for (i, step) in steps.iter().enumerate() {
+                        let glyph = if let Some(p) = step.phoneme {
+                            Some(p.to_ipa().to_string())
+                        } else {
+                            step.number_glyph.clone()
+                        };
+                        if let Some(g) = glyph {
+                            if i <= cur_step {
+                                cur = glyphs.len();
+                            }
+                            glyphs.push(g);
+                        }
+                    }
+                }
+            }
+            (glyphs, cur)
+        };
 
         if let Some(text) = self.text_renderer.as_mut() {
-            // Sentence line above the big word.
-            if !sentence_words.is_empty() {
-                // Pass 1: measure each word by drawing it off-screen and
-                // capturing the returned width. Cosmic-text's bounds
-                // check skips every pixel write at far-negative x, so
-                // this is effectively a measure.
-                let widths: Vec<f32> = sentence_words
-                    .iter()
-                    .map(|w| {
-                        text.draw_text_left_u32(
-                            pixels,
-                            width,
-                            w,
-                            -1.0e6,
-                            -1.0e6,
-                            layout.sentence_font,
-                            400,
-                            0,
-                            "Oxanium",
-                        )
-                    })
-                    .collect();
-                let mut left_w = 0.0f32;
-                for i in 0..cur_word_idx.min(widths.len()) {
-                    left_w += widths[i] + layout.sentence_space_w;
-                }
-                let cur_w = widths.get(cur_word_idx).copied().unwrap_or(0.0);
-                let line_x = layout.target_cx - (left_w + cur_w / 2.0);
-                let mut x = line_x;
-                for (i, w) in sentence_words.iter().enumerate() {
-                    let (colour, weight) = if i == cur_word_idx {
-                        (theme::SENTENCE_CURRENT, 700)
-                    } else if i < cur_word_idx {
-                        (theme::SENTENCE_PAST, 400)
-                    } else {
-                        (theme::SENTENCE_FUTURE, 400)
-                    };
+            // Sentence line — italic Bona Nova, current word centred
+            // on target_cx and bold; past / future words walk
+            // outward until they spill past the window edges with a
+            // quarter-span overflow margin. Each word is measured at
+            // its actual render weight (400 vs 700) so bold's wider
+            // glyphs don't stomp on adjacent regular words.
+            if !sentence_words.is_empty() && cur_word_idx < sentence_words.len() {
+                let span = crate::tutor::ui::span(size.width, size.height);
+                let stop_left = -span * 0.25;
+                let stop_right = (size.width as f32) + span * 0.25;
+
+                // Current word: measure at weight 700 (its render
+                // weight), centre on target_cx.
+                let cur_w = text.draw_text_left_u32(
+                    pixels,
+                    width,
+                    &sentence_words[cur_word_idx],
+                    -1.0e6,
+                    -1.0e6,
+                    layout.sentence_font,
+                    700,
+                    0,
+                    "Bona Nova",
+                    true,
+                );
+                let cur_x = layout.target_cx - cur_w / 2.0;
+                text.draw_text_left_u32(
+                    pixels,
+                    width,
+                    &sentence_words[cur_word_idx],
+                    cur_x,
+                    layout.sentence_cy,
+                    layout.sentence_font,
+                    700,
+                    theme::SENTENCE_CURRENT,
+                    "Bona Nova",
+                    true,
+                );
+
+                // Forward walk (future words to the right of current).
+                // Wraps cyclically through the flat list so the line
+                // keeps streaming text past the window edge regardless
+                // of how many words remain in the practice batch.
+                let n = sentence_words.len();
+                let mut x = cur_x + cur_w + layout.sentence_space_w;
+                let mut i = cur_word_idx + 1;
+                while x < stop_right {
+                    let idx = i % n;
+                    let w = text.draw_text_left_u32(
+                        pixels,
+                        width,
+                        &sentence_words[idx],
+                        -1.0e6,
+                        -1.0e6,
+                        layout.sentence_font,
+                        400,
+                        0,
+                        "Bona Nova",
+                        true,
+                    );
                     text.draw_text_left_u32(
                         pixels,
                         width,
-                        w,
+                        &sentence_words[idx],
                         x,
                         layout.sentence_cy,
                         layout.sentence_font,
-                        weight,
-                        colour,
-                        "Oxanium",
+                        400,
+                        theme::SENTENCE_FUTURE,
+                        "Bona Nova",
+                        true,
                     );
-                    x += widths.get(i).copied().unwrap_or(0.0) + layout.sentence_space_w;
+                    x += w + layout.sentence_space_w;
+                    i += 1;
+                }
+
+                // Backward walk (past words to the left of current).
+                // Same cyclic wrap as the forward walk.
+                let mut x_right = cur_x - layout.sentence_space_w;
+                let mut i = cur_word_idx;
+                while x_right > stop_left {
+                    let idx = (i + n - 1) % n;
+                    i = idx;
+                    let w = text.draw_text_left_u32(
+                        pixels,
+                        width,
+                        &sentence_words[idx],
+                        -1.0e6,
+                        -1.0e6,
+                        layout.sentence_font,
+                        400,
+                        0,
+                        "Bona Nova",
+                        true,
+                    );
+                    let xl = x_right - w;
+                    text.draw_text_left_u32(
+                        pixels,
+                        width,
+                        &sentence_words[idx],
+                        xl,
+                        layout.sentence_cy,
+                        layout.sentence_font,
+                        400,
+                        theme::SENTENCE_PAST,
+                        "Bona Nova",
+                        true,
+                    );
+                    x_right = xl - layout.sentence_space_w;
                 }
             }
 
-            // Big centred target word. No errored colour swap — the
-            // cue lives entirely in the keyboard row going dark.
+            // Big centred target word — Bona Nova regular (non-italic).
             text.draw_text_center_u32(
                 pixels,
                 width,
@@ -1125,13 +938,109 @@ impl TrayApp {
                 layout.target_font,
                 700,
                 theme::TARGET_WORD,
-                "Oxanium",
+                "Bona Nova",
+                false,
             );
 
+            // Phoneme line: italic Bona Nova. Each glyph is measured
+            // at its actual render weight (400 for past/future, 700
+            // for current) so the bold current glyph doesn't crowd
+            // its neighbours. Outward walk centred on target_cx,
+            // matching the sentence line.
+            if !phoneme_glyphs.is_empty() && cur_phon_idx < phoneme_glyphs.len() {
+                // Current glyph at weight 700, centred on target_cx.
+                let cur_w = text.draw_text_left_u32(
+                    pixels,
+                    width,
+                    &phoneme_glyphs[cur_phon_idx],
+                    -1.0e6,
+                    -1.0e6,
+                    layout.phoneme_font,
+                    700,
+                    0,
+                    "Bona Nova",
+                    true,
+                );
+                let cur_x = layout.target_cx - cur_w / 2.0;
+                text.draw_text_left_u32(
+                    pixels,
+                    width,
+                    &phoneme_glyphs[cur_phon_idx],
+                    cur_x,
+                    layout.phoneme_cy,
+                    layout.phoneme_font,
+                    700,
+                    theme::SENTENCE_CURRENT,
+                    "Bona Nova",
+                    true,
+                );
+
+                // Forward walk (future glyphs, weight 400).
+                let mut x = cur_x + cur_w + layout.phoneme_space_w;
+                for g in phoneme_glyphs.iter().skip(cur_phon_idx + 1) {
+                    let w = text.draw_text_left_u32(
+                        pixels,
+                        width,
+                        g,
+                        -1.0e6,
+                        -1.0e6,
+                        layout.phoneme_font,
+                        400,
+                        0,
+                        "Bona Nova",
+                        true,
+                    );
+                    text.draw_text_left_u32(
+                        pixels,
+                        width,
+                        g,
+                        x,
+                        layout.phoneme_cy,
+                        layout.phoneme_font,
+                        400,
+                        theme::SENTENCE_FUTURE,
+                        "Bona Nova",
+                        true,
+                    );
+                    x += w + layout.phoneme_space_w;
+                }
+
+                // Backward walk (past glyphs, weight 400).
+                let mut x_right = cur_x - layout.phoneme_space_w;
+                for g in phoneme_glyphs[..cur_phon_idx].iter().rev() {
+                    let w = text.draw_text_left_u32(
+                        pixels,
+                        width,
+                        g,
+                        -1.0e6,
+                        -1.0e6,
+                        layout.phoneme_font,
+                        400,
+                        0,
+                        "Bona Nova",
+                        true,
+                    );
+                    let xl = x_right - w;
+                    text.draw_text_left_u32(
+                        pixels,
+                        width,
+                        g,
+                        xl,
+                        layout.phoneme_cy,
+                        layout.phoneme_font,
+                        400,
+                        theme::SENTENCE_PAST,
+                        "Bona Nova",
+                        true,
+                    );
+                    x_right = xl - layout.phoneme_space_w;
+                }
+            }
+
             if !step_hint.is_empty() {
-                // Hint glyph now lands in the hand_gap centre between
-                // cells 4 and 5 (same Y as the chord row). Bumped to
-                // 700 weight so it reads clearly against any
+                // Hint glyph in the hand_gap centre between cells 4
+                // and 5 (same Y as the chord row). Bona Nova regular,
+                // bold weight so it reads clearly against any
                 // KEY_COLOURS-bright cell next to it.
                 text.draw_text_center_u32(
                     pixels,
@@ -1142,7 +1051,8 @@ impl TrayApp {
                     layout.hint_font,
                     700,
                     theme::TARGET_WORD,
-                    "Josefin Slab",
+                    "Bona Nova",
+                    false,
                 );
             }
         }
@@ -1297,8 +1207,7 @@ impl TrayApp {
                 } else {
                     (target.right & (1u8 << right_bits[cell_idx - 5])) != 0
                 };
-                let fill =
-                    finger_cell_fill(cell_idx, is_target, is_primary(CELL_SCANS[cell_idx]));
+                let fill = finger_cell_fill(cell_idx, is_target, is_primary(CELL_SCANS[cell_idx]));
                 cell(
                     pixels,
                     &mut self.tutor_hit_test,
@@ -1316,8 +1225,8 @@ impl TrayApp {
                 cell_centres[cell_idx] = (cx_cell, cy);
             }
             let _ = hand_gap; // slot 5 width is implicit in the slot
-                              // walk above; field kept for callers
-                              // that want the in-gap centre Y.
+            // walk above; field kept for callers
+            // that want the in-gap centre Y.
 
             // Second row below the chord cells: word bar (long, left-
             // aligned under L-pinky) + mod cell (2 cells wide, right-
@@ -1328,7 +1237,11 @@ impl TrayApp {
             let mod_w = layout.mod_w;
             let mod_cx = layout.mod_cx;
             let mod_target = (target.right & (1u8 << 4)) != 0;
-            let mod_fill = if mod_target { theme::MOD_PRIMARY } else { theme::CELL_IDLE };
+            let mod_fill = if mod_target {
+                theme::MOD_PRIMARY
+            } else {
+                theme::CELL_IDLE
+            };
             let mod_pressed = key_state.right[4];
             cell_wide(
                 pixels,
@@ -1343,7 +1256,14 @@ impl TrayApp {
                 mod_pressed,
             );
             if mod_pressed {
-                press_circle(pixels, width, mod_cx, bottom_cy, press_dot_radius, mod_target);
+                press_circle(
+                    pixels,
+                    width,
+                    mod_cx,
+                    bottom_cy,
+                    press_dot_radius,
+                    mod_target,
+                );
             }
 
             let word_w = layout.word_w;
@@ -1367,7 +1287,14 @@ impl TrayApp {
                 word_pressed,
             );
             if word_pressed {
-                press_circle(pixels, width, word_cx, bottom_cy, press_dot_radius, target.word);
+                press_circle(
+                    pixels,
+                    width,
+                    word_cx,
+                    bottom_cy,
+                    press_dot_radius,
+                    target.word,
+                );
             }
             let _ = theme::WORD_SECONDARY;
 
@@ -1402,7 +1329,8 @@ impl TrayApp {
                         label_font,
                         500,
                         0,
-                        "Josefin Slab",
+                        "Bona Nova",
+                        false,
                     );
                     while measured > max_w && display.chars().count() > 1 {
                         let mut chars: Vec<char> = display.chars().collect();
@@ -1417,7 +1345,8 @@ impl TrayApp {
                             label_font,
                             500,
                             0,
-                            "Josefin Slab",
+                            "Bona Nova",
+                            false,
                         );
                     }
 
@@ -1430,7 +1359,8 @@ impl TrayApp {
                         label_font,
                         500,
                         theme::CELL_LABEL,
-                        "Josefin Slab",
+                        "Bona Nova",
+                        false,
                     );
                 }
             }
@@ -1473,7 +1403,8 @@ impl TrayApp {
                         hint_size,
                         500,
                         theme::ZOOM_HINT_TEXT,
-                        "Josefin Slab",
+                        "Bona Nova",
+                        false,
                     );
                 }
             } else {
@@ -1516,7 +1447,8 @@ impl TrayApp {
                     counter_size,
                     400,
                     theme::COUNTER_TEXT,
-                    "Josefin Slab",
+                    "Bona Nova",
+                    false,
                 );
                 text.draw_text_center_u32(
                     pixels,
@@ -1527,7 +1459,8 @@ impl TrayApp {
                     counter_size,
                     400,
                     theme::COUNTER_TEXT,
-                    "Josefin Slab",
+                    "Bona Nova",
+                    false,
                 );
                 text.draw_text_right_u32(
                     pixels,
@@ -1538,7 +1471,8 @@ impl TrayApp {
                     counter_size,
                     400,
                     theme::COUNTER_TEXT,
-                    "Josefin Slab",
+                    "Bona Nova",
+                    false,
                 );
             }
         }
@@ -1792,11 +1726,17 @@ impl TrayApp {
             self.tutor_debug_hit_test = false;
             true
         } else if c == "=" || c == "+" {
-            self.tutor_ru = (self.tutor_ru * 1.1).clamp(0.3, 1.5);
+            self.tutor_ru = (self.tutor_ru * crate::tutor::ui::layout::ZOOM_STEP).clamp(
+                crate::tutor::ui::layout::ZOOM_MIN,
+                crate::tutor::ui::layout::ZOOM_MAX,
+            );
             self.bump_zoom_hint();
             true
         } else if c == "-" {
-            self.tutor_ru = (self.tutor_ru / 1.1).clamp(0.3, 1.5);
+            self.tutor_ru = (self.tutor_ru / crate::tutor::ui::layout::ZOOM_STEP).clamp(
+                crate::tutor::ui::layout::ZOOM_MIN,
+                crate::tutor::ui::layout::ZOOM_MAX,
+            );
             self.bump_zoom_hint();
             true
         } else if c == "0" {
@@ -1841,9 +1781,10 @@ impl TrayApp {
                 self.tutor_word_lookup = Some(WordLookup::new(&cmudict));
                 self.tutor_brief_table = Some(crate::preferences::briefs::load_briefs());
             }
-            if let (Some(lookup), Some(briefs)) =
-                (self.tutor_word_lookup.as_ref(), self.tutor_brief_table.as_ref())
-            {
+            if let (Some(lookup), Some(briefs)) = (
+                self.tutor_word_lookup.as_ref(),
+                self.tutor_brief_table.as_ref(),
+            ) {
                 let lines: Vec<String> = crate::tutor::drill::TEST_SENTENCES
                     .iter()
                     .map(|s| s.to_string())
@@ -1978,37 +1919,17 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                         };
                     w.set_cursor(icon);
 
-                    // Hover fill: add/sub brightness delta on button pixels
+                    // Hover fill: track which chrome button (if any)
+                    // the cursor is over and request a redraw on
+                    // change. The actual delta is applied during
+                    // the full redraw_tutor pass over the chrome
+                    // pixels, not here — a partial cpu_buffer patch
+                    // wasn't marking dirty rows on the renderer, so
+                    // the present() silently dropped the change.
                     let new_hover = if is_button { hit } else { HIT_NONE };
                     if new_hover != self.tutor_hovered_button {
-                        if let Some(renderer) = self.tutor_renderer.as_mut() {
-                            let mut buf = renderer.lock_buffer();
-                            let pixels = buf.as_mut();
-                            // Unapply previous hover
-                            if self.tutor_hovered_button != HIT_NONE {
-                                let delta = hover_delta(self.tutor_hovered_button);
-                                for (idx, &h) in self.tutor_hit_test.iter().enumerate() {
-                                    if h == self.tutor_hovered_button {
-                                        if let Some(p) = pixels.get_mut(idx) {
-                                            *p = p.wrapping_sub(delta);
-                                        }
-                                    }
-                                }
-                            }
-                            // Apply new hover
-                            if new_hover != HIT_NONE {
-                                let delta = hover_delta(new_hover);
-                                for (idx, &h) in self.tutor_hit_test.iter().enumerate() {
-                                    if h == new_hover {
-                                        if let Some(p) = pixels.get_mut(idx) {
-                                            *p = p.wrapping_add(delta);
-                                        }
-                                    }
-                                }
-                            }
-                            let _ = buf.present();
-                        }
                         self.tutor_hovered_button = new_hover;
+                        w.request_redraw();
                     }
                 }
             }
@@ -2088,8 +2009,11 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                         // Zoom-per-notch matches photon's feel (1.1×
                         // per scroll step). Clamped so nobody can zoom
                         // into the abyss.
-                        let factor = 1.1f32.powf(steps);
-                        self.tutor_ru = (self.tutor_ru * factor).clamp(0.3, 1.5);
+                        let factor = crate::tutor::ui::layout::ZOOM_STEP.powf(steps);
+                        self.tutor_ru = (self.tutor_ru * factor).clamp(
+                            crate::tutor::ui::layout::ZOOM_MIN,
+                            crate::tutor::ui::layout::ZOOM_MAX,
+                        );
                         self.bump_zoom_hint();
                         if let Some(w) = self.tutor_window.as_ref() {
                             w.request_redraw();

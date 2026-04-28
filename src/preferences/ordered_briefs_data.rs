@@ -46,7 +46,6 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     // right / write — L-ring + R-ring (R+AY+T)
     (0b0100, 0b00100, scan::R_RING, "right"),
     (0b0100, 0b00100, scan::L_RING, "write"),
-
     // ─── Single-hand + thumb chords (thumb = easy, ring/mid = rare) ─
     // to / too / two — R-idx + R-mid + thumb
     (0b0000, 0b10011, scan::R_THUMB, "to"),
@@ -108,7 +107,6 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     (0b0011, 0b10100, scan::L_IDX, "which"),
     (0b0011, 0b10100, scan::L_MID, "which"),
     (0b0011, 0b10100, scan::R_RING, "witch"),
-
     // ─── No-thumb chords (ring = rare; middle if no ring) ──────────
     // our / hour — L-ring+pinky + R-pinky (ring = rare)
     (0b1100, 0b01000, scan::L_PINKY, "our"),
@@ -150,7 +148,6 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     (0b1111, 0b00101, scan::R_IDX, "night"),
     (0b1111, 0b00101, scan::L_RING, "knight"),
     (0b1111, 0b00101, scan::R_RING, "knight"),
-
     // ─── 3-way ────────────────────────────────────────────────────
     // for / four / fore — all 4 right-hand fingers.
     //   pinky (easy)   → for  (most common, 5.2M)

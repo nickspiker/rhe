@@ -106,8 +106,22 @@ pub const fn hid_is_non_home_row_letter(usage: u32) -> bool {
     // Bottom row Z-M.
     matches!(
         usage,
-        0x14 | 0x1A | 0x08 | 0x15 | 0x17 | 0x1C | 0x18 | 0x0C | 0x12 | 0x13
-            | 0x1D | 0x1B | 0x06 | 0x19 | 0x05 | 0x11 | 0x10
+        0x14 | 0x1A
+            | 0x08
+            | 0x15
+            | 0x17
+            | 0x1C
+            | 0x18
+            | 0x0C
+            | 0x12
+            | 0x13
+            | 0x1D
+            | 0x1B
+            | 0x06
+            | 0x19
+            | 0x05
+            | 0x11
+            | 0x10
     )
 }
 
@@ -528,9 +542,18 @@ mod tests {
     // so the test below is blunt: enumerate every key the layout
     // recognizes and demand the role set matches the canonical one.
     const REQUIRED_ROLES: &[u8] = &[
-        scan::L_PINKY, scan::L_RING, scan::L_MID, scan::L_IDX, scan::L_IDX_INNER,
-        scan::R_IDX_INNER, scan::R_IDX, scan::R_MID, scan::R_RING, scan::R_PINKY,
-        scan::R_THUMB, scan::WORD,
+        scan::L_PINKY,
+        scan::L_RING,
+        scan::L_MID,
+        scan::L_IDX,
+        scan::L_IDX_INNER,
+        scan::R_IDX_INNER,
+        scan::R_IDX,
+        scan::R_MID,
+        scan::R_RING,
+        scan::R_PINKY,
+        scan::R_THUMB,
+        scan::WORD,
     ];
 
     fn collect_roles<F, C>(mapper: F, codes: &[C]) -> Vec<u8>
@@ -550,42 +573,85 @@ mod tests {
     }
 
     const ALL_LINUX_CODES: &[u16] = &[
-        linux::KEY_ENTER, linux::KEY_A, linux::KEY_S, linux::KEY_D, linux::KEY_F,
-        linux::KEY_G, linux::KEY_H, linux::KEY_J, linux::KEY_K, linux::KEY_L,
-        linux::KEY_SEMICOLON, linux::KEY_APOSTROPHE, linux::KEY_LEFTSHIFT,
-        linux::KEY_RIGHTSHIFT, linux::KEY_LEFTALT, linux::KEY_SPACE, linux::KEY_RIGHTALT,
+        linux::KEY_ENTER,
+        linux::KEY_A,
+        linux::KEY_S,
+        linux::KEY_D,
+        linux::KEY_F,
+        linux::KEY_G,
+        linux::KEY_H,
+        linux::KEY_J,
+        linux::KEY_K,
+        linux::KEY_L,
+        linux::KEY_SEMICOLON,
+        linux::KEY_APOSTROPHE,
+        linux::KEY_LEFTSHIFT,
+        linux::KEY_RIGHTSHIFT,
+        linux::KEY_LEFTALT,
+        linux::KEY_SPACE,
+        linux::KEY_RIGHTALT,
     ];
 
     const ALL_HID_USAGES: &[u32] = &[
-        hid::A, hid::S, hid::D, hid::F, hid::G, hid::H, hid::J, hid::K, hid::L,
-        hid::SEMICOLON, hid::APOSTROPHE, hid::RETURN, hid::SPACEBAR,
-        hid::LEFT_SHIFT, hid::RIGHT_SHIFT, hid::LEFT_ALT, hid::RIGHT_ALT,
-        hid::LEFT_GUI, hid::RIGHT_GUI,
+        hid::A,
+        hid::S,
+        hid::D,
+        hid::F,
+        hid::G,
+        hid::H,
+        hid::J,
+        hid::K,
+        hid::L,
+        hid::SEMICOLON,
+        hid::APOSTROPHE,
+        hid::RETURN,
+        hid::SPACEBAR,
+        hid::LEFT_SHIFT,
+        hid::RIGHT_SHIFT,
+        hid::LEFT_ALT,
+        hid::RIGHT_ALT,
+        hid::LEFT_GUI,
+        hid::RIGHT_GUI,
     ];
 
     #[test]
     fn linux_narrow_r_covers_all_roles() {
-        assert_eq!(collect_roles(linux_narrow_r, ALL_LINUX_CODES), expected_roles());
+        assert_eq!(
+            collect_roles(linux_narrow_r, ALL_LINUX_CODES),
+            expected_roles()
+        );
     }
 
     #[test]
     fn linux_wide_r_covers_all_roles() {
-        assert_eq!(collect_roles(linux_wide_r, ALL_LINUX_CODES), expected_roles());
+        assert_eq!(
+            collect_roles(linux_wide_r, ALL_LINUX_CODES),
+            expected_roles()
+        );
     }
 
     #[test]
     fn linux_narrow_l_covers_all_roles() {
-        assert_eq!(collect_roles(linux_narrow_l, ALL_LINUX_CODES), expected_roles());
+        assert_eq!(
+            collect_roles(linux_narrow_l, ALL_LINUX_CODES),
+            expected_roles()
+        );
     }
 
     #[test]
     fn linux_wide_l_covers_all_roles() {
-        assert_eq!(collect_roles(linux_wide_l, ALL_LINUX_CODES), expected_roles());
+        assert_eq!(
+            collect_roles(linux_wide_l, ALL_LINUX_CODES),
+            expected_roles()
+        );
     }
 
     #[test]
     fn hid_narrow_r_covers_all_roles() {
-        assert_eq!(collect_roles(hid_narrow_r, ALL_HID_USAGES), expected_roles());
+        assert_eq!(
+            collect_roles(hid_narrow_r, ALL_HID_USAGES),
+            expected_roles()
+        );
     }
 
     #[test]
@@ -595,7 +661,10 @@ mod tests {
 
     #[test]
     fn hid_narrow_l_covers_all_roles() {
-        assert_eq!(collect_roles(hid_narrow_l, ALL_HID_USAGES), expected_roles());
+        assert_eq!(
+            collect_roles(hid_narrow_l, ALL_HID_USAGES),
+            expected_roles()
+        );
     }
 
     #[test]
@@ -608,19 +677,47 @@ mod tests {
         // Top-row letter positions (Q-P) and bottom-row letter
         // positions (Z-M) should all be flagged.
         for code in 16..=25u16 {
-            assert!(linux_is_non_home_row_letter(code), "code {} should trigger", code);
+            assert!(
+                linux_is_non_home_row_letter(code),
+                "code {} should trigger",
+                code
+            );
         }
         for code in 44..=50u16 {
-            assert!(linux_is_non_home_row_letter(code), "code {} should trigger", code);
+            assert!(
+                linux_is_non_home_row_letter(code),
+                "code {} should trigger",
+                code
+            );
         }
         // Home-row positions must not trigger.
-        for code in [linux::KEY_A, linux::KEY_S, linux::KEY_D, linux::KEY_F, linux::KEY_G,
-                     linux::KEY_H, linux::KEY_J, linux::KEY_K, linux::KEY_L, linux::KEY_SEMICOLON] {
-            assert!(!linux_is_non_home_row_letter(code), "home-row {} triggered", code);
+        for code in [
+            linux::KEY_A,
+            linux::KEY_S,
+            linux::KEY_D,
+            linux::KEY_F,
+            linux::KEY_G,
+            linux::KEY_H,
+            linux::KEY_J,
+            linux::KEY_K,
+            linux::KEY_L,
+            linux::KEY_SEMICOLON,
+        ] {
+            assert!(
+                !linux_is_non_home_row_letter(code),
+                "home-row {} triggered",
+                code
+            );
         }
         // Numbers, modifiers, punctuation: shouldn't trigger.
-        for code in [2u16, 3, 4, 10, 11, 12, 13, 26, 27, 28, 40, 41, 42, 54, 56, 57, 100] {
-            assert!(!linux_is_non_home_row_letter(code), "non-letter {} triggered", code);
+        for code in [
+            2u16, 3, 4, 10, 11, 12, 13, 26, 27, 28, 40, 41, 42, 54, 56, 57, 100,
+        ] {
+            assert!(
+                !linux_is_non_home_row_letter(code),
+                "non-letter {} triggered",
+                code
+            );
         }
     }
 

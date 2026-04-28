@@ -75,7 +75,9 @@ pub enum Action {
 ///
 /// Pub so the tutor's adaptive cell labels can reuse the same
 /// chord→form mapping when `MODE_FLAG_HAS_NUMBER` is set.
-pub fn chord_to_form(key: crate::preferences::chord_map::ChordKey) -> Option<crate::preferences::number_forms::Form> {
+pub fn chord_to_form(
+    key: crate::preferences::chord_map::ChordKey,
+) -> Option<crate::preferences::number_forms::Form> {
     use crate::preferences::number_forms::Form;
     if key.right_bits() != 0 || key.has_mod() {
         return None;
@@ -204,7 +206,13 @@ impl Interpreter {
         dictionary: PhonemeDictionary,
         fallback: Arc<AtomicU8>,
     ) -> Self {
-        Self::with_fallback_and_modes(phonemes, briefs, dictionary, fallback, new_shared_mode_flags())
+        Self::with_fallback_and_modes(
+            phonemes,
+            briefs,
+            dictionary,
+            fallback,
+            new_shared_mode_flags(),
+        )
     }
 
     /// Build with both shared atomics handed in. The mode_flags arc is
@@ -288,7 +296,11 @@ impl Interpreter {
 
     fn process_inner(&mut self, event: &Event) -> Option<Action> {
         match event {
-            Event::Chord { key, space_held, first_down } => {
+            Event::Chord {
+                key,
+                space_held,
+                first_down,
+            } => {
                 if self.mode == Mode::Number {
                     // Number mode dispatch:
                     //   no mod → digit ("5")
@@ -319,7 +331,9 @@ impl Interpreter {
                     // Form transform check.
                     if let Some(form) = chord_to_form(*key) {
                         if let Some(ctx) = self.last_number.clone() {
-                            if let Some(out) = crate::preferences::number_forms::apply(form, &ctx.digits) {
+                            if let Some(out) =
+                                crate::preferences::number_forms::apply(form, &ctx.digits)
+                            {
                                 let after = format!("{} ", out);
                                 let before = ctx.current.clone();
                                 // Snapshot must happen BEFORE we
@@ -343,10 +357,7 @@ impl Interpreter {
                     // Materialize into an owned String up front so
                     // the immutable borrow of self.briefs is dropped
                     // before we call record_* which wants &mut self.
-                    let brief = self
-                        .briefs
-                        .lookup(*key, *first_down)
-                        .map(|s| s.to_string());
+                    let brief = self.briefs.lookup(*key, *first_down).map(|s| s.to_string());
                     brief.map(|s| {
                         if let Some(suffix) = s.strip_prefix('\x01') {
                             self.record_replace(" ".to_string(), suffix.to_string())
@@ -440,7 +451,10 @@ impl Interpreter {
                 // set back to whatever it was before the popped
                 // emission, so undo restores number-form context.
                 match self.emit_history.pop() {
-                    Some(HistoryEntry::Emit { text, prior_number_state }) => {
+                    Some(HistoryEntry::Emit {
+                        text,
+                        prior_number_state,
+                    }) => {
                         self.last_number = prior_number_state;
                         Some(Action::Backspace(text.chars().count()))
                     }
@@ -534,7 +548,11 @@ mod tests {
         // Chord with R_IDX alone → digit "3" (position 3).
         use crate::key_mask::KeyMask;
         let key = ChordKey::from_mask(KeyMask::EMPTY.with(crate::scan::R_IDX));
-        let event = Event::Chord { key, space_held: true, first_down: None };
+        let event = Event::Chord {
+            key,
+            space_held: true,
+            first_down: None,
+        };
         let action = interp.process(&event).unwrap();
         assert_eq!(action, Action::Emit("3".to_string()));
     }
@@ -554,7 +572,9 @@ mod tests {
         // R_IDX + thumb, first_down = thumb → "+"
         use crate::key_mask::KeyMask;
         let key = ChordKey::from_mask(
-            KeyMask::EMPTY.with(crate::scan::R_IDX).with(crate::scan::R_THUMB),
+            KeyMask::EMPTY
+                .with(crate::scan::R_IDX)
+                .with(crate::scan::R_THUMB),
         );
         let event = Event::Chord {
             key,
@@ -572,7 +592,9 @@ mod tests {
         // R_IDX + thumb, first_down = R_IDX → "three"
         use crate::key_mask::KeyMask;
         let key = ChordKey::from_mask(
-            KeyMask::EMPTY.with(crate::scan::R_IDX).with(crate::scan::R_THUMB),
+            KeyMask::EMPTY
+                .with(crate::scan::R_IDX)
+                .with(crate::scan::R_THUMB),
         );
         let event = Event::Chord {
             key,
@@ -598,7 +620,11 @@ mod tests {
         interp.process(&Event::ModTap);
         use crate::key_mask::KeyMask;
         let key = ChordKey::from_mask(KeyMask::EMPTY.with(crate::scan::R_PINKY));
-        let event = Event::Chord { key, space_held: true, first_down: None };
+        let event = Event::Chord {
+            key,
+            space_held: true,
+            first_down: None,
+        };
         interp.process(&event).unwrap(); // emits "0"
         let action = interp.process(&Event::Backspace).unwrap();
         assert_eq!(action, Action::Backspace(1));
@@ -611,9 +637,15 @@ mod tests {
         // Two fingers together don't map to a digit.
         use crate::key_mask::KeyMask;
         let key = ChordKey::from_mask(
-            KeyMask::EMPTY.with(crate::scan::R_PINKY).with(crate::scan::R_RING),
+            KeyMask::EMPTY
+                .with(crate::scan::R_PINKY)
+                .with(crate::scan::R_RING),
         );
-        let event = Event::Chord { key, space_held: true, first_down: None };
+        let event = Event::Chord {
+            key,
+            space_held: true,
+            first_down: None,
+        };
         assert!(interp.process(&event).is_none());
     }
 
@@ -704,7 +736,9 @@ mod tests {
         use crate::key_mask::KeyMask;
         let plus = Event::Chord {
             key: ChordKey::from_mask(
-                KeyMask::EMPTY.with(crate::scan::R_IDX).with(crate::scan::R_THUMB),
+                KeyMask::EMPTY
+                    .with(crate::scan::R_IDX)
+                    .with(crate::scan::R_THUMB),
             ),
             space_held: true,
             first_down: Some(crate::scan::R_THUMB),
@@ -720,14 +754,27 @@ mod tests {
         use crate::key_mask::KeyMask;
         let mut mask = KeyMask::EMPTY;
         // left_bits encoding: I=0001, M=0010, R=0100, P=1000 (per briefs_data)
-        if left_bits & 0b0001 != 0 { mask.set(crate::scan::L_IDX); }
-        if left_bits & 0b0010 != 0 { mask.set(crate::scan::L_MID); }
-        if left_bits & 0b0100 != 0 { mask.set(crate::scan::L_RING); }
-        if left_bits & 0b1000 != 0 { mask.set(crate::scan::L_PINKY); }
-        let first_down = if left_bits & 0b1000 != 0 { crate::scan::L_PINKY }
-            else if left_bits & 0b0100 != 0 { crate::scan::L_RING }
-            else if left_bits & 0b0010 != 0 { crate::scan::L_MID }
-            else { crate::scan::L_IDX };
+        if left_bits & 0b0001 != 0 {
+            mask.set(crate::scan::L_IDX);
+        }
+        if left_bits & 0b0010 != 0 {
+            mask.set(crate::scan::L_MID);
+        }
+        if left_bits & 0b0100 != 0 {
+            mask.set(crate::scan::L_RING);
+        }
+        if left_bits & 0b1000 != 0 {
+            mask.set(crate::scan::L_PINKY);
+        }
+        let first_down = if left_bits & 0b1000 != 0 {
+            crate::scan::L_PINKY
+        } else if left_bits & 0b0100 != 0 {
+            crate::scan::L_RING
+        } else if left_bits & 0b0010 != 0 {
+            crate::scan::L_MID
+        } else {
+            crate::scan::L_IDX
+        };
         Event::Chord {
             key: ChordKey::from_mask(mask),
             space_held: false,
@@ -863,10 +910,10 @@ mod tests {
         // fall back to the English -ly suffix.
         let mut interp = setup();
         interp.process(&Event::ModTap);
-        interp.process(&digit_event(crate::scan::R_RING));  // 1
+        interp.process(&digit_event(crate::scan::R_RING)); // 1
         interp.process(&digit_event(crate::scan::L_PINKY)); // 9
-        interp.process(&digit_event(crate::scan::R_MID));   // 2
-        interp.process(&digit_event(crate::scan::R_RING));  // 1
+        interp.process(&digit_event(crate::scan::R_MID)); // 2
+        interp.process(&digit_event(crate::scan::R_RING)); // 1
         interp.process(&Event::SpaceUp);
         // L-mid = group, but group("1921") is None (>10). Falls
         // through to English -ly suffix. The setup() brief table

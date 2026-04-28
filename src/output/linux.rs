@@ -196,7 +196,10 @@ fn open_uinput() -> Result<RawFd, String> {
     let path = CString::new("/dev/uinput").unwrap();
     let fd = unsafe { libc::open(path.as_ptr(), libc::O_WRONLY | libc::O_NONBLOCK) };
     if fd < 0 {
-        return Err(format!("open /dev/uinput: {}", std::io::Error::last_os_error()));
+        return Err(format!(
+            "open /dev/uinput: {}",
+            std::io::Error::last_os_error()
+        ));
     }
 
     unsafe {
@@ -217,7 +220,11 @@ fn open_uinput() -> Result<RawFd, String> {
     setup.name[..name.len()].copy_from_slice(name);
 
     let rc = unsafe {
-        libc::ioctl(fd, UI_DEV_SETUP, &setup as *const UinputSetup as *const libc::c_void)
+        libc::ioctl(
+            fd,
+            UI_DEV_SETUP,
+            &setup as *const UinputSetup as *const libc::c_void,
+        )
     };
     if rc < 0 {
         let err = std::io::Error::last_os_error();
@@ -237,7 +244,10 @@ fn open_uinput() -> Result<RawFd, String> {
 
 fn write_event(fd: RawFd, type_: u16, code: u16, value: i32) {
     let ev = InputEvent {
-        time: libc::timeval { tv_sec: 0, tv_usec: 0 },
+        time: libc::timeval {
+            tv_sec: 0,
+            tv_usec: 0,
+        },
         type_,
         code,
         value,
@@ -265,7 +275,10 @@ fn detect_layout() -> (String, String, String) {
         return (String::new(), String::new(), String::new());
     }
 
-    if let Ok(out) = std::process::Command::new("localectl").arg("status").output() {
+    if let Ok(out) = std::process::Command::new("localectl")
+        .arg("status")
+        .output()
+    {
         if out.status.success() {
             let text = String::from_utf8_lossy(&out.stdout);
             let mut layout = String::new();

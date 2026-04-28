@@ -140,7 +140,10 @@ impl EvdevInput {
         let uinput_fd = match open_uinput() {
             Ok(fd) => Some(fd),
             Err(e) => {
-                eprintln!("evdev: passthrough disabled ({}); non-rhe keys will be swallowed", e);
+                eprintln!(
+                    "evdev: passthrough disabled ({}); non-rhe keys will be swallowed",
+                    e
+                );
                 None
             }
         };
@@ -383,7 +386,10 @@ fn reader_loop(
                         1 => KeyDirection::Down,
                         _ => continue, // skip autorepeat on chord keys
                     };
-                    let _ = tx.send(HidEvent::Key(KeyEvent { scan, direction: dir }));
+                    let _ = tx.send(HidEvent::Key(KeyEvent {
+                        scan,
+                        direction: dir,
+                    }));
                     continue;
                 }
             }
@@ -405,13 +411,19 @@ fn reader_loop(
 /// and caps-lock also possible but often xkb-managed).
 fn set_scroll_led(fd: RawFd, on: bool) {
     let led_ev = InputEvent {
-        time: libc::timeval { tv_sec: 0, tv_usec: 0 },
+        time: libc::timeval {
+            tv_sec: 0,
+            tv_usec: 0,
+        },
         type_: EV_LED,
         code: LED_CODE,
         value: if on { 1 } else { 0 },
     };
     let syn_ev = InputEvent {
-        time: libc::timeval { tv_sec: 0, tv_usec: 0 },
+        time: libc::timeval {
+            tv_sec: 0,
+            tv_usec: 0,
+        },
         type_: EV_SYN,
         code: SYN_REPORT,
         value: 0,
@@ -447,21 +459,35 @@ fn classify_held(held: &[u16]) -> (u8, bool, bool) {
 
 fn forward_key(uinput_fd: RawFd, code: u16, value: i32) {
     let key_ev = InputEvent {
-        time: libc::timeval { tv_sec: 0, tv_usec: 0 },
+        time: libc::timeval {
+            tv_sec: 0,
+            tv_usec: 0,
+        },
         type_: EV_KEY,
         code,
         value,
     };
     let syn_ev = InputEvent {
-        time: libc::timeval { tv_sec: 0, tv_usec: 0 },
+        time: libc::timeval {
+            tv_sec: 0,
+            tv_usec: 0,
+        },
         type_: EV_SYN,
         code: SYN_REPORT,
         value: 0,
     };
     let ev_size = std::mem::size_of::<InputEvent>();
     unsafe {
-        libc::write(uinput_fd, &key_ev as *const _ as *const libc::c_void, ev_size);
-        libc::write(uinput_fd, &syn_ev as *const _ as *const libc::c_void, ev_size);
+        libc::write(
+            uinput_fd,
+            &key_ev as *const _ as *const libc::c_void,
+            ev_size,
+        );
+        libc::write(
+            uinput_fd,
+            &syn_ev as *const _ as *const libc::c_void,
+            ev_size,
+        );
     }
 }
 
@@ -475,7 +501,10 @@ fn open_uinput() -> Result<RawFd, String> {
     let path = CString::new("/dev/uinput").unwrap();
     let fd = unsafe { libc::open(path.as_ptr(), libc::O_WRONLY | libc::O_NONBLOCK) };
     if fd < 0 {
-        return Err(format!("open /dev/uinput: {}", std::io::Error::last_os_error()));
+        return Err(format!(
+            "open /dev/uinput: {}",
+            std::io::Error::last_os_error()
+        ));
     }
 
     unsafe {
@@ -497,7 +526,11 @@ fn open_uinput() -> Result<RawFd, String> {
     setup.name[..name.len()].copy_from_slice(name);
 
     let rc = unsafe {
-        libc::ioctl(fd, UI_DEV_SETUP, &setup as *const UinputSetup as *const libc::c_void)
+        libc::ioctl(
+            fd,
+            UI_DEV_SETUP,
+            &setup as *const UinputSetup as *const libc::c_void,
+        )
     };
     if rc < 0 {
         let err = std::io::Error::last_os_error();
@@ -514,7 +547,6 @@ fn open_uinput() -> Result<RawFd, String> {
 
     Ok(fd)
 }
-
 
 fn find_keyboards() -> std::io::Result<Vec<String>> {
     let mut out = Vec::new();

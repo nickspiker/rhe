@@ -107,8 +107,7 @@ pub fn chord_to_digit_word(key: ChordKey) -> Option<&'static str> {
 const DIGITS: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 const SYMBOLS: [char; 10] = ['-', '/', '*', '+', ')', '(', '=', '%', '^', ','];
 const DIGIT_WORDS: [&str; 10] = [
-    "zero", "one", "two", "three", "four",
-    "five", "six", "seven", "eight", "nine",
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
 ];
 
 #[cfg(test)]
@@ -198,8 +197,14 @@ mod tests {
         assert_eq!(chord_to_digit_word(with_mod(scan::R_RING)), Some("one"));
         assert_eq!(chord_to_digit_word(with_mod(scan::R_MID)), Some("two"));
         assert_eq!(chord_to_digit_word(with_mod(scan::R_IDX)), Some("three"));
-        assert_eq!(chord_to_digit_word(with_mod(scan::R_IDX_INNER)), Some("four"));
-        assert_eq!(chord_to_digit_word(with_mod(scan::L_IDX_INNER)), Some("five"));
+        assert_eq!(
+            chord_to_digit_word(with_mod(scan::R_IDX_INNER)),
+            Some("four")
+        );
+        assert_eq!(
+            chord_to_digit_word(with_mod(scan::L_IDX_INNER)),
+            Some("five")
+        );
         assert_eq!(chord_to_digit_word(with_mod(scan::L_IDX)), Some("six"));
         assert_eq!(chord_to_digit_word(with_mod(scan::L_MID)), Some("seven"));
         assert_eq!(chord_to_digit_word(with_mod(scan::L_RING)), Some("eight"));

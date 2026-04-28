@@ -272,8 +272,11 @@ fn run() {
         let out = output::macos::MacOSOutput::new();
 
         let input = input::cgevent_backend::CgEventInput::start_grab(
-                enabled_engine, false, Some(caps_proxy))
-            .expect("failed to start key capture");
+            enabled_engine,
+            false,
+            Some(caps_proxy),
+        )
+        .expect("failed to start key capture");
         let mut sm = state_machine::StateMachine::new();
 
         loop {
@@ -315,7 +318,10 @@ fn run() {
                             eprintln!("  emit: backspace x{}", n);
                             out.backspace(n);
                         }
-                        interpreter::Action::Replace { ref before, ref after } => {
+                        interpreter::Action::Replace {
+                            ref before,
+                            ref after,
+                        } => {
                             eprintln!("  emit: replace(-{:?}) {:?}", before, after);
                             out.backspace(before.chars().count());
                             out.emit(after);
@@ -352,10 +358,9 @@ fn run() {
     let (event_loop, proxy) = tray::build();
     let toggle_proxy = proxy.clone();
     let drill_proxy = proxy.clone();
-    let on_toggle: input::evdev_backend::ToggleHook =
-        Arc::new(move || {
-            let _ = toggle_proxy.send_event(tray::TrayEvent::StateChanged);
-        });
+    let on_toggle: input::evdev_backend::ToggleHook = Arc::new(move || {
+        let _ = toggle_proxy.send_event(tray::TrayEvent::StateChanged);
+    });
 
     std::thread::spawn(move || {
         let cmudict = data::load_cmudict();
@@ -395,13 +400,12 @@ fn run() {
             }
             // Timeout keeps us responsive to tray-initiated quit even when
             // no key events are arriving.
-            let event =
-                match input.rx.recv_timeout(std::time::Duration::from_millis(250)) {
-                    Ok(input::HidEvent::Key(ev)) => ev,
-                    Ok(input::HidEvent::Quit) => break,
-                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-                    Err(_) => break,
-                };
+            let event = match input.rx.recv_timeout(std::time::Duration::from_millis(250)) {
+                Ok(input::HidEvent::Key(ev)) => ev,
+                Ok(input::HidEvent::Quit) => break,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(_) => break,
+            };
 
             // Tee to the tutor window — tray ignores when closed.
             let _ = drill_proxy.send_event(tray::TrayEvent::DrillKey(event));
@@ -412,7 +416,10 @@ fn run() {
                     match action {
                         interpreter::Action::Emit(ref text) => out.emit(text),
                         interpreter::Action::Backspace(n) => out.backspace(n),
-                        interpreter::Action::Replace { ref before, ref after } => {
+                        interpreter::Action::Replace {
+                            ref before,
+                            ref after,
+                        } => {
                             out.backspace(before.chars().count());
                             out.emit(after);
                         }

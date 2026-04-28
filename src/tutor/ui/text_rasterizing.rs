@@ -1,4 +1,4 @@
-use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, SwashCache, Weight};
+use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Style, SwashCache, Weight};
 
 pub struct TextRenderer {
     font_system: FontSystem,
@@ -12,7 +12,9 @@ impl TextRenderer {
         let db = font_system.db_mut();
 
         // Load Oxanium (for logo)
-        db.load_font_data(include_bytes!("../../../assets/Oxanium/Oxanium-ExtraLight.ttf").to_vec());
+        db.load_font_data(
+            include_bytes!("../../../assets/Oxanium/Oxanium-ExtraLight.ttf").to_vec(),
+        );
         db.load_font_data(include_bytes!("../../../assets/Oxanium/Oxanium-Light.ttf").to_vec());
         db.load_font_data(include_bytes!("../../../assets/Oxanium/Oxanium-Regular.ttf").to_vec());
         db.load_font_data(include_bytes!("../../../assets/Oxanium/Oxanium-Medium.ttf").to_vec());
@@ -25,7 +27,8 @@ impl TextRenderer {
             include_bytes!("../../../assets/Josefin_Slab/static/JosefinSlab-Thin.ttf").to_vec(),
         );
         db.load_font_data(
-            include_bytes!("../../../assets/Josefin_Slab/static/JosefinSlab-ExtraLight.ttf").to_vec(),
+            include_bytes!("../../../assets/Josefin_Slab/static/JosefinSlab-ExtraLight.ttf")
+                .to_vec(),
         );
         db.load_font_data(
             include_bytes!("../../../assets/Josefin_Slab/static/JosefinSlab-Light.ttf").to_vec(),
@@ -63,6 +66,17 @@ impl TextRenderer {
             include_bytes!("../../../assets/Open_Sans/static/OpenSans-ExtraBold.ttf").to_vec(),
         );
 
+        // Bona Nova — primary tutor face. Regular + italic only;
+        // weight is held at 400 throughout, italic is the per-element
+        // style switch (sentence + phoneme line italic, target word /
+        // hint / labels regular).
+        db.load_font_data(
+            include_bytes!("../../../assets/Bona_Nova/static/BonaNova-Regular.ttf").to_vec(),
+        );
+        db.load_font_data(
+            include_bytes!("../../../assets/Bona_Nova/static/BonaNova-Italic.ttf").to_vec(),
+        );
+
         Self {
             font_system,
             swash_cache: SwashCache::new(),
@@ -80,10 +94,14 @@ impl TextRenderer {
         weight: u16,
         colour: u32, // [RGBA]
         font: &str,
+        italic: bool,
     ) -> f32 {
-        let attrs = Attrs::new()
+        let mut attrs = Attrs::new()
             .family(Family::Name(font))
             .weight(Weight(weight));
+        if italic {
+            attrs = attrs.style(Style::Italic);
+        }
 
         let metrics = Metrics::relative(size, 1.2);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
@@ -133,10 +151,14 @@ impl TextRenderer {
         weight: u16,
         colour: u32,
         font: &str,
+        italic: bool,
     ) -> f32 {
-        let attrs = Attrs::new()
+        let mut attrs = Attrs::new()
             .family(Family::Name(font))
             .weight(Weight(weight));
+        if italic {
+            attrs = attrs.style(Style::Italic);
+        }
 
         let metrics = Metrics::relative(size, 1.2);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
@@ -181,10 +203,14 @@ impl TextRenderer {
         weight: u16,
         colour: u32,
         font: &str,
+        italic: bool,
     ) -> f32 {
-        let attrs = Attrs::new()
+        let mut attrs = Attrs::new()
             .family(Family::Name(font))
             .weight(Weight(weight));
+        if italic {
+            attrs = attrs.style(Style::Italic);
+        }
 
         let metrics = Metrics::relative(size, 1.2);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
@@ -774,11 +800,7 @@ impl TextRenderer {
     ) {
         // Calculate text width for centering
         let text_width: f32 = buffer.layout_runs().fold(0.0, |max_width, run| {
-            let run_width = run
-                .glyphs
-                .iter()
-                .map(|g| g.w)
-                .sum::<f32>();
+            let run_width = run.glyphs.iter().map(|g| g.w).sum::<f32>();
             max_width.max(run_width)
         });
 
@@ -849,11 +871,7 @@ impl TextRenderer {
     ) {
         // Calculate text width for right-alignment
         let text_width: f32 = buffer.layout_runs().fold(0.0, |max_width, run| {
-            let run_width = run
-                .glyphs
-                .iter()
-                .map(|g| g.w)
-                .sum::<f32>();
+            let run_width = run.glyphs.iter().map(|g| g.w).sum::<f32>();
             max_width.max(run_width)
         });
 
@@ -1155,9 +1173,11 @@ impl TextRenderer {
                             // WHY: Glyph can be partially off-screen when textbox is scrolled
                             // PROOF: final_x/final_y are i32, can be negative or exceed bounds
                             // PREVENTS: Index out of bounds panic on wrapped negative values
-                            if final_x < 0 || final_y < 0
+                            if final_x < 0
+                                || final_y < 0
                                 || final_x as usize >= width
-                                || final_y as usize >= height {
+                                || final_y as usize >= height
+                            {
                                 continue;
                             }
                             let idx = final_y as usize * width + final_x as usize;

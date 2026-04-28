@@ -18,7 +18,6 @@ pub const HIT_AVATAR: u8 = 7;
 pub struct TutorApp;
 
 impl TutorApp {
-
     /// Calculate window control bounds without drawing.
     /// Returns (start, crossings, button_x_start, button_height) needed for edges/hairlines.
     pub fn window_controls_bounds(
@@ -2299,7 +2298,13 @@ impl TutorApp {
         }
     }
 
-    pub fn draw_black_circle(pixels: &mut [u32], width: usize, cx: usize, cy: usize, radius: usize) {
+    pub fn draw_black_circle(
+        pixels: &mut [u32],
+        width: usize,
+        cx: usize,
+        cy: usize,
+        radius: usize,
+    ) {
         let r_outer = radius as isize;
         let r_outer2 = r_outer * r_outer;
         let r_inner = (radius - 1) as isize;
@@ -2349,7 +2354,13 @@ impl TutorApp {
     /// Lerp identity: `result = pixel·(1−α) + 255·α`. Rearranged as
     /// `result = 255 − (255−pixel)·(1−α)`, which only needs one
     /// widened multiply per pixel — same shape as the black version.
-    pub fn draw_white_circle(pixels: &mut [u32], width: usize, cx: usize, cy: usize, radius: usize) {
+    pub fn draw_white_circle(
+        pixels: &mut [u32],
+        width: usize,
+        cx: usize,
+        cy: usize,
+        radius: usize,
+    ) {
         let r_outer = radius as isize;
         let r_outer2 = r_outer * r_outer;
         let r_inner = (radius - 1) as isize;
@@ -2737,11 +2748,7 @@ fn sample_avatar(
         }
         (red << 16) | (green << 8) | blue
     } else {
-        if brighten {
-            0x404040
-        } else {
-            0x202020
-        }
+        if brighten { 0x404040 } else { 0x202020 }
     }
 }
 

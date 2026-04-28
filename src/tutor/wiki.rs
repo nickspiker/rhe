@@ -134,7 +134,10 @@ fn clean_extract(text: &str) -> String {
         .map(|c| {
             if c.is_ascii_alphabetic()
                 || c.is_ascii_digit()
-                || matches!(c, ' ' | '\t' | '\n' | '.' | ',' | '\'' | '-' | '!' | '?' | ':' | ';')
+                || matches!(
+                    c,
+                    ' ' | '\t' | '\n' | '.' | ',' | '\'' | '-' | '!' | '?' | ':' | ';'
+                )
             {
                 c
             } else if !c.is_ascii() {

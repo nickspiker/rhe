@@ -246,7 +246,9 @@ impl IoHidInput {
                 // Register callback
                 let enabled_for_led = enabled.clone();
                 let ctx = Box::into_raw(Box::new(CallbackContext {
-                    tx, enabled, manager,
+                    tx,
+                    enabled,
+                    manager,
                     modifier_flags: std::sync::Mutex::new(0),
                     esc_quits,
                     auto_switch: std::sync::Mutex::new(AutoSwitchState::default()),
@@ -281,7 +283,9 @@ impl IoHidInput {
             }
         });
 
-        let SendPtr(manager) = mgr_rx.recv().map_err(|_| "failed to get manager ref".to_string())?;
+        let SendPtr(manager) = mgr_rx
+            .recv()
+            .map_err(|_| "failed to get manager ref".to_string())?;
         Ok(Self { rx, manager })
     }
 }
@@ -467,9 +471,16 @@ extern "C" fn hid_callback(
 /// Map HID usage to macOS virtual keycode for passthrough re-injection.
 /// Re-inject a key event to the OS with proper modifier flags.
 /// Tracks modifier state so all events carry the correct flags.
-unsafe fn reinject_key(vk: u16, usage: u32, key_down: bool, modifier_flags: &std::sync::Mutex<u64>) {
+unsafe fn reinject_key(
+    vk: u16,
+    usage: u32,
+    key_down: bool,
+    modifier_flags: &std::sync::Mutex<u64>,
+) {
     let source = ffi::CGEventSourceCreate(ffi::kCGEventSourceStateHIDSystemState);
-    if source.is_null() { return; }
+    if source.is_null() {
+        return;
+    }
 
     // Update tracked modifier state
     let modifier_flag = match usage {
@@ -505,7 +516,9 @@ unsafe fn reinject_key(vk: u16, usage: u32, key_down: bool, modifier_flags: &std
 /// LED page = 0x08, usage = 0x02 (Caps Lock).
 pub(crate) unsafe fn set_caps_lock_led(manager: ffi::IOHIDManagerRef, on: bool) {
     let devices = ffi::IOHIDManagerCopyDevices(manager);
-    if devices.is_null() { return; }
+    if devices.is_null() {
+        return;
+    }
 
     let count = ffi::CFSetGetCount(devices);
     if count == 0 {
@@ -519,10 +532,10 @@ pub(crate) unsafe fn set_caps_lock_led(manager: ffi::IOHIDManagerRef, on: bool) 
     for &dev_ptr in &device_ptrs {
         let device = dev_ptr as ffi::IOHIDDeviceRef;
         // Find LED elements on this device
-        let elements = ffi::IOHIDDeviceCopyMatchingElements(
-            device, std::ptr::null(), 0
-        );
-        if elements.is_null() { continue; }
+        let elements = ffi::IOHIDDeviceCopyMatchingElements(device, std::ptr::null(), 0);
+        if elements.is_null() {
+            continue;
+        }
 
         let el_count = ffi::CFArrayGetCount(elements);
         for i in 0..el_count {

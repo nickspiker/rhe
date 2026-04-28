@@ -78,28 +78,17 @@ mod ffi {
         ) -> CFRunLoopSourceRef;
 
         pub fn CFRunLoopGetCurrent() -> CFRunLoopRef;
-        pub fn CFRunLoopAddSource(
-            rl: CFRunLoopRef,
-            source: CFRunLoopSourceRef,
-            mode: CFStringRef,
-        );
+        pub fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
         pub fn CFRunLoopRun();
 
         pub static kCFRunLoopCommonModes: CFStringRef;
 
-        pub fn CGEventGetIntegerValueField(
-            event: CGEventRef,
-            field: CGEventField,
-        ) -> i64;
+        pub fn CGEventGetIntegerValueField(event: CGEventRef, field: CGEventField) -> i64;
 
         pub fn CGEventGetFlags(event: CGEventRef) -> u64;
         pub fn CGEventSetFlags(event: CGEventRef, flags: u64);
 
-        pub fn CGEventSetIntegerValueField(
-            event: CGEventRef,
-            field: CGEventField,
-            value: i64,
-        );
+        pub fn CGEventSetIntegerValueField(event: CGEventRef, field: CGEventField, value: i64);
     }
 }
 
@@ -214,11 +203,7 @@ impl CgEventInput {
                     );
                 }
 
-                let source = ffi::CFMachPortCreateRunLoopSource(
-                    ffi::kCFAllocatorDefault,
-                    tap,
-                    0,
-                );
+                let source = ffi::CFMachPortCreateRunLoopSource(ffi::kCFAllocatorDefault, tap, 0);
                 let rl = ffi::CFRunLoopGetCurrent();
                 ffi::CFRunLoopAddSource(rl, source, ffi::kCFRunLoopCommonModes);
                 ffi::CGEventTapEnable(tap, true);
@@ -304,14 +289,14 @@ extern "C" fn event_callback(
                 // Detect down/up from flags: check if the modifier's flag is now set
                 let flags = ffi::CGEventGetFlags(event);
                 let modifier_down = match vk {
-                    0x37 => flags & 0x100000 != 0,  // left command
-                    0x36 => flags & 0x100000 != 0,  // right command
-                    0x3A => flags & 0x80000 != 0,   // left alt/option
-                    0x3D => flags & 0x80000 != 0,   // right alt/option
-                    0x38 => flags & 0x20000 != 0,   // left shift
-                    0x3C => flags & 0x20000 != 0,   // right shift
-                    0x3B => flags & 0x40000 != 0,   // left control
-                    0x3E => flags & 0x40000 != 0,   // right control
+                    0x37 => flags & 0x100000 != 0, // left command
+                    0x36 => flags & 0x100000 != 0, // right command
+                    0x3A => flags & 0x80000 != 0,  // left alt/option
+                    0x3D => flags & 0x80000 != 0,  // right alt/option
+                    0x38 => flags & 0x20000 != 0,  // left shift
+                    0x3C => flags & 0x20000 != 0,  // right shift
+                    0x3B => flags & 0x40000 != 0,  // left control
+                    0x3E => flags & 0x40000 != 0,  // right control
                     _ => return event,
                 };
                 let direction = if modifier_down {
@@ -331,10 +316,8 @@ extern "C" fn event_callback(
         }
 
         // Skip key repeats
-        let is_repeat = ffi::CGEventGetIntegerValueField(
-            event,
-            ffi::kCGKeyboardEventAutorepeat,
-        ) != 0;
+        let is_repeat =
+            ffi::CGEventGetIntegerValueField(event, ffi::kCGKeyboardEventAutorepeat) != 0;
         if is_repeat {
             return std::ptr::null_mut();
         }

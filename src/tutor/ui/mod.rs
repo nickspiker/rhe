@@ -21,6 +21,7 @@ pub mod renderer_macos_softbuffer;
 
 pub mod compositor;
 pub mod drawing;
+pub mod layout;
 pub mod text_rasterizing;
 pub mod theme;
 

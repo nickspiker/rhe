@@ -1,9 +1,9 @@
 //! Chord detection: accumulates keys, fires on all-zero.
 //! Dual mode: per-hand (word held) vs all-zero (rolls).
 
-use crate::preferences::chord_map::ChordKey;
 use crate::hand::{KeyDirection, KeyEvent};
 use crate::key_mask::KeyMask;
+use crate::preferences::chord_map::ChordKey;
 use crate::scan;
 
 /// Events emitted by the state machine.
@@ -108,8 +108,7 @@ impl StateMachine {
                 // between. A pre-held thumb *alone* doesn't count —
                 // it just arms the mod-tap detector.
                 self.activity_during_word = !non_thumb.is_empty();
-                self.mod_tap_eligible =
-                    self.live.test(scan::R_THUMB) && non_thumb.is_empty();
+                self.mod_tap_eligible = self.live.test(scan::R_THUMB) && non_thumb.is_empty();
                 self.accum = KeyMask::EMPTY;
                 self.first_down = None;
                 vec![]
@@ -174,10 +173,7 @@ impl StateMachine {
                 // no finger ever joining it. Fire ModTap immediately
                 // and skip try_fire — the user may tap mod again
                 // inside this same word-held session (for a decimal).
-                if self.word_held
-                    && scan == crate::scan::R_THUMB
-                    && self.mod_tap_eligible
-                {
+                if self.word_held && scan == crate::scan::R_THUMB && self.mod_tap_eligible {
                     self.mod_tap_eligible = false;
                     self.activity_during_word = true;
                     self.accum.clear(crate::scan::R_THUMB);
@@ -211,8 +207,7 @@ impl StateMachine {
                     // chord would only produce noise. Clear the bits
                     // silently — the `ModTap` event will be emitted
                     // later on word-up if this gesture sits alone.
-                    let thumb_only = hand_accum.count_ones() == 1
-                        && hand_accum.test(scan::R_THUMB);
+                    let thumb_only = hand_accum.count_ones() == 1 && hand_accum.test(scan::R_THUMB);
                     if thumb_only {
                         self.accum &= !hand_mask;
                         if self.accum.is_empty() {
@@ -280,13 +275,26 @@ mod tests {
     use super::*;
 
     fn ev(scan: u8, dir: KeyDirection) -> KeyEvent {
-        KeyEvent { scan, direction: dir }
+        KeyEvent {
+            scan,
+            direction: dir,
+        }
     }
-    fn word(dir: KeyDirection) -> KeyEvent { ev(scan::WORD, dir) }
-    fn l_pinky(dir: KeyDirection) -> KeyEvent { ev(scan::L_PINKY, dir) }
-    fn r_idx(dir: KeyDirection) -> KeyEvent { ev(scan::R_IDX, dir) }
-    fn r_mid(dir: KeyDirection) -> KeyEvent { ev(scan::R_MID, dir) }
-    fn r_thumb(dir: KeyDirection) -> KeyEvent { ev(scan::R_THUMB, dir) }
+    fn word(dir: KeyDirection) -> KeyEvent {
+        ev(scan::WORD, dir)
+    }
+    fn l_pinky(dir: KeyDirection) -> KeyEvent {
+        ev(scan::L_PINKY, dir)
+    }
+    fn r_idx(dir: KeyDirection) -> KeyEvent {
+        ev(scan::R_IDX, dir)
+    }
+    fn r_mid(dir: KeyDirection) -> KeyEvent {
+        ev(scan::R_MID, dir)
+    }
+    fn r_thumb(dir: KeyDirection) -> KeyEvent {
+        ev(scan::R_THUMB, dir)
+    }
 
     fn feed_all(sm: &mut StateMachine, events: &[KeyEvent]) -> Vec<Event> {
         events.iter().flat_map(|e| sm.feed(*e)).collect()
@@ -520,10 +528,7 @@ mod tests {
                 word(KeyDirection::Up),
             ],
         );
-        assert_eq!(
-            events,
-            vec![Event::ModTap, Event::ModTap, Event::SpaceUp]
-        );
+        assert_eq!(events, vec![Event::ModTap, Event::ModTap, Event::SpaceUp]);
     }
 
     #[test]

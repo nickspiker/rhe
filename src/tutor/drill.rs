@@ -10,9 +10,9 @@
 //! Lifted out of `tutor.rs` during Phase C so the GUI window in
 //! `tray.rs` can plug into the drill without dragging in ratatui.
 
-use crate::preferences::chord_map::{BriefTable, ChordKey, Phoneme, PhonemeTable};
 use crate::hand::{KeyDirection, KeyEvent as RheKeyEvent};
 use crate::key_mask::KeyMask;
+use crate::preferences::chord_map::{BriefTable, ChordKey, Phoneme, PhonemeTable};
 use crate::scan;
 use crate::word_lookup::WordLookup;
 
@@ -84,10 +84,10 @@ pub struct Step {
 
 pub struct PracticeWord {
     pub word: String,
-    pub phoneme_steps: Vec<Step>,        // word held + phoneme sequence + commit
-    pub brief_steps: Option<Vec<Step>>,  // single chord without word + all-off
+    pub phoneme_steps: Vec<Step>, // word held + phoneme sequence + commit
+    pub brief_steps: Option<Vec<Step>>, // single chord without word + all-off
     pub suffix_steps: Option<Vec<Step>>, // roll(base) + suffix chord + all-off
-    pub suffix_label: Option<String>,    // e.g. "~ing" for display
+    pub suffix_label: Option<String>, // e.g. "~ing" for display
     pub number_steps: Option<Vec<Step>>, // mod-tap entry + per-char + commit
 }
 
@@ -233,7 +233,8 @@ impl Practice {
 /// Curated drill lines used by `rhe test`. Reproducible, offline,
 /// short enough to cycle thru while iterating on chord designs.
 pub const TEST_SENTENCES: &[&str] = &[
-    "the answer is 42 and pi is about 3.14 today",
+    "the answer is 42 four times ten plus two",
+    "pi is about 3.14159 ish today",
     "count 0 1 2 3 4 5 6 7 8 9 and then stop",
     "add 1+2 and 7+8 to get 3 and 15 as a result",
     "try 9-4 and 6-1 or 100-50 just for practice",
@@ -370,18 +371,31 @@ pub fn build_digit_word_steps(word: &str) -> Option<Vec<Step>> {
     let mut leads = KeyMask::EMPTY;
     leads.set(scan_code);
 
-    let word_only = Target { right: 0, left: 0, word: true, accepted_leads: KeyMask::EMPTY };
+    let word_only = Target {
+        right: 0,
+        left: 0,
+        word: true,
+        accepted_leads: KeyMask::EMPTY,
+    };
 
     let mut steps = Vec::new();
 
     // Step 1: +mod +word
     steps.push(Step {
-        target: Target { right: 1 << 4, left: 0, word: true, accepted_leads: KeyMask::EMPTY },
+        target: Target {
+            right: 1 << 4,
+            left: 0,
+            word: true,
+            accepted_leads: KeyMask::EMPTY,
+        },
         ..Step::default()
     });
 
     // Step 2: -mod (word still held)
-    steps.push(Step { target: word_only, ..Step::default() });
+    steps.push(Step {
+        target: word_only,
+        ..Step::default()
+    });
 
     // Step 3: +number (finger before mod = spelled)
     steps.push(Step {
@@ -428,50 +442,89 @@ pub fn build_number_steps(word: &str) -> Option<Vec<Step>> {
     }
 
     let mut steps: Vec<Step> = Vec::new();
-    let word_only = Target { right: 0, left: 0, word: true, accepted_leads: KeyMask::EMPTY };
+    let word_only = Target {
+        right: 0,
+        left: 0,
+        word: true,
+        accepted_leads: KeyMask::EMPTY,
+    };
 
     // Step 1: +mod +word
     steps.push(Step {
-        target: Target { right: 1 << 4, left: 0, word: true, accepted_leads: KeyMask::EMPTY },
+        target: Target {
+            right: 1 << 4,
+            left: 0,
+            word: true,
+            accepted_leads: KeyMask::EMPTY,
+        },
         number_glyph: None,
         ..Step::default()
     });
     // Step 2: -mod (word still held)
-    steps.push(Step { target: word_only, ..Step::default() });
+    steps.push(Step {
+        target: word_only,
+        ..Step::default()
+    });
 
     for c in word.chars() {
         if c == '.' {
             // Decimal: re-tap mod
             steps.push(Step {
-                target: Target { right: 1 << 4, left: 0, word: true, accepted_leads: KeyMask::EMPTY },
+                target: Target {
+                    right: 1 << 4,
+                    left: 0,
+                    word: true,
+                    accepted_leads: KeyMask::EMPTY,
+                },
                 number_glyph: Some(".".to_string()),
                 ..Step::default()
             });
-            steps.push(Step { target: word_only, ..Step::default() });
+            steps.push(Step {
+                target: word_only,
+                ..Step::default()
+            });
             continue;
         }
         let (right, left, needs_mod) = number_char_target(c).unwrap();
         if needs_mod {
             // Operator: +mod then +finger (thumb first = symbol)
             steps.push(Step {
-                target: Target { right: 1 << 4, left: 0, word: true, accepted_leads: KeyMask::EMPTY },
+                target: Target {
+                    right: 1 << 4,
+                    left: 0,
+                    word: true,
+                    accepted_leads: KeyMask::EMPTY,
+                },
                 ..Step::default()
             });
             steps.push(Step {
-                target: Target { right: right | (1 << 4), left, word: true, accepted_leads: KeyMask::EMPTY },
+                target: Target {
+                    right: right | (1 << 4),
+                    left,
+                    word: true,
+                    accepted_leads: KeyMask::EMPTY,
+                },
                 number_glyph: Some(c.to_string()),
                 ..Step::default()
             });
         } else {
             // Digit: just +finger (no mod)
             steps.push(Step {
-                target: Target { right, left, word: true, accepted_leads: KeyMask::EMPTY },
+                target: Target {
+                    right,
+                    left,
+                    word: true,
+                    accepted_leads: KeyMask::EMPTY,
+                },
                 number_glyph: Some(c.to_string()),
                 ..Step::default()
             });
         }
         // -finger (word still held)
-        steps.push(Step { target: word_only, ..Step::default() });
+        steps.push(Step {
+            target: word_only,
+            ..Step::default()
+        });
     }
 
     // Replace last word_only with all-off (release word too)
@@ -615,7 +668,8 @@ pub fn build_practice(
 
                 let (suffix_steps, suffix_label) = {
                     use crate::preferences::suffixes_data::SUFFIXES;
-                    let phoneme_count = phoneme_steps.iter().filter(|s| s.phoneme.is_some()).count();
+                    let phoneme_count =
+                        phoneme_steps.iter().filter(|s| s.phoneme.is_some()).count();
                     let mut found = (None, None);
 
                     if phoneme_count > 2 {
@@ -642,8 +696,8 @@ pub fn build_practice(
                                     if brief_word.trim() != base {
                                         continue;
                                     }
-                                    let r = key.right_bits()
-                                        | if key.has_mod() { 1u8 << 4 } else { 0 };
+                                    let r =
+                                        key.right_bits() | if key.has_mod() { 1u8 << 4 } else { 0 };
                                     let l = key.left_bits();
                                     match base_chord {
                                         None => base_chord = Some((r, l)),
@@ -953,9 +1007,7 @@ impl TutorState {
                         self.practice.reset_word();
                         self.last_was_botch = true;
                         self.errored = true;
-                    } else if self.key_state.right_bits() == 0
-                        && self.key_state.left_bits() == 0
-                    {
+                    } else if self.key_state.right_bits() == 0 && self.key_state.left_bits() == 0 {
                         self.practice.advance_step();
                     }
                 } else {
@@ -980,8 +1032,7 @@ impl TutorState {
                         || self.key_state.right_bits() == 0)
                         && (target.left == 0 || self.key_state.left_bits() == 0);
 
-                    let acc_matches = (target.right == 0
-                        || self.chord_right_acc == target.right)
+                    let acc_matches = (target.right == 0 || self.chord_right_acc == target.right)
                         && (target.left == 0 || self.chord_left_acc == target.left)
                         && self.key_state.word == target.word;
 

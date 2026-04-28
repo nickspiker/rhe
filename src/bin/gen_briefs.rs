@@ -12,29 +12,29 @@ use std::path::Path;
 fn cmu_consonant_to_right(ph: &str) -> Option<u8> {
     match ph {
         // Without mod (15 consonants)
-        "T"  => Some(0b00001),
-        "S"  => Some(0b00010),
-        "K"  => Some(0b00100),
-        "P"  => Some(0b01000),
-        "N"  => Some(0b00011),
-        "R"  => Some(0b00101),
-        "L"  => Some(0b00110),
+        "T" => Some(0b00001),
+        "S" => Some(0b00010),
+        "K" => Some(0b00100),
+        "P" => Some(0b01000),
+        "N" => Some(0b00011),
+        "R" => Some(0b00101),
+        "L" => Some(0b00110),
         "HH" => Some(0b00111),
-        "F"  => Some(0b01001),
-        "W"  => Some(0b01010),
+        "F" => Some(0b01001),
+        "W" => Some(0b01010),
         "TH" => Some(0b01100),
         "SH" => Some(0b01011),
         "CH" => Some(0b01101),
         "NG" => Some(0b01110),
-        "Y"  => Some(0b01111),
+        "Y" => Some(0b01111),
         // With mod (9 voiced consonants)
-        "D"  => Some(0b10001),
-        "Z"  => Some(0b10010),
-        "G"  => Some(0b10100),
-        "B"  => Some(0b11000),
-        "M"  => Some(0b10011),
+        "D" => Some(0b10001),
+        "Z" => Some(0b10010),
+        "G" => Some(0b10100),
+        "B" => Some(0b11000),
+        "M" => Some(0b10011),
         "DH" => Some(0b10101),
-        "V"  => Some(0b11001),
+        "V" => Some(0b11001),
         "ZH" => Some(0b11011),
         "JH" => Some(0b11101),
         _ => None,
@@ -67,8 +67,20 @@ fn cmu_vowel_to_left(ph: &str) -> Option<u8> {
 fn is_vowel_phoneme(ph: &str) -> bool {
     matches!(
         ph,
-        "AH" | "IH" | "EH" | "AE" | "IY" | "AA" | "EY" | "ER" | "AY" | "OW" | "AO" | "UW"
-            | "AW" | "UH" | "OY"
+        "AH" | "IH"
+            | "EH"
+            | "AE"
+            | "IY"
+            | "AA"
+            | "EY"
+            | "ER"
+            | "AY"
+            | "OW"
+            | "AO"
+            | "UW"
+            | "AW"
+            | "UH"
+            | "OY"
     )
 }
 
@@ -128,8 +140,7 @@ fn finger_effort(bits: u8) -> u32 {
         0
     };
     // Finger weight: pinky (bit3) = +2, ring (bit2) = +1
-    let weight = if bits & 0b1000 != 0 { 2 } else { 0 }
-        + if bits & 0b0100 != 0 { 1 } else { 0 };
+    let weight = if bits & 0b1000 != 0 { 2 } else { 0 } + if bits & 0b0100 != 0 { 1 } else { 0 };
 
     finger_cost + gap_penalty + weight
 }
@@ -346,24 +357,66 @@ fn main() {
         }
         // Skip contraction fragments (high-freq only because of "don't", "won't", etc.)
         const FRAGMENTS: &[&str] = &[
-            "don", "doesn", "didn", "wasn", "weren", "isn",
-            "won", "wouldn", "couldn", "shouldn", "hasn",
-            "hadn", "ain", "aren", "mustn",
+            "don", "doesn", "didn", "wasn", "weren", "isn", "won", "wouldn", "couldn", "shouldn",
+            "hasn", "hadn", "ain", "aren", "mustn",
         ];
         if FRAGMENTS.contains(&word.as_str()) {
             continue;
         }
         // Skip proper nouns (names from subtitle corpus)
         const NAMES: &[&str] = &[
-            "jesus", "michael", "david", "frank", "charlie",
-            "jack", "john", "george", "sam", "harry", "joe",
-            "tom", "bob", "henry", "alex", "nick", "max",
-            "ben", "dan", "tony", "tommy", "jimmy", "johnny",
-            "bobby", "danny", "brian", "mary", "sarah", "anna",
-            "elizabeth", "peter", "james", "paul", "richard",
-            "robert", "bill", "mike", "ray", "eddie", "leo",
-            "steve", "chris", "matt", "mark", "scott", "eric",
-            "grace", "emma", "kate", "rachel", "sophie", "lily",
+            "jesus",
+            "michael",
+            "david",
+            "frank",
+            "charlie",
+            "jack",
+            "john",
+            "george",
+            "sam",
+            "harry",
+            "joe",
+            "tom",
+            "bob",
+            "henry",
+            "alex",
+            "nick",
+            "max",
+            "ben",
+            "dan",
+            "tony",
+            "tommy",
+            "jimmy",
+            "johnny",
+            "bobby",
+            "danny",
+            "brian",
+            "mary",
+            "sarah",
+            "anna",
+            "elizabeth",
+            "peter",
+            "james",
+            "paul",
+            "richard",
+            "robert",
+            "bill",
+            "mike",
+            "ray",
+            "eddie",
+            "leo",
+            "steve",
+            "chris",
+            "matt",
+            "mark",
+            "scott",
+            "eric",
+            "grace",
+            "emma",
+            "kate",
+            "rachel",
+            "sophie",
+            "lily",
         ];
         if NAMES.contains(&word.as_str()) {
             continue;
@@ -392,7 +445,11 @@ fn main() {
     // If it doesn't exist, write the current default list out so the user
     // can pick it up and prune. To regenerate defaults, delete the file.
     top_words = load_or_write_candidates(&candidates_path, &top_words, &cmu);
-    eprintln!("Using {} candidate words from {}", top_words.len(), candidates_path.display());
+    eprintln!(
+        "Using {} candidate words from {}",
+        top_words.len(),
+        candidates_path.display()
+    );
 
     // 3d. Write a homophone-collision report. Helps the user decide
     // which pairs/sets deserve ordered-brief entries. Scope: any CMU
@@ -571,7 +628,13 @@ fn main() {
         let is_right_only = *l == 0 && !is_pinned;
         let effort = chord_effort(*r, *l);
         // pinned=0, right-only=1, two-hand=2, then by effort within each group
-        let group = if is_pinned { 0u32 } else if is_right_only { 1 } else { 2 };
+        let group = if is_pinned {
+            0u32
+        } else if is_right_only {
+            1
+        } else {
+            2
+        };
         (group, effort)
     });
 
@@ -611,7 +674,6 @@ fn main() {
     );
 }
 
-
 /// Group CMU words by phoneme sequence and report collisions where at
 /// least one member is in the candidate pool. Output goes to
 /// `data/homophones.txt` for the user to browse and decide which pairs
@@ -627,7 +689,10 @@ fn write_homophone_report(
     freq_words: &[(String, u64)],
 ) {
     let seq_of = |phs: &[String]| -> String {
-        phs.iter().map(|p| strip_stress(p)).collect::<Vec<_>>().join(" ")
+        phs.iter()
+            .map(|p| strip_stress(p))
+            .collect::<Vec<_>>()
+            .join(" ")
     };
 
     let freq_lookup: HashMap<&str, u64> =
@@ -653,10 +718,8 @@ fn write_homophone_report(
     }
 
     // Only report groups with >1 member.
-    let mut reportable: Vec<(String, Vec<(String, u64)>)> = groups
-        .into_iter()
-        .filter(|(_, ws)| ws.len() >= 2)
-        .collect();
+    let mut reportable: Vec<(String, Vec<(String, u64)>)> =
+        groups.into_iter().filter(|(_, ws)| ws.len() >= 2).collect();
     for (_, ws) in &mut reportable {
         ws.sort_by_key(|(_, f)| std::cmp::Reverse(*f));
     }
@@ -706,10 +769,8 @@ fn load_or_write_candidates(
     cmu: &HashMap<String, Vec<String>>,
 ) -> Vec<(String, u64, Vec<String>)> {
     if path.exists() {
-        let freq_by_word: HashMap<&str, u64> = defaults
-            .iter()
-            .map(|(w, c, _)| (w.as_str(), *c))
-            .collect();
+        let freq_by_word: HashMap<&str, u64> =
+            defaults.iter().map(|(w, c, _)| (w.as_str(), *c)).collect();
         let mut out = Vec::new();
         let mut seen = HashSet::new();
         let content = fs::read_to_string(path).expect("cannot read brief_candidates.txt");
@@ -835,8 +896,5 @@ fn find_nearest_slot(
     }
 
     // 3. Any unoccupied slot by effort
-    all_slots
-        .iter()
-        .find(|s| !occupied.contains(s))
-        .copied()
+    all_slots.iter().find(|s| !occupied.contains(s)).copied()
 }

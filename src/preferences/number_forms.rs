@@ -141,7 +141,11 @@ fn spell_cardinal(n: u64) -> Option<String> {
         if rem == 0 {
             return Some(format!("{} hundred", h));
         }
-        return Some(format!("{} hundred {}", h, spell_under_hundred_cardinal(rem)));
+        return Some(format!(
+            "{} hundred {}",
+            h,
+            spell_under_hundred_cardinal(rem)
+        ));
     }
     match n {
         1_000 => Some("one thousand".into()),
@@ -233,7 +237,11 @@ fn spell_under_hundred_ordinal(n: u64) -> Option<String> {
         return Some(decade_ordinal(tens).into());
     }
     // "twenty-first", "forty-second", etc.
-    Some(format!("{}-{}", decade_word(tens), spell_under_twenty_ordinal(units)))
+    Some(format!(
+        "{}-{}",
+        decade_word(tens),
+        spell_under_twenty_ordinal(units)
+    ))
 }
 
 fn spell_under_hundred_cardinal(n: u64) -> String {
@@ -268,7 +276,11 @@ fn spell_under_hundred_cardinal(n: u64) -> String {
     if units == 0 {
         return decade_word(tens).into();
     }
-    format!("{}-{}", decade_word(tens), spell_under_hundred_cardinal(units))
+    format!(
+        "{}-{}",
+        decade_word(tens),
+        spell_under_hundred_cardinal(units)
+    )
 }
 
 fn spell_under_thousand_ordinal(n: u64) -> Option<String> {
@@ -355,7 +367,10 @@ mod tests {
         assert_eq!(spelled_cardinal("1").as_deref(), Some("one"));
         assert_eq!(spelled_cardinal("42").as_deref(), Some("forty-two"));
         assert_eq!(spelled_cardinal("100").as_deref(), Some("one hundred"));
-        assert_eq!(spelled_cardinal("523").as_deref(), Some("five hundred twenty-three"));
+        assert_eq!(
+            spelled_cardinal("523").as_deref(),
+            Some("five hundred twenty-three")
+        );
         assert_eq!(spelled_cardinal("1000").as_deref(), Some("one thousand"));
     }
 
@@ -403,6 +418,9 @@ mod tests {
         assert_eq!(apply(Form::Group, "3").as_deref(), Some("triple"));
         assert_eq!(apply(Form::Fraction, "2").as_deref(), Some("half"));
         assert_eq!(apply(Form::Prefix, "4").as_deref(), Some("tetra"));
-        assert_eq!(apply(Form::SpelledCardinal, "42").as_deref(), Some("forty-two"));
+        assert_eq!(
+            apply(Form::SpelledCardinal, "42").as_deref(),
+            Some("forty-two")
+        );
     }
 }

@@ -70,20 +70,36 @@ impl ChordKey {
     /// 4-bit packed right-finger bits (index=bit0, middle=bit1, ring=bit2, pinky=bit3).
     pub fn right_bits(self) -> u8 {
         let mut bits = 0u8;
-        if self.0.test(scan::R_IDX) { bits |= 1 << 0; }
-        if self.0.test(scan::R_MID) { bits |= 1 << 1; }
-        if self.0.test(scan::R_RING) { bits |= 1 << 2; }
-        if self.0.test(scan::R_PINKY) { bits |= 1 << 3; }
+        if self.0.test(scan::R_IDX) {
+            bits |= 1 << 0;
+        }
+        if self.0.test(scan::R_MID) {
+            bits |= 1 << 1;
+        }
+        if self.0.test(scan::R_RING) {
+            bits |= 1 << 2;
+        }
+        if self.0.test(scan::R_PINKY) {
+            bits |= 1 << 3;
+        }
         bits
     }
 
     /// 4-bit packed left-finger bits (index=bit0, middle=bit1, ring=bit2, pinky=bit3).
     pub fn left_bits(self) -> u8 {
         let mut bits = 0u8;
-        if self.0.test(scan::L_IDX) { bits |= 1 << 0; }
-        if self.0.test(scan::L_MID) { bits |= 1 << 1; }
-        if self.0.test(scan::L_RING) { bits |= 1 << 2; }
-        if self.0.test(scan::L_PINKY) { bits |= 1 << 3; }
+        if self.0.test(scan::L_IDX) {
+            bits |= 1 << 0;
+        }
+        if self.0.test(scan::L_MID) {
+            bits |= 1 << 1;
+        }
+        if self.0.test(scan::L_RING) {
+            bits |= 1 << 2;
+        }
+        if self.0.test(scan::L_PINKY) {
+            bits |= 1 << 3;
+        }
         bits
     }
 
@@ -244,20 +260,46 @@ impl Phoneme {
         use Phoneme::*;
         match self {
             // Consonants
-            T => "t",   D => "d",   S => "s",   Z => "z",
-            K => "k",   G => "g",   P => "p",   B => "b",
-            N => "n",   M => "m",   R => "r",   L => "l",
-            H => "h",   F => "f",   V => "v",   W => "w",
+            T => "t",
+            D => "d",
+            S => "s",
+            Z => "z",
+            K => "k",
+            G => "g",
+            P => "p",
+            B => "b",
+            N => "n",
+            M => "m",
+            R => "r",
+            L => "l",
+            H => "h",
+            F => "f",
+            V => "v",
+            W => "w",
             Y => "y",
-            Th => "th", Dh => "th",
-            Sh => "sh", Zh => "zh",
-            Ch => "ch", Jh => "j",
+            Th => "th",
+            Dh => "th",
+            Sh => "sh",
+            Zh => "zh",
+            Ch => "ch",
+            Jh => "j",
             Ng => "ng",
             // Vowels
-            Ah => "uh", Ih => "i",  Eh => "e",  Ae => "a",
-            Iy => "ee", Aa => "ah", Ey => "ay", Er => "er",
-            Ay => "y",  Ow => "o",  Ao => "aw", Uw => "oo",
-            Aw => "ow", Uh => "oo", Oy => "oy",
+            Ah => "uh",
+            Ih => "i",
+            Eh => "e",
+            Ae => "a",
+            Iy => "ee",
+            Aa => "ah",
+            Ey => "ay",
+            Er => "er",
+            Ay => "y",
+            Ow => "o",
+            Ao => "aw",
+            Uw => "oo",
+            Aw => "ow",
+            Uh => "oo",
+            Oy => "oy",
         }
     }
 
@@ -273,31 +315,31 @@ impl Phoneme {
         use Phoneme::*;
         let (right, left, modkey) = match self {
             // Consonants: right hand, no mod (top 15 by frequency)
-            T  => (0b0001, 0, false), // rank 1, 165M, index
-            S  => (0b0100, 0, false), // rank 3, 110M, ring
-            D  => (0b1000, 0, false), // rank 5, 87M, pinky
-            R  => (0b0010, 0, false), // rank 4, 91M, middle (swapped w/ D by freq pair)
-            M  => (0b1111, 0, false), // rank 7 (but paired), all4
-            L  => (0b0110, 0, false), // rank 6 (paired), middle+ring
-            K  => (0b0011, 0, false), // rank 8 (paired), index+middle
+            T => (0b0001, 0, false),  // rank 1, 165M, index
+            S => (0b0100, 0, false),  // rank 3, 110M, ring
+            D => (0b1000, 0, false),  // rank 5, 87M, pinky
+            R => (0b0010, 0, false),  // rank 4, 91M, middle (swapped w/ D by freq pair)
+            M => (0b1111, 0, false),  // rank 7 (but paired), all4
+            L => (0b0110, 0, false),  // rank 6 (paired), middle+ring
+            K => (0b0011, 0, false),  // rank 8 (paired), index+middle
             Dh => (0b0111, 0, false), // rank 9, index+middle+ring
-            W  => (0b1001, 0, false), // rank 10, index+pinky
-            Z  => (0b0101, 0, false), // rank 11, index+ring
-            Y  => (0b1100, 0, false), // rank 12, ring+pinky
-            H  => (0b1110, 0, false), // rank 13, middle+ring+pinky
-            F  => (0b1010, 0, false), // rank 15 (paired), middle+pinky — spare area starts
-            B  => (0b1101, 0, false), // rank 14 (paired), index+ring+pinky
-            P  => (0b1011, 0, false), // rank 16 (paired), index+middle+pinky
+            W => (0b1001, 0, false),  // rank 10, index+pinky
+            Z => (0b0101, 0, false),  // rank 11, index+ring
+            Y => (0b1100, 0, false),  // rank 12, ring+pinky
+            H => (0b1110, 0, false),  // rank 13, middle+ring+pinky
+            F => (0b1010, 0, false),  // rank 15 (paired), middle+pinky — spare area starts
+            B => (0b1101, 0, false),  // rank 14 (paired), index+ring+pinky
+            P => (0b1011, 0, false),  // rank 16 (paired), index+middle+pinky
             // Consonants: right hand, with mod (next 9 by frequency)
-            N  => (0b0001, 0, true),  // rank 2, 141M, index+mod
-            V  => (0b0100, 0, true),  // rank 17, ring+mod
-            Ng => (0b1000, 0, true),  // rank 18, pinky+mod
-            G  => (0b0010, 0, true),  // rank 19, middle+mod
-            Sh => (0b1111, 0, true),  // rank 20, all4+mod
-            Th => (0b0110, 0, true),  // rank 21, middle+ring+mod
-            Jh => (0b0011, 0, true),  // rank 22, index+middle+mod
-            Ch => (0b0111, 0, true),  // rank 23, index+middle+ring+mod
-            Zh => (0b1001, 0, true),  // rank 24, index+pinky+mod
+            N => (0b0001, 0, true),  // rank 2, 141M, index+mod
+            V => (0b0100, 0, true),  // rank 17, ring+mod
+            Ng => (0b1000, 0, true), // rank 18, pinky+mod
+            G => (0b0010, 0, true),  // rank 19, middle+mod
+            Sh => (0b1111, 0, true), // rank 20, all4+mod
+            Th => (0b0110, 0, true), // rank 21, middle+ring+mod
+            Jh => (0b0011, 0, true), // rank 22, index+middle+mod
+            Ch => (0b0111, 0, true), // rank 23, index+middle+ring+mod
+            Zh => (0b1001, 0, true), // rank 24, index+pinky+mod
             // Vowels: left hand, no mod (all 15 by frequency)
             Ah => (0, 0b0001, false), // rank 1, 182M, index
             Ih => (0, 0b0100, false), // rank 2, 126M, ring
@@ -330,14 +372,45 @@ impl PhonemeTable {
     pub fn new() -> Self {
         let mut entries = std::collections::HashMap::new();
         let all_phonemes = [
-            Phoneme::T, Phoneme::D, Phoneme::S, Phoneme::Z, Phoneme::K,
-            Phoneme::G, Phoneme::P, Phoneme::B, Phoneme::N, Phoneme::M,
-            Phoneme::R, Phoneme::Dh, Phoneme::L, Phoneme::H, Phoneme::F,
-            Phoneme::V, Phoneme::W, Phoneme::Th, Phoneme::Sh, Phoneme::Zh,
-            Phoneme::Ch, Phoneme::Jh, Phoneme::Ng, Phoneme::Y,
-            Phoneme::Ah, Phoneme::Ih, Phoneme::Eh, Phoneme::Ae, Phoneme::Iy,
-            Phoneme::Aa, Phoneme::Ey, Phoneme::Er, Phoneme::Ay, Phoneme::Ow,
-            Phoneme::Ao, Phoneme::Uw, Phoneme::Aw, Phoneme::Uh, Phoneme::Oy,
+            Phoneme::T,
+            Phoneme::D,
+            Phoneme::S,
+            Phoneme::Z,
+            Phoneme::K,
+            Phoneme::G,
+            Phoneme::P,
+            Phoneme::B,
+            Phoneme::N,
+            Phoneme::M,
+            Phoneme::R,
+            Phoneme::Dh,
+            Phoneme::L,
+            Phoneme::H,
+            Phoneme::F,
+            Phoneme::V,
+            Phoneme::W,
+            Phoneme::Th,
+            Phoneme::Sh,
+            Phoneme::Zh,
+            Phoneme::Ch,
+            Phoneme::Jh,
+            Phoneme::Ng,
+            Phoneme::Y,
+            Phoneme::Ah,
+            Phoneme::Ih,
+            Phoneme::Eh,
+            Phoneme::Ae,
+            Phoneme::Iy,
+            Phoneme::Aa,
+            Phoneme::Ey,
+            Phoneme::Er,
+            Phoneme::Ay,
+            Phoneme::Ow,
+            Phoneme::Ao,
+            Phoneme::Uw,
+            Phoneme::Aw,
+            Phoneme::Uh,
+            Phoneme::Oy,
         ];
         for p in all_phonemes {
             entries.insert(p.chord_key(), p);
