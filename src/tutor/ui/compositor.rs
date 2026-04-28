@@ -2299,7 +2299,7 @@ impl TutorApp {
         }
     }
 
-    fn draw_black_circle(pixels: &mut [u32], width: usize, cx: usize, cy: usize, radius: usize) {
+    pub fn draw_black_circle(pixels: &mut [u32], width: usize, cx: usize, cy: usize, radius: usize) {
         let r_outer = radius as isize;
         let r_outer2 = r_outer * r_outer;
         let r_inner = (radius - 1) as isize;
@@ -2342,9 +2342,67 @@ impl TutorApp {
         }
     }
 
+    /// Mirror of `draw_black_circle` that lerps the underlying pixel
+    /// toward white (0xFFFFFF) instead of black at the centre, with
+    /// the same AA edge band.
+    ///
+    /// Lerp identity: `result = pixel·(1−α) + 255·α`. Rearranged as
+    /// `result = 255 − (255−pixel)·(1−α)`, which only needs one
+    /// widened multiply per pixel — same shape as the black version.
+    pub fn draw_white_circle(pixels: &mut [u32], width: usize, cx: usize, cy: usize, radius: usize) {
+        let r_outer = radius as isize;
+        let r_outer2 = r_outer * r_outer;
+        let r_inner = (radius - 1) as isize;
+        let r_inner2 = r_inner * r_inner;
+        let edge_range = r_outer2 - r_inner2;
+
+        for dy in -r_outer..=r_outer {
+            let y = cy as isize + dy;
+            if y < 0 || y >= (pixels.len() / width) as isize {
+                continue;
+            }
+            let dy2 = dy * dy;
+
+            for dx in -r_outer..=r_outer {
+                let dist2 = dx * dx + dy2;
+                if dist2 > r_outer2 {
+                    continue;
+                }
+
+                let x = (cx as isize + dx) as usize;
+                if x >= width {
+                    continue;
+                }
+                let idx = y as usize * width + x;
+
+                // (1−α) factor: 0 inside (full white), 256 at edge (unchanged).
+                let inv_alpha = if dist2 <= r_inner2 {
+                    0u64
+                } else {
+                    (((dist2 - r_inner2) << 8) / edge_range) as u64
+                };
+
+                // Widen pixel into 16-bit channel lanes.
+                let pixel = pixels[idx] as u64;
+                let mut p = (pixel | (pixel << 16)) & 0x0000FFFF0000FFFF;
+                p = (p | (p << 8)) & 0x00FF00FF00FF00FF;
+
+                // 255 − pixel per channel, scaled by (1−α)/256, then
+                // subtracted from 255 to lerp toward white.
+                let inv_p = 0x00FF00FF00FF00FFu64 - p;
+                let scaled = ((inv_p * inv_alpha) >> 8) & 0x00FF00FF00FF00FF;
+                let result = 0x00FF00FF00FF00FFu64 - scaled;
+
+                let mut narrowed = (result | (result >> 8)) & 0x0000FFFF0000FFFF;
+                narrowed = narrowed | (narrowed >> 16);
+                pixels[idx] = (narrowed as u32) | 0xFF000000;
+            }
+        }
+    }
+
     /// Add or subtract colour from an anti-aliased circle region
     /// Used for the green overlay on the connectivity indicator
-    fn draw_filled_circle(
+    pub fn draw_filled_circle(
         pixels: &mut [u32],
         width: usize,
         cx: usize,

@@ -185,6 +185,12 @@ struct TutorLayout {
     word_w: i32,
     mod_cx: i32,
     mod_w: i32,
+
+    // Hairline Y rows — one per gap *between content elements*
+    // (top/bottom padding boundaries skipped). Walked top-to-bottom
+    // so the order is paragraph↔target, target↔phoneme,
+    // phoneme↔labels, labels↔chord row, chord row↔bottom row.
+    hairlines: [i32; 5],
 }
 
 impl TutorLayout {
@@ -238,29 +244,39 @@ impl TutorLayout {
             + BOTTOM_PAD;
         let unit = (bh as f32) / total_units;
 
-        // Walk the sections in order, recording each band's centre.
+        // Walk the sections in order, recording each band's centre
+        // and (for inter-element gaps) the gap midpoint Y for the
+        // hairline pass.
         let mut y = TOP_PAD * unit;
         let advance = |y: &mut f32, w: f32| {
             let top = *y;
             *y += w * unit;
             (top + *y) * 0.5
         };
+        let gap_mid = |y: &mut f32| -> i32 {
+            let top = *y;
+            *y += GAP * unit;
+            ((top + *y) * 0.5).round() as i32
+        };
 
+        // Leading gap into the content: not a between-elements
+        // hairline, just walk past it.
         y += GAP * unit;
         let sentence_cy = advance(&mut y, PARAGRAPH);
-        y += GAP * unit;
+        let h0 = gap_mid(&mut y);
         let target_cy = advance(&mut y, TARGET);
-        y += GAP * unit;
+        let h1 = gap_mid(&mut y);
         let phoneme_cy = advance(&mut y, PHONEME);
-        y += GAP * unit;
+        let h2 = gap_mid(&mut y);
         let label_cy = advance(&mut y, LABELS);
-        y += GAP * unit;
+        let h3 = gap_mid(&mut y);
         let row_top = y;
         let row_cy_f = advance(&mut y, CHORD_ROW);
-        y += GAP * unit;
+        let h4 = gap_mid(&mut y);
         let bottom_cy_f = advance(&mut y, BOTTOM_ROW);
         // The remaining GAP + BOTTOM_PAD lands right at bh — no
         // need to read it, but the unit math depends on it.
+        let hairlines = [h0, h1, h2, h3, h4];
 
         // ── Horizontal geometry ──────────────────────────────────
         // Outer padding mirrors the vertical pad weight (1 unit on
@@ -304,14 +320,30 @@ impl TutorLayout {
 
         // ── Fonts: section-derived heights × ru, capped at the
         // section so they never bleed into adjacent bands ────────
-        let target_font_natural = TARGET * unit * 0.6 * ru;
-        let target_font = target_font_natural.min(TARGET * unit * 0.9).max(14.0);
-        let phoneme_font_natural = PHONEME * unit * 0.5 * ru;
-        let phoneme_font = phoneme_font_natural.min(PHONEME * unit * 0.85).max(12.0);
-        let sentence_font_natural = PARAGRAPH * unit * 0.7 * ru;
-        let sentence_font = sentence_font_natural.min(PARAGRAPH * unit * 0.95).max(12.0);
-        let label_font_natural = LABELS * unit * 0.85 * ru;
-        let label_font = label_font_natural.min(LABELS * unit * 0.95).max(8.0);
+        // Uniform multiplier (0.6) and uniform cap (0.9·section) so
+        // every element saturates at the same ru (= 0.9 / 0.6 = 1.5).
+        // The keyboard / mouse zoom handlers cap the upper bound at
+        // 1.5 too, so Ctrl+= never silently does nothing — the
+        // visible saturation aligns with the user-visible ceiling.
+        const FONT_MULT: f32 = 0.6;
+        const FONT_CAP_FRAC: f32 = 0.9;
+        let font_for = |section_units: f32, min: f32| -> f32 {
+            let natural = section_units * unit * FONT_MULT * ru;
+            let cap = section_units * unit * FONT_CAP_FRAC;
+            natural.min(cap).max(min)
+        };
+        let target_font = font_for(TARGET, 14.0);
+        let phoneme_font = font_for(PHONEME, 12.0);
+        let sentence_font = font_for(PARAGRAPH, 12.0);
+        // Labels intentionally render at 2× the section-derived size
+        // (mult and cap both doubled). The 0.5-unit section is a
+        // visual anchor, not a hard ceiling — the labels overflow
+        // into the half-unit gaps above and below, which both
+        // empty space, so nothing visually collides. Width-overflow
+        // is handled per-label at draw time by measure-then-trim.
+        let label_font_natural = LABELS * unit * FONT_MULT * 2.0 * ru;
+        let label_font_cap = LABELS * unit * FONT_CAP_FRAC * 2.0;
+        let label_font = label_font_natural.min(label_font_cap).max(8.0);
 
         // Hint sits inside the hand_gap (= cell_d wide); size to fit
         // with a touch of margin so the glyph never spills into a
@@ -357,16 +389,54 @@ impl TutorLayout {
             word_w,
             mod_cx,
             mod_w,
+            hairlines,
         }
     }
 }
 
-/// Look up the cell fill: primary key colour for primary targets,
-/// dot colour for secondary, idle for everything else (including
-/// errored frames where the caller zeroes the target out). Inner-
-/// index cells (4, 5) idle to near-black; resting fingers idle to
-/// dark grey. Press feedback comes from swapping the bevel edges
-/// in `cell()` — the fill itself is the same whether pressed or not.
+/// Brighten a single packed-ARGB pixel by `delta` per RGB channel
+/// with saturating-add per byte so a near-white pixel can't carry
+/// into the next channel. Alpha untouched.
+#[inline]
+fn brighten_rgb_saturating(p: u32, delta: u8) -> u32 {
+    let a = p & 0xFF000000;
+    let r = (((p >> 16) & 0xFF) as u8).saturating_add(delta) as u32;
+    let g = (((p >> 8) & 0xFF) as u8).saturating_add(delta) as u32;
+    let b = ((p & 0xFF) as u8).saturating_add(delta) as u32;
+    a | (r << 16) | (g << 8) | b
+}
+
+
+/// Press marker on a chord cell — uses photon's anti-aliased
+/// `draw_filled_circle` in additive / subtractive mode so the dot
+/// reads against any underlying fill:
+///   - **bright cell** (target / lit) → subtract white → fades to
+///     black at centre with smooth AA edges.
+///   - **dark cell** (idle / wrong) → add white → fades to white at
+///     centre with smooth AA edges.
+fn press_circle(pixels: &mut [u32], buf_w: usize, cx: i32, cy: i32, radius: i32, on_bright: bool) {
+    if radius <= 0 || cx < radius || cy < radius {
+        return;
+    }
+    if on_bright {
+        crate::tutor::ui::compositor::TutorApp::draw_black_circle(
+            pixels,
+            buf_w,
+            cx as usize,
+            cy as usize,
+            radius as usize,
+        );
+    } else {
+        crate::tutor::ui::compositor::TutorApp::draw_white_circle(
+            pixels,
+            buf_w,
+            cx as usize,
+            cy as usize,
+            radius as usize,
+        );
+    }
+}
+
 fn finger_cell_fill(cell_idx: usize, is_target: bool, is_primary: bool) -> u32 {
     if !is_target {
         let inner = cell_idx == 4 || cell_idx == 5;
@@ -933,6 +1003,20 @@ impl TrayApp {
         let layout =
             TutorLayout::compute(size.width, size.height, button_height as i32, self.tutor_ru);
 
+        // Hairlines between content sections — one row per inter-
+        // element gap, brightened by 0x10 RGB. Drawn after chrome
+        // so they sit on the bg texture but don't occlude the cell
+        // pills / text drawn after.
+        for &hy in &layout.hairlines {
+            if hy < 0 || (hy as usize) >= height {
+                continue;
+            }
+            let row_start = (hy as usize) * width;
+            for px in &mut pixels[row_start..row_start + width] {
+                *px = brighten_rgb_saturating(*px, 0x10);
+            }
+        }
+
         let word_text = self
             .tutor_state
             .as_ref()
@@ -1196,6 +1280,12 @@ impl TrayApp {
             // 11 slots, uniform cell_d + cell_gap step. Slot 5 is
             // the invisible "between hands" slot — skip rendering,
             // its space holds the in-hand-gap step-hint glyph.
+            // Press circle: black on lit / target cells, white on
+            // dark / idle cells. Drawn over the pill after the cell
+            // body so the contrast inverts cleanly.
+            // Half the visual size, +1px floor so the dot is at
+            // least one pixel even when cell_d is tiny.
+            let press_dot_radius = cell_d / 10 + 1;
             for slot in 0..11usize {
                 let cx_cell = row_x + slot as i32 * (cell_d + cell_gap) + cell_d / 2;
                 if slot == 5 {
@@ -1220,6 +1310,9 @@ impl TrayApp {
                     fill,
                     pressed[cell_idx],
                 );
+                if pressed[cell_idx] {
+                    press_circle(pixels, width, cx_cell, cy, press_dot_radius, is_target);
+                }
                 cell_centres[cell_idx] = (cx_cell, cy);
             }
             let _ = hand_gap; // slot 5 width is implicit in the slot
@@ -1249,6 +1342,9 @@ impl TrayApp {
                 mod_fill,
                 mod_pressed,
             );
+            if mod_pressed {
+                press_circle(pixels, width, mod_cx, bottom_cy, press_dot_radius, mod_target);
+            }
 
             let word_w = layout.word_w;
             let word_cx = layout.word_cx;
@@ -1270,22 +1366,65 @@ impl TrayApp {
                 word_fill,
                 word_pressed,
             );
+            if word_pressed {
+                press_circle(pixels, width, word_cx, bottom_cy, press_dot_radius, target.word);
+            }
             let _ = theme::WORD_SECONDARY;
 
             // Adaptive labels: drawn ABOVE each key (not on top), so
             // the cell pill stays clean and the label sits in the
             // strip between the chord row and whatever's above it.
+            // Each label is measured once with an off-screen draw
+            // and trimmed character-by-character from the end if it
+            // would otherwise spill outside its cell width — that
+            // keeps long ordered-brief labels from bleeding into
+            // neighbouring cells.
             if let Some(text) = self.text_renderer.as_mut() {
                 let label_font = layout.label_font;
+                let max_w = cell_d as f32;
                 for i in 0..10 {
                     if labels[i].is_empty() {
                         continue;
                     }
                     let (cx_cell, _cy_cell) = cell_centres[i];
+
+                    // Trim to fit. Off-screen measure pass: cosmic-
+                    // text's bounds check skips per-pixel writes at
+                    // far-negative coords, so this is effectively a
+                    // measure with no rendering cost.
+                    let mut display: String = labels[i].clone();
+                    let mut measured = text.draw_text_left_u32(
+                        pixels,
+                        width,
+                        &display,
+                        -1.0e6,
+                        -1.0e6,
+                        label_font,
+                        500,
+                        0,
+                        "Josefin Slab",
+                    );
+                    while measured > max_w && display.chars().count() > 1 {
+                        let mut chars: Vec<char> = display.chars().collect();
+                        chars.pop();
+                        display = chars.into_iter().collect();
+                        measured = text.draw_text_left_u32(
+                            pixels,
+                            width,
+                            &display,
+                            -1.0e6,
+                            -1.0e6,
+                            label_font,
+                            500,
+                            0,
+                            "Josefin Slab",
+                        );
+                    }
+
                     text.draw_text_center_u32(
                         pixels,
                         width,
-                        &labels[i],
+                        &display,
                         cx_cell as f32,
                         layout.label_cy,
                         label_font,
@@ -1653,11 +1792,11 @@ impl TrayApp {
             self.tutor_debug_hit_test = false;
             true
         } else if c == "=" || c == "+" {
-            self.tutor_ru = (self.tutor_ru * 1.1).clamp(0.3, 5.0);
+            self.tutor_ru = (self.tutor_ru * 1.1).clamp(0.3, 1.5);
             self.bump_zoom_hint();
             true
         } else if c == "-" {
-            self.tutor_ru = (self.tutor_ru / 1.1).clamp(0.3, 5.0);
+            self.tutor_ru = (self.tutor_ru / 1.1).clamp(0.3, 1.5);
             self.bump_zoom_hint();
             true
         } else if c == "0" {
@@ -1950,7 +2089,7 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                         // per scroll step). Clamped so nobody can zoom
                         // into the abyss.
                         let factor = 1.1f32.powf(steps);
-                        self.tutor_ru = (self.tutor_ru * factor).clamp(0.3, 5.0);
+                        self.tutor_ru = (self.tutor_ru * factor).clamp(0.3, 1.5);
                         self.bump_zoom_hint();
                         if let Some(w) = self.tutor_window.as_ref() {
                             w.request_redraw();
