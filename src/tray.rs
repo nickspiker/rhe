@@ -948,8 +948,6 @@ impl TrayApp {
                     g.clone()
                 } else if let Some(p) = step.phoneme {
                     p.to_ipa().to_string()
-                } else if step.space_only {
-                    "·".to_string()
                 } else if step.mod_tap_only {
                     "#".to_string()
                 } else {

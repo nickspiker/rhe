@@ -357,37 +357,37 @@ pub fn build_digit_word_steps(word: &str) -> Option<Vec<Step>> {
         _ => return None,
     };
 
-    let (right, left) = if let Some(bit) = scan::right_bit(scan_code) {
-        (1u8 << bit | (1 << 4), 0u8)
-    } else if let Some(bit) = scan::left_bit(scan_code) {
-        (1u8 << 4, 1u8 << bit)
-    } else {
-        return None;
-    };
+    // Finger-only bits (no mod) and finger+mod bits
+    let (finger_right, finger_left, full_right, full_left) =
+        if let Some(bit) = scan::right_bit(scan_code) {
+            (1u8 << bit, 0u8, 1u8 << bit | (1 << 4), 0u8)
+        } else if let Some(bit) = scan::left_bit(scan_code) {
+            (0u8, 1u8 << bit, 1u8 << 4, 1u8 << bit)
+        } else {
+            return None;
+        };
 
     let mut leads = KeyMask::EMPTY;
     leads.set(scan_code);
 
+    let word_only = Target { right: 0, left: 0, word: true, accepted_leads: KeyMask::EMPTY };
+
     let mut steps = Vec::new();
 
-    // Mod-tap entry
+    // Step 1: +mod +word
     steps.push(Step {
-        target: Target {
-            right: 1 << 4,
-            left: 0,
-            word: true,
-            accepted_leads: KeyMask::EMPTY,
-        },
-        mod_tap_only: true,
-        number_glyph: None,
+        target: Target { right: 1 << 4, left: 0, word: true, accepted_leads: KeyMask::EMPTY },
         ..Step::default()
     });
 
-    // Finger+mod chord
+    // Step 2: -mod (word still held)
+    steps.push(Step { target: word_only, ..Step::default() });
+
+    // Step 3: +number (finger before mod = spelled)
     steps.push(Step {
         target: Target {
-            right,
-            left,
+            right: finger_right,
+            left: finger_left,
             word: true,
             accepted_leads: leads,
         },
@@ -395,21 +395,20 @@ pub fn build_digit_word_steps(word: &str) -> Option<Vec<Step>> {
         ..Step::default()
     });
 
-    // Release
+    // Step 4: +mod (finger + mod + word)
     steps.push(Step {
         target: Target {
-            right: 0,
-            left: 0,
+            right: full_right,
+            left: full_left,
             word: true,
             accepted_leads: KeyMask::EMPTY,
         },
         ..Step::default()
     });
 
-    // Commit
+    // Step 5: -mod -word -number (all off)
     steps.push(Step {
         target: Target::default(),
-        space_only: true,
         ..Step::default()
     });
 
@@ -452,13 +451,25 @@ pub fn build_number_steps(word: &str) -> Option<Vec<Step>> {
             continue;
         }
         let (right, left, needs_mod) = number_char_target(c).unwrap();
-        let adjusted_right = right | if needs_mod { 1 << 4 } else { 0 };
-        // +finger
-        steps.push(Step {
-            target: Target { right: adjusted_right, left, word: true, accepted_leads: KeyMask::EMPTY },
-            number_glyph: Some(c.to_string()),
-            ..Step::default()
-        });
+        if needs_mod {
+            // Operator: +mod then +finger (thumb first = symbol)
+            steps.push(Step {
+                target: Target { right: 1 << 4, left: 0, word: true, accepted_leads: KeyMask::EMPTY },
+                ..Step::default()
+            });
+            steps.push(Step {
+                target: Target { right: right | (1 << 4), left, word: true, accepted_leads: KeyMask::EMPTY },
+                number_glyph: Some(c.to_string()),
+                ..Step::default()
+            });
+        } else {
+            // Digit: just +finger (no mod)
+            steps.push(Step {
+                target: Target { right, left, word: true, accepted_leads: KeyMask::EMPTY },
+                number_glyph: Some(c.to_string()),
+                ..Step::default()
+            });
+        }
         // -finger (word still held)
         steps.push(Step { target: word_only, ..Step::default() });
     }
