@@ -121,6 +121,13 @@ pub const STEP_HINT: u32 = fmt(0xFF_B0_B0_B0);
 /// Adaptive label centred in each chord cell.
 pub const CELL_LABEL: u32 = fmt(0xFF_E0_E0_E0);
 
+/// Brief-mode word render: photon-logo style. Black text foreground,
+/// soft bright glow underneath, sharper highlight on top — same
+/// constants photon's main logo uses.
+pub const LOGO_TEXT: u32 = fmt(0xFF_00_00_00);
+pub const LOGO_GLOW_GRAY: u8 = 192;
+pub const LOGO_HIGHLIGHT_GRAY: u8 = 128;
+
 // ── Generic UI palette (kept for future widgets) ─────────────────────────
 
 pub const LIGHT_EDGE: u32 = fmt(0xFF_60_60_60);

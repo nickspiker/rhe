@@ -2298,6 +2298,191 @@ impl TutorApp {
         }
     }
 
+    /// Photon-logo-style text render: black foreground glyph with a
+    /// soft bright horizontal smear behind it. Composites into the
+    /// pixel buffer at (`cx`, `cy`). Used for brief-mode word display
+    /// in the tutor's phoneme strip.
+    pub fn draw_logo_text(
+        pixels: &mut [u32],
+        text_renderer: &mut crate::tutor::ui::text_rasterizing::TextRenderer,
+        window_width: usize,
+        text: &str,
+        cx: f32,
+        cy: f32,
+        size: f32,
+        weight: u16,
+        font: &str,
+    ) {
+        if text.is_empty() {
+            return;
+        }
+        let window_height = pixels.len() / window_width.max(1);
+        let half_strip = (size * 1.5) as usize;
+        let start = (cy as usize).saturating_sub(half_strip);
+        let stop = (cy as usize + half_strip).min(window_height);
+        if stop <= start {
+            return;
+        }
+        let virtual_height = stop - start;
+        let buffer_size = window_width * virtual_height;
+
+        // Glow buffer: lighter grey at the text, will get a wide soft
+        // horizontal smear plus a vertical pass for an underglow halo.
+        let mut glow_buffer = vec![0u8; buffer_size];
+        text_renderer.draw_text_center(
+            &mut glow_buffer,
+            window_width as u32,
+            virtual_height as u32,
+            text,
+            cx,
+            cy - start as f32,
+            size,
+            weight,
+            vec![theme::LOGO_GLOW_GRAY],
+            0,
+            font,
+        );
+
+        // Highlight buffer: medium grey at the text, then a 1px x and y
+        // offset zero-write that effectively carves the bottom-right
+        // sliver off — gives the smear a directional crispness.
+        let mut highlight_buffer = vec![0u8; buffer_size];
+        text_renderer.draw_text_center(
+            &mut highlight_buffer,
+            window_width as u32,
+            virtual_height as u32,
+            text,
+            cx,
+            cy - start as f32,
+            size,
+            weight,
+            vec![theme::LOGO_HIGHLIGHT_GRAY],
+            0,
+            font,
+        );
+        text_renderer.draw_text_center(
+            &mut highlight_buffer,
+            window_width as u32,
+            virtual_height as u32,
+            text,
+            cx + 1.0,
+            cy - start as f32,
+            size,
+            weight,
+            vec![0],
+            0,
+            font,
+        );
+        text_renderer.draw_text_center(
+            &mut highlight_buffer,
+            window_width as u32,
+            virtual_height as u32,
+            text,
+            cx,
+            cy - start as f32 + 1.0,
+            size,
+            weight,
+            vec![0],
+            0,
+            font,
+        );
+
+        // Horizontal smear: 16-tap EMA on the highlight (sharper),
+        // 4-tap EMA on the glow (wider). Forward pass + backward pass
+        // for symmetry. .max() keeps the source pixels from being
+        // dimmed — smear only spreads outward.
+        let mut prev = highlight_buffer[0];
+        for i in 1..highlight_buffer.len() {
+            prev = (((highlight_buffer[i] as u16 + prev as u16 * 15) >> 4) as u8)
+                .max(highlight_buffer[i]);
+            highlight_buffer[i] = prev;
+        }
+        let mut prev = highlight_buffer[highlight_buffer.len() - 1];
+        for i in (0..highlight_buffer.len()).rev() {
+            prev = (((highlight_buffer[i] as u16 + prev as u16 * 15) >> 4) as u8)
+                .max(highlight_buffer[i]);
+            highlight_buffer[i] = prev;
+        }
+
+        let mut prev = glow_buffer[0];
+        for i in 1..glow_buffer.len() {
+            prev =
+                (((glow_buffer[i] as u16 + prev as u16 * 3) >> 2) as u8).max(glow_buffer[i]);
+            glow_buffer[i] = prev;
+        }
+        let mut prev = glow_buffer[glow_buffer.len() - 1];
+        for i in (0..glow_buffer.len()).rev() {
+            prev =
+                (((glow_buffer[i] as u16 + prev as u16 * 3) >> 2) as u8).max(glow_buffer[i]);
+            glow_buffer[i] = prev;
+        }
+
+        // Vertical 2-tap smear on glow only — gives the underglow a
+        // bit of vertical bleed without bloating the highlight.
+        for x in 0..window_width {
+            let mut prev = glow_buffer[x];
+            for y in 1..virtual_height {
+                let i = y * window_width + x;
+                prev = (((glow_buffer[i] as u16 + prev as u16) >> 1) as u8).max(glow_buffer[i]);
+                glow_buffer[i] = prev;
+            }
+        }
+        for x in 0..window_width {
+            let mut prev = glow_buffer[(virtual_height - 1) * window_width + x];
+            for y in (0..virtual_height - 1).rev() {
+                let i = y * window_width + x;
+                prev = (((glow_buffer[i] as u16 + prev as u16) >> 1) as u8).max(glow_buffer[i]);
+                glow_buffer[i] = prev;
+            }
+        }
+
+        // Composite glow as additive grey under the text.
+        for i in 0..glow_buffer.len() {
+            let pixel_idx = i + start * window_width;
+            let grey = glow_buffer[i];
+            if grey == 0 {
+                continue;
+            }
+            let p = pixels[pixel_idx];
+            let a = ((p >> 24) & 0xFF) as u8;
+            let r = (((p >> 16) & 0xFF) as u8).saturating_add(grey);
+            let g = (((p >> 8) & 0xFF) as u8).saturating_add(grey);
+            let b = (p & 0xFF) as u8;
+            let b = b.saturating_add(grey);
+            pixels[pixel_idx] = ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
+        }
+
+        // Black foreground glyph.
+        text_renderer.draw_text_center_u32(
+            pixels,
+            window_width,
+            text,
+            cx,
+            cy,
+            size,
+            weight,
+            theme::LOGO_TEXT,
+            font,
+            false,
+        );
+
+        // Composite highlight as additive grey on top of the text.
+        for i in 0..highlight_buffer.len() {
+            let pixel_idx = i + start * window_width;
+            let grey = highlight_buffer[i];
+            if grey == 0 {
+                continue;
+            }
+            let p = pixels[pixel_idx];
+            let a = ((p >> 24) & 0xFF) as u8;
+            let r = (((p >> 16) & 0xFF) as u8).saturating_add(grey);
+            let g = (((p >> 8) & 0xFF) as u8).saturating_add(grey);
+            let b = (p & 0xFF) as u8;
+            let b = b.saturating_add(grey);
+            pixels[pixel_idx] = ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
+        }
+    }
+
     pub fn draw_black_circle(
         pixels: &mut [u32],
         width: usize,

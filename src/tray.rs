@@ -945,35 +945,22 @@ impl TrayApp {
                 false,
             );
 
-            // Brief mode: dark pill with the word centred on the
-            // phoneme line, signalling "one-shot chord shortcut".
+            // Brief mode: render the word in photon-logo style — black
+            // glyph with a soft horizontal smear behind it. Visually
+            // unmistakable from the italic IPA glyph strip that the
+            // same line shows in phoneme mode, signalling "one-shot
+            // chord shortcut, not a sounded-out spelling."
             if is_brief_mode && !word_text.is_empty() {
-                let pill_font = layout.phoneme_font * 0.8;
-                let tw = text.draw_text_left_u32(
-                    pixels, width, &word_text,
-                    -1.0e6, -1.0e6, pill_font, 500, 0, "Bona Nova", false,
-                );
-                let pad_h = pill_font * 0.35;
-                let pad_w = pill_font * 0.6;
-                let pill_w = (tw + pad_w * 2.0) as i32;
-                let pill_h = (pill_font + pad_h * 2.0) as i32;
-                let cx = layout.target_cx as i32;
-                let cy = layout.phoneme_cy as i32;
-                cell_wide(
+                crate::tutor::ui::compositor::TutorApp::draw_logo_text(
                     pixels,
-                    &mut self.tutor_textbox_mask,
+                    text,
                     width,
-                    height,
-                    cx, cy,
-                    pill_w, pill_h,
-                    theme::CELL_INNER_IDLE, false,
-                );
-                text.draw_text_center_u32(
-                    pixels, width, &word_text,
-                    layout.target_cx, layout.phoneme_cy,
-                    pill_font, 500,
-                    theme::SENTENCE_CURRENT,
-                    "Bona Nova", false,
+                    &word_text,
+                    layout.target_cx,
+                    layout.phoneme_cy,
+                    layout.phoneme_font,
+                    700,
+                    "Bona Nova",
                 );
             } else
             // Phoneme line: italic Bona Nova. Each glyph is measured
