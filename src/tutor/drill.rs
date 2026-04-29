@@ -417,6 +417,175 @@ pub fn build_digit_word_steps(word: &str) -> Option<Vec<Step>> {
     Some(steps)
 }
 
+/// Form-chord left-hand bit patterns. Mirrors `chord_to_form` in
+/// the interpreter: pressing one of these left-hand chords (with no
+/// word held) after a digit run transforms the just-emitted integer.
+const FORM_SPELLED_CARDINAL: u8 = 0b0001; // L_IDX
+const FORM_ORDINAL: u8 = 0b0100; // L_RING
+const FORM_MULTIPLIER: u8 = 0b1000; // L_PINKY
+const FORM_GROUP: u8 = 0b0010; // L_MID
+const FORM_FRACTION: u8 = 0b0110; // L_MID + L_RING
+const FORM_PREFIX: u8 = 0b0011; // L_IDX + L_MID
+
+/// Reverse-lookup: given a word like "nineteen" / "twentieth" /
+/// "twice" / "half", return `(integer, form_left_bits)` such that
+/// applying that form to the integer produces the word. Built once,
+/// cached. Lower-priority forms inserted first so higher-priority
+/// (more specific) forms override on overlap.
+fn lookup_form(word: &str) -> Option<(u64, u8)> {
+    use crate::preferences::number_forms as f;
+    use std::collections::HashMap;
+    use std::sync::OnceLock;
+
+    static TABLE: OnceLock<HashMap<String, (u64, u8)>> = OnceLock::new();
+    let table = TABLE.get_or_init(|| {
+        let mut m: HashMap<String, (u64, u8)> = HashMap::new();
+        // Cardinal first — broadest. Loop range covers everything
+        // each form might produce; multi-token outputs ("five
+        // hundred", "five times") will never match a single
+        // whitespace-split practice word, so they sit unused but
+        // harmless.
+        for n in 0u64..=1000 {
+            let s = n.to_string();
+            if let Some(w) = f::spelled_cardinal(&s) {
+                m.insert(w, (n, FORM_SPELLED_CARDINAL));
+            }
+        }
+        for n in 0u64..=1000 {
+            let s = n.to_string();
+            if let Some(w) = f::ordinal(&s) {
+                m.insert(w, (n, FORM_ORDINAL));
+            }
+        }
+        for n in 1u64..=99 {
+            let s = n.to_string();
+            if let Some(w) = f::multiplier(&s) {
+                m.insert(w, (n, FORM_MULTIPLIER));
+            }
+        }
+        for n in 1u64..=10 {
+            let s = n.to_string();
+            if let Some(w) = f::group(&s) {
+                m.insert(w, (n, FORM_GROUP));
+            }
+        }
+        for n in 1u64..=10 {
+            let s = n.to_string();
+            if let Some(w) = f::prefix(&s) {
+                m.insert(w, (n, FORM_PREFIX));
+            }
+        }
+        // Fraction limited to 2..=4 ("half", "third", "quarter") so
+        // it doesn't override ordinal forms ("fifth", "sixth", ...)
+        // for n>=5, where the same string is shared and the user
+        // almost always means ordinal.
+        for n in 2u64..=4 {
+            let s = n.to_string();
+            if let Some(w) = f::fraction(&s) {
+                m.insert(w, (n, FORM_FRACTION));
+            }
+        }
+        m
+    });
+    table.get(word).copied()
+}
+
+/// Build drill steps for a spelled-form number word like "nineteen",
+/// "twentieth", "half", "twice", "tri", etc. Returns `None` if the
+/// word doesn't match any cardinal/ordinal/multiplier/group/fraction/
+/// prefix form for n in 0..=1000.
+///
+/// Step sequence mirrors what the engine actually accepts:
+///   1. `+word+mod` — mod-tap entry
+///   2. `-mod` (word held) — confirm number-mode entry
+///   3. for each digit of the underlying integer:
+///        a. `+digit` (target finger, word held)
+///        b. `-digit` (back to word_only)
+///   4. all-off — release word; engine emits the integer + a space
+///        and arms `has_number_context`
+///   5. form chord (left-hand only, no word) — engine sees number
+///        context and replaces the integer with the spelled form
+///   6. all-off — release form fingers
+pub fn build_spelled_form_steps(word: &str) -> Option<Vec<Step>> {
+    let (n, form_left) = lookup_form(word)?;
+    let digits: String = n.to_string();
+
+    let word_only = Target {
+        right: 0,
+        left: 0,
+        word: true,
+        accepted_leads: KeyMask::EMPTY,
+    };
+    let all_off = Target::default();
+
+    let mut steps: Vec<Step> = Vec::new();
+
+    // Step 0: +word+mod (mod-tap entry).
+    steps.push(Step {
+        target: Target {
+            right: 1 << 4,
+            left: 0,
+            word: true,
+            accepted_leads: KeyMask::EMPTY,
+        },
+        ..Step::default()
+    });
+
+    // Step 1: -mod (word still held).
+    steps.push(Step {
+        target: word_only,
+        ..Step::default()
+    });
+
+    // Per-digit steps: press, then release back to word_only.
+    for c in digits.chars() {
+        let (right, left, _) = number_char_target(c)?;
+        steps.push(Step {
+            target: Target {
+                right,
+                left,
+                word: true,
+                accepted_leads: KeyMask::EMPTY,
+            },
+            number_glyph: Some(c.to_string()),
+            ..Step::default()
+        });
+        steps.push(Step {
+            target: word_only,
+            ..Step::default()
+        });
+    }
+
+    // Release word: exits number mode, engine emits space + arms
+    // number context for the form transform that's about to come.
+    steps.push(Step {
+        target: all_off,
+        ..Step::default()
+    });
+
+    // Form chord — left-hand only, no word. Engine recognises this
+    // via has_number_context and applies the form, replacing the
+    // integer with the spelled form.
+    steps.push(Step {
+        target: Target {
+            right: 0,
+            left: form_left,
+            word: false,
+            accepted_leads: KeyMask::EMPTY,
+        },
+        number_glyph: Some(word.to_string()),
+        ..Step::default()
+    });
+
+    // Release form chord.
+    steps.push(Step {
+        target: all_off,
+        ..Step::default()
+    });
+
+    Some(steps)
+}
+
 /// Build the per-step drill sequence for a number/symbol "word".
 /// Structure: mod-tap entry + one step per character + commit.
 pub fn build_number_steps(word: &str) -> Option<Vec<Step>> {
@@ -556,6 +725,18 @@ pub fn build_practice(
                 }
 
                 if let Some(number_steps) = build_digit_word_steps(word_str) {
+                    sentence.push(PracticeWord {
+                        word: word_str.to_string(),
+                        phoneme_steps: Vec::new(),
+                        brief_steps: None,
+                        suffix_steps: None,
+                        suffix_label: None,
+                        number_steps: Some(number_steps),
+                    });
+                    continue;
+                }
+
+                if let Some(number_steps) = build_spelled_form_steps(word_str) {
                     sentence.push(PracticeWord {
                         word: word_str.to_string(),
                         phoneme_steps: Vec::new(),
@@ -1346,5 +1527,72 @@ pub fn update_key_state(state: &mut KeyState, event: &RheKeyEvent) {
         scan::R_IDX_INNER => state.right[5] = pressed,
         scan::WORD => state.word = pressed,
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spelled_form_cardinals() {
+        // Single-token cardinals should resolve to SpelledCardinal.
+        assert_eq!(lookup_form("ten"), Some((10, FORM_SPELLED_CARDINAL)));
+        assert_eq!(lookup_form("nineteen"), Some((19, FORM_SPELLED_CARDINAL)));
+        assert_eq!(lookup_form("twenty"), Some((20, FORM_SPELLED_CARDINAL)));
+        assert_eq!(lookup_form("twenty-one"), Some((21, FORM_SPELLED_CARDINAL)));
+        assert_eq!(lookup_form("ninety-nine"), Some((99, FORM_SPELLED_CARDINAL)));
+    }
+
+    #[test]
+    fn spelled_form_ordinals() {
+        assert_eq!(lookup_form("first"), Some((1, FORM_ORDINAL)));
+        assert_eq!(lookup_form("nineteenth"), Some((19, FORM_ORDINAL)));
+        assert_eq!(lookup_form("twentieth"), Some((20, FORM_ORDINAL)));
+        assert_eq!(lookup_form("thousandth"), Some((1000, FORM_ORDINAL)));
+    }
+
+    #[test]
+    fn spelled_form_specifics_override_default() {
+        // "twice" / "thrice" → multiplier, not cardinal.
+        assert_eq!(lookup_form("twice"), Some((2, FORM_MULTIPLIER)));
+        assert_eq!(lookup_form("thrice"), Some((3, FORM_MULTIPLIER)));
+        // "half" / "third" / "quarter" → fraction.
+        assert_eq!(lookup_form("half"), Some((2, FORM_FRACTION)));
+        assert_eq!(lookup_form("third"), Some((3, FORM_FRACTION)));
+        assert_eq!(lookup_form("quarter"), Some((4, FORM_FRACTION)));
+        // Group / prefix words.
+        assert_eq!(lookup_form("pair"), Some((2, FORM_GROUP)));
+        assert_eq!(lookup_form("triple"), Some((3, FORM_GROUP)));
+        assert_eq!(lookup_form("mono"), Some((1, FORM_PREFIX)));
+        assert_eq!(lookup_form("tri"), Some((3, FORM_PREFIX)));
+    }
+
+    #[test]
+    fn spelled_form_steps_for_nineteen() {
+        let steps = build_spelled_form_steps("nineteen").expect("nineteen should map");
+        // entry(1) + -mod(1) + per-digit press+release × 2 digits(4)
+        //   + release-word(1) + form(1) + final all-off(1) = 9
+        assert_eq!(steps.len(), 9);
+        // Final step is full all-off.
+        let last = steps.last().unwrap();
+        assert_eq!(last.target.right, 0);
+        assert_eq!(last.target.left, 0);
+        assert!(!last.target.word);
+        // The form-chord step (second-to-last) carries the spelled
+        // word as its glyph hint and the L_IDX chord for SpelledCardinal.
+        let form_step = &steps[steps.len() - 2];
+        assert_eq!(form_step.target.right, 0);
+        assert_eq!(form_step.target.left, FORM_SPELLED_CARDINAL);
+        assert!(!form_step.target.word);
+        assert_eq!(form_step.number_glyph.as_deref(), Some("nineteen"));
+    }
+
+    #[test]
+    fn spelled_form_steps_skip_phoneme_words() {
+        // Words with no spelled-form mapping return None so the
+        // practice builder falls through to phoneme steps.
+        assert!(build_spelled_form_steps("hello").is_none());
+        assert!(build_spelled_form_steps("answer").is_none());
     }
 }
