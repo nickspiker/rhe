@@ -1,0 +1,9 @@
+# Cross-compilation linkers. The Rust target itself is installed via
+# `rustup target add`; here we just tell Cargo which `gcc` (or `gcc`-
+# compatible) to invoke as the final linker for each non-host target.
+
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"

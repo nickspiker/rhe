@@ -27,6 +27,11 @@ winit = "0.30.12"
 softbuffer = "0.4"
 cosmic-text = "0.14.2"
 png = "0.17"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+blake3 = "1.5"
+hex = "0.4"
+sha2 = "0.10"
+rand = "0.8"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 rdev = { version = "0.5", features = ["unstable_grab"] }

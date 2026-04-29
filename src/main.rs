@@ -1,5 +1,6 @@
 //! CLI entry point and subcommand dispatch.
 
+mod crypto;
 mod data;
 mod hand;
 mod input;
@@ -28,12 +29,29 @@ fn main() {
         Some("briefs") => show_briefs(),
         Some("listen") => listen(),
         Some("rollover") => rollover_test(),
+        Some("verify") => verify(),
         Some("-h") | Some("--help") | Some("help") => show_usage(),
         Some(other) => {
             eprintln!("rhe: unknown subcommand `{other}`");
             eprintln!();
             show_usage();
             std::process::exit(2);
+        }
+    }
+}
+
+/// Self-verify the binary's Ed25519 signature. Used by install scripts
+/// to confirm a downloaded binary wasn't tampered with — they invoke
+/// `rhe verify` and only proceed to install if the exit code is 0.
+fn verify() {
+    match crypto::self_verify::verify_binary_hash() {
+        Ok(sig) => {
+            println!("✓ Signature valid");
+            println!("  {}", sig);
+        }
+        Err(e) => {
+            eprintln!("✗ Signature verification FAILED: {}", e);
+            std::process::exit(1);
         }
     }
 }
@@ -48,6 +66,7 @@ fn show_usage() {
     println!("  rhe briefs    — show word brief assignments");
     println!("  rhe listen    — show raw key events + chords");
     println!("  rhe rollover  — test simultaneous key count");
+    println!("  rhe verify    — verify this binary's Ed25519 signature");
 }
 
 fn show_map() {
