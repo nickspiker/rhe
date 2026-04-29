@@ -2596,6 +2596,115 @@ impl TutorApp {
         }
     }
 
+    /// Stadium-shaped (pill) variant of `draw_black_circle`. Lerps
+    /// pixels toward black inside a rounded rectangle whose height
+    /// equals `pill_h` and whose end-caps have radius `pill_h / 2`.
+    pub fn draw_black_pill(
+        pixels: &mut [u32],
+        width: usize,
+        cx: usize,
+        cy: usize,
+        pill_w: usize,
+        pill_h: usize,
+    ) {
+        let radius = pill_h as isize / 2;
+        let half_w = pill_w as isize / 2;
+        let straight = half_w - radius; // half-length of the flat section
+        let r_outer = radius;
+        let r_outer2 = r_outer * r_outer;
+        let r_inner = (radius - 1).max(0);
+        let r_inner2 = r_inner * r_inner;
+        let edge_range = (r_outer2 - r_inner2).max(1);
+
+        for dy in -r_outer..=r_outer {
+            let y = cy as isize + dy;
+            if y < 0 || y >= (pixels.len() / width) as isize {
+                continue;
+            }
+            let dy2 = dy * dy;
+            for dx in -half_w..=half_w {
+                let x = cx as isize + dx;
+                if x < 0 || x >= width as isize {
+                    continue;
+                }
+                // Stadium distance: clamp dx into the cap region
+                let cap_dx = (dx.abs() - straight).max(0);
+                let dist2 = cap_dx * cap_dx + dy2;
+                if dist2 > r_outer2 {
+                    continue;
+                }
+                let idx = y as usize * width + x as usize;
+                let inv_alpha = if dist2 <= r_inner2 {
+                    0u32
+                } else {
+                    (((dist2 - r_inner2) << 8) / edge_range) as u32
+                };
+                let mut pixel = pixels[idx] as u64;
+                pixel = (pixel | (pixel << 16)) & 0x0000FFFF0000FFFF;
+                pixel = (pixel | (pixel << 8)) & 0x00FF00FF00FF00FF;
+                pixel *= inv_alpha as u64;
+                pixel = (pixel >> 8) & 0x00FF00FF00FF00FF;
+                pixel = (pixel | (pixel >> 8)) & 0x0000FFFF0000FFFF;
+                pixel = pixel | (pixel >> 16);
+                pixels[idx] = (pixel as u32) | 0xFF000000;
+            }
+        }
+    }
+
+    /// Stadium-shaped (pill) variant of `draw_white_circle`. Lerps
+    /// pixels toward white inside a rounded rectangle.
+    pub fn draw_white_pill(
+        pixels: &mut [u32],
+        width: usize,
+        cx: usize,
+        cy: usize,
+        pill_w: usize,
+        pill_h: usize,
+    ) {
+        let radius = pill_h as isize / 2;
+        let half_w = pill_w as isize / 2;
+        let straight = half_w - radius;
+        let r_outer = radius;
+        let r_outer2 = r_outer * r_outer;
+        let r_inner = (radius - 1).max(0);
+        let r_inner2 = r_inner * r_inner;
+        let edge_range = (r_outer2 - r_inner2).max(1);
+
+        for dy in -r_outer..=r_outer {
+            let y = cy as isize + dy;
+            if y < 0 || y >= (pixels.len() / width) as isize {
+                continue;
+            }
+            let dy2 = dy * dy;
+            for dx in -half_w..=half_w {
+                let x = cx as isize + dx;
+                if x < 0 || x >= width as isize {
+                    continue;
+                }
+                let cap_dx = (dx.abs() - straight).max(0);
+                let dist2 = cap_dx * cap_dx + dy2;
+                if dist2 > r_outer2 {
+                    continue;
+                }
+                let idx = y as usize * width + x as usize;
+                let inv_alpha = if dist2 <= r_inner2 {
+                    0u64
+                } else {
+                    (((dist2 - r_inner2) << 8) / edge_range) as u64
+                };
+                let pixel = pixels[idx] as u64;
+                let mut p = (pixel | (pixel << 16)) & 0x0000FFFF0000FFFF;
+                p = (p | (p << 8)) & 0x00FF00FF00FF00FF;
+                let inv_p = 0x00FF00FF00FF00FFu64 - p;
+                let scaled = ((inv_p * inv_alpha) >> 8) & 0x00FF00FF00FF00FF;
+                let result = 0x00FF00FF00FF00FFu64 - scaled;
+                let mut narrowed = (result | (result >> 8)) & 0x0000FFFF0000FFFF;
+                narrowed = narrowed | (narrowed >> 16);
+                pixels[idx] = (narrowed as u32) | 0xFF000000;
+            }
+        }
+    }
+
     /// Add or subtract colour from an anti-aliased circle region
     /// Used for the green overlay on the connectivity indicator
     pub fn draw_filled_circle(
