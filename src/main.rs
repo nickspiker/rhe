@@ -253,6 +253,7 @@ fn listen() {
 /// Full engine with menu bar app.
 #[cfg(target_os = "macos")]
 fn run() {
+    crate::tutor::log::init();
     eprintln!("rhe — loading...");
 
     let enabled = Arc::new(AtomicBool::new(true)); // start in rhe mode
@@ -312,18 +313,37 @@ fn run() {
 
             for sm_event in sm.feed(event) {
                 match &sm_event {
-                    state_machine::Event::Chord { key, .. } => {
+                    state_machine::Event::Chord { key, first_down, .. } => {
                         eprintln!(
                             "  chord: R:{:04b} L:{:04b} mod={}",
                             key.right_bits(),
                             key.left_bits(),
                             key.has_mod()
                         );
+                        tlog!(
+                            "engine chord: R:{:04b} L:{:04b} mod={} first_down={:?}",
+                            key.right_bits(),
+                            key.left_bits(),
+                            key.has_mod(),
+                            first_down
+                        );
                     }
-                    state_machine::Event::SpaceUp => eprintln!("  space-up"),
-                    state_machine::Event::Backspace => eprintln!("  backspace"),
-                    state_machine::Event::ModTap => eprintln!("  mod-tap"),
-                    state_machine::Event::UndoPhoneme => eprintln!("  undo-phoneme"),
+                    state_machine::Event::SpaceUp => {
+                        eprintln!("  space-up");
+                        tlog!("engine: SpaceUp");
+                    }
+                    state_machine::Event::Backspace => {
+                        eprintln!("  backspace");
+                        tlog!("engine: Backspace");
+                    }
+                    state_machine::Event::ModTap => {
+                        eprintln!("  mod-tap");
+                        tlog!("engine: ModTap");
+                    }
+                    state_machine::Event::UndoPhoneme => {
+                        eprintln!("  undo-phoneme");
+                        tlog!("engine: UndoPhoneme");
+                    }
                 }
 
                 if let Some(action) = interp.process(&sm_event) {
@@ -331,10 +351,12 @@ fn run() {
                     match action {
                         interpreter::Action::Emit(ref text) => {
                             eprintln!("  emit: {}", text);
+                            tlog!("engine emit: {:?}", text);
                             out.emit(text);
                         }
                         interpreter::Action::Backspace(n) => {
                             eprintln!("  emit: backspace x{}", n);
+                            tlog!("engine emit: backspace x{}", n);
                             out.backspace(n);
                         }
                         interpreter::Action::Replace {
@@ -342,6 +364,7 @@ fn run() {
                             ref after,
                         } => {
                             eprintln!("  emit: replace(-{:?}) {:?}", before, after);
+                            tlog!("engine emit: replace(-{:?}) {:?}", before, after);
                             out.backspace(before.chars().count());
                             out.emit(after);
                         }
@@ -359,6 +382,7 @@ fn run() {
 /// thread (tray-icon's DBus/StatusNotifierItem machinery requires that).
 #[cfg(target_os = "linux")]
 fn run() {
+    crate::tutor::log::init();
     eprintln!("rhe — loading...");
 
     let enabled = Arc::new(AtomicBool::new(true));
@@ -430,15 +454,35 @@ fn run() {
             let _ = drill_proxy.send_event(tray::TrayEvent::DrillKey(event));
 
             for sm_event in sm.feed(event) {
+                match &sm_event {
+                    state_machine::Event::Chord { key, first_down, .. } => tlog!(
+                        "engine chord: R:{:04b} L:{:04b} mod={} first_down={:?}",
+                        key.right_bits(),
+                        key.left_bits(),
+                        key.has_mod(),
+                        first_down
+                    ),
+                    state_machine::Event::SpaceUp => tlog!("engine: SpaceUp"),
+                    state_machine::Event::Backspace => tlog!("engine: Backspace"),
+                    state_machine::Event::ModTap => tlog!("engine: ModTap"),
+                    state_machine::Event::UndoPhoneme => tlog!("engine: UndoPhoneme"),
+                }
                 if let Some(action) = interp.process(&sm_event) {
                     use output::TextOutput;
                     match action {
-                        interpreter::Action::Emit(ref text) => out.emit(text),
-                        interpreter::Action::Backspace(n) => out.backspace(n),
+                        interpreter::Action::Emit(ref text) => {
+                            tlog!("engine emit: {:?}", text);
+                            out.emit(text);
+                        }
+                        interpreter::Action::Backspace(n) => {
+                            tlog!("engine emit: backspace x{}", n);
+                            out.backspace(n);
+                        }
                         interpreter::Action::Replace {
                             ref before,
                             ref after,
                         } => {
+                            tlog!("engine emit: replace(-{:?}) {:?}", before, after);
                             out.backspace(before.chars().count());
                             out.emit(after);
                         }
@@ -459,6 +503,7 @@ fn run() {
 /// Full engine on Windows — rdev::grab + SendInput output + tray menu.
 #[cfg(target_os = "windows")]
 fn run() {
+    crate::tutor::log::init();
     eprintln!("rhe — loading...");
 
     let enabled = Arc::new(AtomicBool::new(true));
@@ -518,15 +563,35 @@ fn run() {
             let _ = drill_proxy.send_event(tray::TrayEvent::DrillKey(event));
 
             for sm_event in sm.feed(event) {
+                match &sm_event {
+                    state_machine::Event::Chord { key, first_down, .. } => tlog!(
+                        "engine chord: R:{:04b} L:{:04b} mod={} first_down={:?}",
+                        key.right_bits(),
+                        key.left_bits(),
+                        key.has_mod(),
+                        first_down
+                    ),
+                    state_machine::Event::SpaceUp => tlog!("engine: SpaceUp"),
+                    state_machine::Event::Backspace => tlog!("engine: Backspace"),
+                    state_machine::Event::ModTap => tlog!("engine: ModTap"),
+                    state_machine::Event::UndoPhoneme => tlog!("engine: UndoPhoneme"),
+                }
                 if let Some(action) = interp.process(&sm_event) {
                     use output::TextOutput;
                     match action {
-                        interpreter::Action::Emit(ref text) => out.emit(text),
-                        interpreter::Action::Backspace(n) => out.backspace(n),
+                        interpreter::Action::Emit(ref text) => {
+                            tlog!("engine emit: {:?}", text);
+                            out.emit(text);
+                        }
+                        interpreter::Action::Backspace(n) => {
+                            tlog!("engine emit: backspace x{}", n);
+                            out.backspace(n);
+                        }
                         interpreter::Action::Replace {
                             ref before,
                             ref after,
                         } => {
+                            tlog!("engine emit: replace(-{:?}) {:?}", before, after);
                             out.backspace(before.chars().count());
                             out.emit(after);
                         }

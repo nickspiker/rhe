@@ -836,6 +836,27 @@ impl TutorState {
 
         let prev_step_idx = self.practice.step_idx;
         let prev_mode = self.practice.mode;
+        let prev_word_idx = self.practice.word_idx;
+        let prev_sentence_idx = self.practice.sentence_idx;
+        let prev_errored = self.errored;
+
+        crate::tlog!(
+            "key: {} {} | state R:{:05b} L:{:05b} W:{} | word=\"{}\" mode={:?} step={}",
+            scan::label(rhe_event.scan),
+            match rhe_event.direction {
+                KeyDirection::Down => "down",
+                KeyDirection::Up => "up",
+            },
+            self.key_state.right_bits(),
+            self.key_state.left_bits(),
+            self.key_state.word as u8,
+            self.practice
+                .current_word()
+                .map(|w| w.word.as_str())
+                .unwrap_or(""),
+            self.practice.mode,
+            self.practice.step_idx,
+        );
 
         if rhe_event.direction == KeyDirection::Down {
             if let Some(bit) = scan::right_bit(rhe_event.scan) {
@@ -1140,6 +1161,33 @@ impl TutorState {
         }
         if self.key_state.right_bits() == 0 && self.key_state.left_bits() == 0 {
             self.tutor_first_down = None;
+        }
+
+        if !prev_errored && self.errored {
+            crate::tlog!(
+                "  → BOTCH: reset to step 0 of \"{}\"",
+                self.practice
+                    .current_word()
+                    .map(|w| w.word.as_str())
+                    .unwrap_or("?")
+            );
+        }
+        if self.practice.word_idx != prev_word_idx
+            || self.practice.sentence_idx != prev_sentence_idx
+        {
+            crate::tlog!(
+                "  → next word: \"{}\" mode={:?}",
+                self.practice
+                    .current_word()
+                    .map(|w| w.word.as_str())
+                    .unwrap_or("?"),
+                self.practice.mode,
+            );
+        } else if self.practice.step_idx != prev_step_idx {
+            crate::tlog!(
+                "  → step {} → {} (mode={:?})",
+                prev_step_idx, self.practice.step_idx, self.practice.mode,
+            );
         }
     }
 }

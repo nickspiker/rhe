@@ -8,5 +8,6 @@
 //! window for the on-demand drill UI.
 
 pub mod drill;
+pub mod log;
 pub mod ui;
 pub mod wiki;

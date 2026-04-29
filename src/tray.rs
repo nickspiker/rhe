@@ -1800,6 +1800,19 @@ impl TrayApp {
             return;
         }
         let ctrl = self.tutor_mods.control_key() || self.tutor_ctrl_held;
+        // Plain Enter (no modifiers) wipes the tutor log so the user
+        // can isolate a single repro attempt. Only fires while the
+        // tutor window has focus, so it doesn't clobber log state
+        // when the user hits Enter elsewhere on the desktop.
+        if !ctrl
+            && !self.tutor_mods.shift_key()
+            && !self.tutor_mods.alt_key()
+            && !self.tutor_mods.super_key()
+            && matches!(event.logical_key, Key::Named(NamedKey::Enter))
+        {
+            crate::tutor::log::reset();
+            return;
+        }
         if !ctrl {
             return;
         }

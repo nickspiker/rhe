@@ -182,8 +182,6 @@ pub const BG_ALPHA: u32 = fmt(0xFF_00_00_00);
 pub const BG_SPECKLE: u32 = fmt(0x00_30_30_30);
 
 // ── Fonts ────────────────────────────────────────────────────────────────
-
-pub const FONT_LOGO: &str = "Oxanium";
-pub const FONT_UI: &str = "Josefin Slab";
-pub const FONT_USER_CONTENT: &str = "Open Sans";
-pub const FONT_WEIGHT_USER_CONTENT: u16 = 400;
+//
+// Bona Nova is the only face the tutor loads (regular + italic);
+// callers pass "Bona Nova" directly to `TextRenderer::draw_text_*`.
