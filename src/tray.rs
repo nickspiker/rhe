@@ -119,8 +119,30 @@ use crate::tutor::ui::layout::TutorLayout;
 ///     black at centre with smooth AA edges.
 ///   - **dark cell** (idle / wrong) → add white → fades to white at
 ///     centre with smooth AA edges.
-fn press_circle(pixels: &mut [u32], buf_w: usize, cx: i32, cy: i32, radius: i32, on_bright: bool) {
-    if radius <= 0 || cx < radius || cy < radius {
+/// Press-indicator dot. The drawing helpers
+/// (`draw_black_circle`/`draw_white_circle`) require:
+///   `radius ≥ 1`, `cx ± radius ∈ [0, buf_w)`, `cy ± radius ∈ [0, buf_h)`.
+/// This function is the validation boundary: it accepts arbitrary
+/// layout-derived coordinates and returns early if the circle would
+/// extend past any window edge, since the helpers cast `cx + dx`
+/// straight to `usize` and would otherwise either panic on
+/// `pixels[idx]` (y out of range) or silently bleed across rows
+/// (negative or oversized x wrapping during the `as usize` cast).
+fn press_circle(
+    pixels: &mut [u32],
+    buf_w: usize,
+    buf_h: usize,
+    cx: i32,
+    cy: i32,
+    radius: i32,
+    on_bright: bool,
+) {
+    if radius < 1
+        || cx < radius
+        || cy < radius
+        || (cx + radius) as usize >= buf_w
+        || (cy + radius) as usize >= buf_h
+    {
         return;
     }
     if on_bright {
@@ -138,6 +160,65 @@ fn press_circle(pixels: &mut [u32], buf_w: usize, cx: i32, cy: i32, radius: i32,
             cx as usize,
             cy as usize,
             radius as usize,
+        );
+    }
+}
+
+/// Pill-shaped press indicator for the wide mod / word bars. Same
+/// vertical diameter as `press_circle`'s circle (= 2*radius), just
+/// elongated horizontally so the shape sits at a uniform distance
+/// from every edge of the cell. Top/bottom margin is `cell_h/2 -
+/// radius`; left/right margin is the same — gives the press dot the
+/// same border feel on a wide cell as on a square one.
+///
+/// Validation boundary identical to `press_circle`: the pill
+/// helpers assume the bounding box `[cx ± pill_w/2] × [cy ± pill_h/2]`
+/// fits entirely within `[0, buf_w) × [0, buf_h)`. This function
+/// returns early if any edge would spill out.
+fn press_pill(
+    pixels: &mut [u32],
+    buf_w: usize,
+    buf_h: usize,
+    cx: i32,
+    cy: i32,
+    cell_w: i32,
+    cell_h: i32,
+    radius: i32,
+    on_bright: bool,
+) {
+    if radius < 1 || cell_h < 2 * radius || cell_w < cell_h {
+        // radius < 1: helpers require radius ≥ 1 (r_inner = radius - 1).
+        // cell_h < 2*radius: pill_h would underflow.
+        // cell_w < cell_h: would invert the v_margin → pill_w math.
+        return;
+    }
+    let pill_h = 2 * radius;
+    let v_margin = cell_h - pill_h;
+    let pill_w = cell_w - v_margin;
+    if cx < pill_w / 2
+        || cy < pill_h / 2
+        || (cx + pill_w / 2) as usize >= buf_w
+        || (cy + pill_h / 2) as usize >= buf_h
+    {
+        return;
+    }
+    if on_bright {
+        crate::tutor::ui::compositor::TutorApp::draw_black_pill(
+            pixels,
+            buf_w,
+            cx as usize,
+            cy as usize,
+            pill_w as usize,
+            pill_h as usize,
+        );
+    } else {
+        crate::tutor::ui::compositor::TutorApp::draw_white_pill(
+            pixels,
+            buf_w,
+            cx as usize,
+            cy as usize,
+            pill_w as usize,
+            pill_h as usize,
         );
     }
 }
@@ -373,9 +454,10 @@ struct TrayApp {
     mode_flags: Arc<AtomicU8>,
     ids: TrayIds,
 
-    // macOS keeps the tray + menu items on the winit thread; Linux
-    // hands them off to the gtk thread. On Linux these stay None.
-    #[cfg(target_os = "macos")]
+    // macOS and Windows keep the tray + menu items on the winit
+    // event-loop thread; Linux hands them off to a dedicated gtk
+    // thread, so on Linux this stays None.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     mac_state: Option<MacTrayState>,
 
     // Tutor window state. Declared renderer-before-window so they drop
@@ -445,7 +527,7 @@ struct TrayApp {
     tutor_redraw_counter: u64,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 struct MacTrayState {
     tray: TrayIcon,
     icon_on: Icon,
@@ -455,7 +537,7 @@ struct MacTrayState {
 }
 
 impl TrayApp {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn refresh_enabled_ui(&mut self) {
         if let Some(state) = self.mac_state.as_mut() {
             let on = self.enabled.load(Ordering::Relaxed);
@@ -1244,7 +1326,15 @@ impl TrayApp {
                     pressed[cell_idx],
                 );
                 if pressed[cell_idx] {
-                    press_circle(pixels, width, cx_cell, cy, press_dot_radius, is_target);
+                    press_circle(
+                        pixels,
+                        width,
+                        height,
+                        cx_cell,
+                        cy,
+                        press_dot_radius,
+                        is_target,
+                    );
                 }
                 cell_centres[cell_idx] = (cx_cell, cy);
             }
@@ -1280,11 +1370,14 @@ impl TrayApp {
                 mod_pressed,
             );
             if mod_pressed {
-                press_circle(
+                press_pill(
                     pixels,
                     width,
+                    height,
                     mod_cx,
                     bottom_cy,
+                    mod_w,
+                    cell_d,
                     press_dot_radius,
                     mod_target,
                 );
@@ -1311,11 +1404,14 @@ impl TrayApp {
                 word_pressed,
             );
             if word_pressed {
-                press_circle(
+                press_pill(
                     pixels,
                     width,
+                    height,
                     word_cx,
                     bottom_cy,
+                    word_w,
+                    cell_d,
                     press_dot_radius,
                     target.word,
                 );
@@ -1846,7 +1942,7 @@ impl TrayApp {
                 FallbackMode::Ipa => FallbackMode::Autospell,
             };
             self.fallback.store(next.as_u8(), Ordering::Relaxed);
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             if let Some(state) = self.mac_state.as_mut() {
                 state.mode_item.set_text(match next {
                     FallbackMode::Autospell => "Autospell",
@@ -1866,17 +1962,18 @@ impl TrayApp {
 }
 
 impl ApplicationHandler<TrayEvent> for TrayApp {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn resumed(&mut self, _event_loop: &ActiveEventLoop) {
-        // macOS builds the tray on the event-loop thread so NSStatusItem
-        // is constructed on the NSApp main thread.
+        // macOS / Windows: build the tray on the event-loop thread so
+        // the platform's status-bar item is constructed on the right
+        // thread (NSApp main on Mac, message-pump owner on Windows).
         if self.mac_state.is_some() {
             return;
         }
         self.mac_state = Some(build_mac_tray(&self.ids, &self.enabled, &self.fallback));
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     fn resumed(&mut self, _event_loop: &ActiveEventLoop) {
         // Linux: tray built on the gtk thread by spawn_linux_tray_thread.
     }
@@ -2148,7 +2245,7 @@ fn spawn_menu_forwarder(proxy: TrayProxy) {
     });
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn build_mac_tray(
     ids: &TrayIds,
     enabled: &Arc<AtomicBool>,
@@ -2338,7 +2435,7 @@ pub fn run_tray(
         fallback,
         mode_flags,
         ids,
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         mac_state: None,
         tutor_renderer: None,
         tutor_window: None,

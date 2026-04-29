@@ -41,4 +41,8 @@ libc = "0.2"
 xkbcommon = "0.9"
 gtk = "0.18"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+rdev = { version = "0.5", features = ["unstable_grab"] }
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_UI_Input_KeyboardAndMouse"] }
+
 [dev-dependencies]

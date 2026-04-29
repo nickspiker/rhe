@@ -12,6 +12,9 @@ pub mod macos;
 #[cfg(target_os = "linux")]
 pub mod linux;
 
+#[cfg(target_os = "windows")]
+pub mod windows;
+
 /// No-op output backend for platforms where text injection isn't wired up.
 ///
 /// On Linux, uinput routes through the user's xkb layout (so injected

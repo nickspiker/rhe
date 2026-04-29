@@ -437,7 +437,92 @@ fn run() {
     tray::run_tray(event_loop, enabled, quit, fallback, mode_flags);
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+/// Full engine on Windows — rdev::grab + SendInput output + tray menu.
+#[cfg(target_os = "windows")]
+fn run() {
+    eprintln!("rhe — loading...");
+
+    let enabled = Arc::new(AtomicBool::new(true));
+    let quit = Arc::new(AtomicBool::new(false));
+    let fallback = interpreter::FallbackMode::new_shared_from_env();
+    let mode_flags = interpreter::new_shared_mode_flags();
+    let enabled_engine = enabled.clone();
+    let fallback_engine = fallback.clone();
+    let mode_flags_engine = mode_flags.clone();
+    let quit_engine = quit.clone();
+
+    let (event_loop, proxy) = tray::build();
+    let toggle_proxy = proxy.clone();
+    let drill_proxy = proxy.clone();
+    let on_toggle: input::windows_backend::ToggleHook = Arc::new(move || {
+        let _ = toggle_proxy.send_event(tray::TrayEvent::StateChanged);
+    });
+
+    std::thread::spawn(move || {
+        let cmudict = data::load_cmudict();
+        let freq = data::load_word_freq();
+
+        let phoneme_table = crate::preferences::chord_map::PhonemeTable::new();
+        let dictionary = table_gen::PhonemeDictionary::build(&cmudict, &freq);
+        let brief_table = crate::preferences::briefs::load_briefs();
+
+        let mut interp = interpreter::Interpreter::with_fallback_and_modes(
+            phoneme_table,
+            brief_table,
+            dictionary,
+            fallback_engine,
+            mode_flags_engine,
+        );
+
+        let input = input::windows_backend::WindowsInput::start_grab(
+            enabled_engine,
+            input::windows_backend::QuitTrigger::EscOrCapsPlusEsc,
+            Some(on_toggle),
+        )
+        .expect("failed to start key capture");
+        let out = output::windows::WindowsOutput::new();
+        let mut sm = state_machine::StateMachine::new();
+
+        eprintln!("rhe: ready. Tray icon in system panel. Esc to quit.");
+
+        loop {
+            if quit_engine.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
+            let event = match input.rx.recv_timeout(std::time::Duration::from_millis(250)) {
+                Ok(input::HidEvent::Key(ev)) => ev,
+                Ok(input::HidEvent::Quit) => break,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(_) => break,
+            };
+
+            let _ = drill_proxy.send_event(tray::TrayEvent::DrillKey(event));
+
+            for sm_event in sm.feed(event) {
+                if let Some(action) = interp.process(&sm_event) {
+                    use output::TextOutput;
+                    match action {
+                        interpreter::Action::Emit(ref text) => out.emit(text),
+                        interpreter::Action::Backspace(n) => out.backspace(n),
+                        interpreter::Action::Replace {
+                            ref before,
+                            ref after,
+                        } => {
+                            out.backspace(before.chars().count());
+                            out.emit(after);
+                        }
+                    }
+                }
+            }
+        }
+        quit_engine.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = proxy.send_event(tray::TrayEvent::StateChanged);
+    });
+
+    tray::run_tray(event_loop, enabled, quit, fallback, mode_flags);
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 fn run() {
     eprintln!("rhe run: not yet supported on this platform.");
     eprintln!("use `rhe tutor` to practice chords.");

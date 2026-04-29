@@ -11,7 +11,7 @@
 //! hairlines. Every other size derives from `span = 2·w·h/(w+h)` times
 //! an `ru` zoom factor. See `scale()`.
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod renderer_linux_softbuffer;
 
 #[cfg(target_os = "macos")]
@@ -25,7 +25,10 @@ pub mod layout;
 pub mod text_rasterizing;
 pub mod theme;
 
-#[cfg(target_os = "linux")]
+// Same softbuffer-backed renderer for both Linux and Windows — they
+// each go through softbuffer's per-platform present path internally,
+// but the CPU-side double-buffering logic is identical.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use renderer_linux_softbuffer as renderer;
 
 #[cfg(target_os = "macos")]
