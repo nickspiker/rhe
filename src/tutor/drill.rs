@@ -898,6 +898,26 @@ impl TutorState {
                 }
                 self.practice.mode = self.practice.default_mode();
                 self.practice.step_idx = 0;
+            } else if rhe_event.scan == scan::WORD
+                && rhe_event.direction == KeyDirection::Up
+                && self.practice.mode == WordMode::Number
+                && self.practice.step_idx > 0
+                && self
+                    .practice
+                    .current_target()
+                    .map_or(false, |t| t.word)
+            {
+                // Number-mode botch: user released word while a
+                // mid-sequence step still required word held. Without
+                // this, the drill would silently stagnate and a later
+                // word re-press would reset to step 0 with no error
+                // ever shown — the user could "pass" on the retry.
+                // Phoneme mode catches this further down via
+                // `space_dropped`; number mode needs its own check
+                // because its matcher is state-based, not acc-based.
+                self.practice.reset_word();
+                self.last_was_botch = true;
+                self.errored = true;
             }
 
             if self.key_state.word && is_key_down && rhe_event.scan != scan::WORD {
@@ -925,6 +945,28 @@ impl TutorState {
                         let extra_left = state_left & !target.left;
                         let extra_word = state_word && !target.word;
                         if extra_right != 0 || extra_left != 0 || extra_word {
+                            self.practice.reset_word();
+                            self.last_was_botch = true;
+                            self.errored = true;
+                        }
+                    } else {
+                        // Key release: if the released key was a target
+                        // bit and the chord still isn't complete, the
+                        // user dropped it without finishing — botch.
+                        // Catches the "press, release, re-press, +mod"
+                        // workaround: at the post-finger step
+                        // (target = finger+mod), releasing the finger
+                        // before mod has joined is a regression.
+                        let regress_right = scan::right_bit(rhe_event.scan)
+                            .map(|bit| (target.right & (1u8 << bit)) != 0)
+                            .unwrap_or(false);
+                        let regress_left = scan::left_bit(rhe_event.scan)
+                            .map(|bit| (target.left & (1u8 << bit)) != 0)
+                            .unwrap_or(false);
+                        let chord_incomplete = state_right != target.right
+                            || state_left != target.left
+                            || state_word != target.word;
+                        if (regress_right || regress_left) && chord_incomplete {
                             self.practice.reset_word();
                             self.last_was_botch = true;
                             self.errored = true;
