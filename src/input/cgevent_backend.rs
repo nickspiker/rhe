@@ -322,10 +322,23 @@ extern "C" fn event_callback(
             return std::ptr::null_mut();
         }
 
-        // If Ctrl is held, pass through — lets Ctrl+D/H/T debug
-        // shortcuts reach the window even while rhe is active.
+        // Modifier passthrough: while ANY OS modifier other than the
+        // ones rhe owns is held, every key event sails straight to
+        // the OS. Lets Cmd+C, Ctrl+letter, Shift+letter, Fn-key
+        // combos, etc. all work without rhe eating one half of the
+        // combo. Word/mod roles (left cmd by default + space) don't
+        // appear in `flags` for regular key events because we
+        // suppress their FlagsChanged events above, so a set shift
+        // / ctrl / alt / cmd / fn bit always means a non-rhe
+        // modifier is currently held.
+        const SHIFT: u64 = 0x20000;
+        const CTRL: u64 = 0x40000;
+        const ALT: u64 = 0x80000;
+        const CMD: u64 = 0x100000;
+        const FN: u64 = 0x800000;
+        const PASSTHROUGH_MODIFIERS: u64 = SHIFT | CTRL | ALT | CMD | FN;
         let flags = ffi::CGEventGetFlags(event);
-        if flags & 0x40000 != 0 {
+        if flags & PASSTHROUGH_MODIFIERS != 0 {
             return event;
         }
 

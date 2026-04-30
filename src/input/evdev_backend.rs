@@ -43,6 +43,35 @@ const KEY_CAPSLOCK: u16 = 58;
 const KEY_A: u16 = 30;
 const KEY_ENTER: u16 = 28;
 
+// OS-modifier scancodes. A press of any of these — when the scancode
+// isn't already bound to a chord/word/mod role — flips rhe into
+// modifier-passthrough until every key releases.
+const KEY_LEFTSHIFT: u16 = 42;
+const KEY_RIGHTSHIFT: u16 = 54;
+const KEY_LEFTCTRL: u16 = 29;
+const KEY_RIGHTCTRL: u16 = 97;
+const KEY_LEFTALT: u16 = 56;
+const KEY_RIGHTALT: u16 = 100;
+const KEY_LEFTMETA: u16 = 125;
+const KEY_RIGHTMETA: u16 = 126;
+const KEY_FN: u16 = 464;
+
+#[inline]
+fn is_modifier_scan(code: u16) -> bool {
+    matches!(
+        code,
+        KEY_LEFTSHIFT
+            | KEY_RIGHTSHIFT
+            | KEY_LEFTCTRL
+            | KEY_RIGHTCTRL
+            | KEY_LEFTALT
+            | KEY_RIGHTALT
+            | KEY_LEFTMETA
+            | KEY_RIGHTMETA
+            | KEY_FN
+    )
+}
+
 // EVIOCGRAB = _IOW('E', 0x90, int) — stable Linux ABI, x86-64 generic _IOC layout.
 const EVIOCGRAB: libc::c_ulong = 0x40044590;
 
@@ -209,6 +238,18 @@ fn reader_loop(
     // so its own live mask doesn't leak either.
     let mut auto_held: Vec<u16> = Vec::new();
 
+    // Modifier-passthrough state. When the user presses any non-rhe
+    // modifier (Shift / Ctrl / Alt / Super / Fn, when that scancode
+    // isn't bound to a chord/word/mod role), rhe steps out of the
+    // way until every key has been released. Lets Ctrl+C, Cmd+Tab,
+    // etc. work normally without the chord engine eating half the
+    // combo.
+    //
+    // `all_held` tracks every physical key currently down so we know
+    // when "all up" lands and can drop back into rhe mode.
+    let mut modifier_passthrough = false;
+    let mut all_held: std::collections::HashSet<u16> = std::collections::HashSet::new();
+
     loop {
         let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf_bytes) };
         if n <= 0 {
@@ -248,6 +289,61 @@ fn reader_loop(
             } else if ev.value == 1 {
                 // Any non-caps key-down breaks solo-caps tracking.
                 caps_solo = false;
+            }
+
+            // Track every physical key's down/up so the modifier-
+            // passthrough exit condition ("all keys released") can be
+            // checked on each event. Autorepeats (value=2) leave the
+            // set unchanged.
+            match ev.value {
+                1 => {
+                    all_held.insert(ev.code);
+                }
+                0 => {
+                    all_held.remove(&ev.code);
+                }
+                _ => {}
+            }
+
+            // Modifier-passthrough trigger: any non-rhe modifier
+            // press → suspend rhe interpretation until every key has
+            // been released. Lets Ctrl+C, Super+Tab, Shift+letter,
+            // etc. work without rhe eating one half of the combo.
+            // Word + R_THUMB roles count as rhe keys, so pressing
+            // them never trips the gate.
+            let rhe_role_check = crate::preferences::layout::linux_to_role(ev.code);
+            if ev.value == 1
+                && !modifier_passthrough
+                && rhe_role_check.is_none()
+                && is_modifier_scan(ev.code)
+            {
+                modifier_passthrough = true;
+                // Tell the engine to release any chord keys it
+                // currently believes are held — otherwise the state
+                // machine carries stale bits across the passthrough
+                // window. We track scancodes; map them through the
+                // layout to roles before sending.
+                for &code in all_held.iter() {
+                    if let Some(role) = crate::preferences::layout::linux_to_role(code) {
+                        let _ = tx.send(HidEvent::Key(KeyEvent {
+                            scan: role,
+                            direction: KeyDirection::Up,
+                        }));
+                    }
+                }
+            }
+
+            // While in modifier-passthrough, every event flows
+            // straight to the OS — no engine, no auto-switch
+            // bookkeeping. Exit the moment the held set empties.
+            if modifier_passthrough {
+                if let Some(ufd) = uinput_fd {
+                    forward_key(ufd, ev.code, ev.value);
+                }
+                if all_held.is_empty() {
+                    modifier_passthrough = false;
+                }
+                continue;
             }
 
             // Wide layouts put a chord key on physical Enter, so one
