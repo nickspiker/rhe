@@ -185,6 +185,10 @@ pub struct Interpreter {
     /// `current` on success so successive transforms replace in
     /// place.
     last_number: Option<NumberContext>,
+    /// True once a phoneme has been buffered during this word session.
+    /// Stays true even if all phonemes are undone. Prevents ModTap
+    /// from entering number mode after phoneme undo-to-empty.
+    phoneme_session: bool,
 }
 
 impl Interpreter {
@@ -236,6 +240,7 @@ impl Interpreter {
             mode: Mode::Normal,
             number_buffer: String::new(),
             last_number: None,
+            phoneme_session: false,
         }
     }
 
@@ -325,6 +330,7 @@ impl Interpreter {
                     self.last_number = None;
                     if let Some(phoneme) = self.phonemes.lookup(*key) {
                         self.buffer.push(phoneme);
+                        self.phoneme_session = true;
                     }
                     None
                 } else {
@@ -368,6 +374,11 @@ impl Interpreter {
                 }
             }
             Event::ModTap => {
+                // If phonemes were buffered this session, mod tap = undo last phoneme
+                if self.phoneme_session {
+                    self.buffer.pop();
+                    return None;
+                }
                 match self.mode {
                     Mode::Normal => {
                         self.last_number = None;
@@ -422,6 +433,7 @@ impl Interpreter {
                 }
                 // Phoneme commit from Normal mode.
                 self.last_number = None;
+                self.phoneme_session = false;
                 if self.buffer.is_empty() {
                     return None;
                 }

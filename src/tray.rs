@@ -810,6 +810,11 @@ impl TrayApp {
             .and_then(|s| s.practice.current_word())
             .map(|w| w.word.clone())
             .unwrap_or_default();
+        let drill_errored = self
+            .tutor_state
+            .as_ref()
+            .map(|s| s.errored)
+            .unwrap_or(false);
         let is_brief_mode = self
             .tutor_state
             .as_ref()
@@ -1013,7 +1018,8 @@ impl TrayApp {
                 }
             }
 
-            // Big centred target word — Bona Nova regular (non-italic).
+            // Big centred target word — red on error, white otherwise.
+            let word_colour = if drill_errored { 0xFF0000 } else { theme::TARGET_WORD };
             text.draw_text_center_u32(
                 pixels,
                 width,
@@ -1022,7 +1028,7 @@ impl TrayApp {
                 layout.target_cy,
                 layout.target_font,
                 700,
-                theme::TARGET_WORD,
+                word_colour,
                 "Bona Nova",
                 false,
             );
@@ -1156,7 +1162,7 @@ impl TrayApp {
                     layout.hint_cy,
                     layout.hint_font,
                     700,
-                    theme::TARGET_WORD,
+                    word_colour, // red on error
                     "Bona Nova",
                     false,
                 );
