@@ -113,8 +113,8 @@ fn scaled_logo_rgb(diameter: usize) -> Vec<u8> {
 use crate::tutor::ui::layout::TutorLayout;
 
 /// Press marker on a chord cell — uses photon's anti-aliased
-/// `draw_filled_circle` in additive / subtractive mode so the dot
-/// reads against any underlying fill:
+/// `draw_black_circle` / `draw_white_circle` so the dot reads
+/// against any underlying fill:
 ///   - **bright cell** (target / lit) → subtract white → fades to
 ///     black at centre with smooth AA edges.
 ///   - **dark cell** (idle / wrong) → add white → fades to white at

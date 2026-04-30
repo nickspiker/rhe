@@ -758,36 +758,6 @@ impl TutorApp {
         }
     }
 
-    /// Draw hourglass icon (two triangles meeting at center point)
-    /// angle_degrees: rotation angle in degrees (stochastic wobble during search)
-    fn distance_to_capsule_local(
-        px: f32,
-        py: f32,
-        x1: f32,
-        y1: f32,
-        x2: f32,
-        y2: f32,
-        radius: f32,
-    ) -> f32 {
-        let dx = x2 - x1;
-        let dy = y2 - y1;
-        let len_sq = dx * dx + dy * dy;
-
-        let t = if len_sq > 0.0 {
-            ((px - x1) * dx + (py - y1) * dy) / len_sq
-        } else {
-            0.0
-        };
-        let t = t.clamp(0.0, 1.0);
-
-        let closest_x = x1 + t * dx;
-        let closest_y = y1 + t * dy;
-        let dist_x = px - closest_x;
-        let dist_y = py - closest_y;
-
-        (dist_x * dist_x + dist_y * dist_y).sqrt() - radius
-    }
-
     // Helper function: distance from point to capsule (line segment with rounded ends)
     pub fn distance_to_capsule(
         px: f32,
@@ -2483,6 +2453,16 @@ impl TutorApp {
         }
     }
 
+    /// Draw an anti-aliased circle blending the underlying pixels
+    /// toward black. Used as the press-circle indicator on chord
+    /// cells (and as the cap halves of `draw_black_pill`).
+    ///
+    /// Caller invariants (enforced at call site, see
+    /// `tray.rs::press_circle` / `press_pill`):
+    /// - `radius ≥ 1` (`radius - 1` is computed as usize)
+    /// - `cx - radius`, `cy - radius` ≥ 0 (no usize underflow on
+    ///   `(cx as isize + dx) as usize` for dx = -radius)
+    /// - `cx + radius < width`, `cy + radius < pixels.len() / width`
     pub fn draw_black_circle(
         pixels: &mut [u32],
         width: usize,
@@ -2498,9 +2478,6 @@ impl TutorApp {
 
         for dy in -r_outer..=r_outer {
             let y = cy as isize + dy;
-            if y < 0 || y >= (pixels.len() / width) as isize {
-                continue;
-            }
             let dy2 = dy * dy;
 
             for dx in -r_outer..=r_outer {
@@ -2539,6 +2516,8 @@ impl TutorApp {
     /// Lerp identity: `result = pixel·(1−α) + 255·α`. Rearranged as
     /// `result = 255 − (255−pixel)·(1−α)`, which only needs one
     /// widened multiply per pixel — same shape as the black version.
+    ///
+    /// Same caller invariants as `draw_black_circle`.
     pub fn draw_white_circle(
         pixels: &mut [u32],
         width: usize,
@@ -2554,9 +2533,6 @@ impl TutorApp {
 
         for dy in -r_outer..=r_outer {
             let y = cy as isize + dy;
-            if y < 0 || y >= (pixels.len() / width) as isize {
-                continue;
-            }
             let dy2 = dy * dy;
 
             for dx in -r_outer..=r_outer {
@@ -2596,9 +2572,18 @@ impl TutorApp {
         }
     }
 
-    /// Stadium-shaped (pill) variant of `draw_black_circle`. Lerps
-    /// pixels toward black inside a rounded rectangle whose height
-    /// equals `pill_h` and whose end-caps have radius `pill_h / 2`.
+    /// Horizontal-capsule analogue of `draw_black_circle`. Composed
+    /// of the existing circle helper for both end-caps plus a
+    /// constant-height middle strip. End-cap radius = `pill_h / 2`;
+    /// the strip spans the cap-center-to-cap-center distance.
+    ///
+    /// Caller invariants (enforced at call site,
+    /// `tray.rs::press_pill`):
+    /// - `pill_w ≥ pill_h ≥ 2` (so radius = pill_h/2 ≥ 1 satisfies
+    ///   `draw_black_circle`'s `radius ≥ 1` precondition, and
+    ///   `pill_w - pill_h` doesn't underflow)
+    /// - The bounding box `[cx ± pill_w/2] × [cy ± pill_h/2]` lies
+    ///   entirely within `[0, width) × [0, pixels.len() / width)`
     pub fn draw_black_pill(
         pixels: &mut [u32],
         width: usize,
@@ -2607,38 +2592,84 @@ impl TutorApp {
         pill_w: usize,
         pill_h: usize,
     ) {
-        let radius = pill_h as isize / 2;
-        let half_w = pill_w as isize / 2;
-        let straight = half_w - radius; // half-length of the flat section
-        let r_outer = radius;
+        let radius = pill_h / 2;
+        let half_axis = (pill_w - pill_h) / 2;
+
+        // End-caps: full circles at the two cap centers. The columns
+        // at each cap-center belong to the strip; circles only fill
+        // the half OUTSIDE their cap-center column (no overlap).
+        Self::draw_black_circle(pixels, width, cx - half_axis, cy, radius);
+        Self::draw_black_circle(pixels, width, cx + half_axis, cy, radius);
+
+        // Middle strip: solid rectangle of height pill_h between the
+        // cap centers, with the same vertical AA edge band as the
+        // circles. Skip when the pill is square (caps already cover
+        // the whole shape).
+        if half_axis > 0 {
+            Self::darken_strip(pixels, width, cx, cy, half_axis, radius);
+        }
+    }
+
+    /// Horizontal-capsule analogue of `draw_white_circle`. Same shape
+    /// decomposition as `draw_black_pill`. Same caller invariants.
+    pub fn draw_white_pill(
+        pixels: &mut [u32],
+        width: usize,
+        cx: usize,
+        cy: usize,
+        pill_w: usize,
+        pill_h: usize,
+    ) {
+        let radius = pill_h / 2;
+        let half_axis = (pill_w - pill_h) / 2;
+
+        Self::draw_white_circle(pixels, width, cx - half_axis, cy, radius);
+        Self::draw_white_circle(pixels, width, cx + half_axis, cy, radius);
+
+        if half_axis > 0 {
+            Self::lighten_strip(pixels, width, cx, cy, half_axis, radius);
+        }
+    }
+
+    /// Constant-height horizontal strip between the pill's two cap
+    /// centers, lerped toward black with the same AA edge band the
+    /// circle uses. Strip x range is `[cx - half_axis, cx + half_axis]`
+    /// inclusive — the cap-center columns are owned by the strip so
+    /// the caps' inner halves don't double-darken the seam.
+    ///
+    /// Caller invariants (`draw_black_pill` derives these from its
+    /// own caller invariants):
+    /// - `radius ≥ 1`
+    /// - `cx - half_axis`, `cy - radius` ≥ 0
+    /// - `cx + half_axis < width`, `cy + radius < pixels.len() / width`
+    fn darken_strip(
+        pixels: &mut [u32],
+        width: usize,
+        cx: usize,
+        cy: usize,
+        half_axis: usize,
+        radius: usize,
+    ) {
+        let r_outer = radius as isize;
         let r_outer2 = r_outer * r_outer;
-        let r_inner = (radius - 1).max(0);
+        let r_inner = (radius - 1) as isize;
         let r_inner2 = r_inner * r_inner;
-        let edge_range = (r_outer2 - r_inner2).max(1);
+        let edge_range = r_outer2 - r_inner2;
 
         for dy in -r_outer..=r_outer {
             let y = cy as isize + dy;
-            if y < 0 || y >= (pixels.len() / width) as isize {
-                continue;
-            }
             let dy2 = dy * dy;
-            for dx in -half_w..=half_w {
-                let x = cx as isize + dx;
-                if x < 0 || x >= width as isize {
-                    continue;
-                }
-                // Stadium distance: clamp dx into the cap region
-                let cap_dx = (dx.abs() - straight).max(0);
-                let dist2 = cap_dx * cap_dx + dy2;
-                if dist2 > r_outer2 {
-                    continue;
-                }
-                let idx = y as usize * width + x as usize;
-                let inv_alpha = if dist2 <= r_inner2 {
-                    0u32
-                } else {
-                    (((dist2 - r_inner2) << 8) / edge_range) as u32
-                };
+            // Strip alpha depends only on |dy|: full-darken inside
+            // r_inner, AA fade out to r_outer.
+            let inv_alpha = if dy2 <= r_inner2 {
+                0
+            } else {
+                (((dy2 - r_inner2) << 8) / edge_range) as u32
+            };
+            let row_base = y as usize * width;
+            for dx in -(half_axis as isize)..=(half_axis as isize) {
+                let x = (cx as isize + dx) as usize;
+                let idx = row_base + x;
                 let mut pixel = pixels[idx] as u64;
                 pixel = (pixel | (pixel << 16)) & 0x0000FFFF0000FFFF;
                 pixel = (pixel | (pixel << 8)) & 0x00FF00FF00FF00FF;
@@ -2651,47 +2682,34 @@ impl TutorApp {
         }
     }
 
-    /// Stadium-shaped (pill) variant of `draw_white_circle`. Lerps
-    /// pixels toward white inside a rounded rectangle.
-    pub fn draw_white_pill(
+    /// Strip variant that lerps toward white. Mirror of `darken_strip`.
+    /// Same caller invariants.
+    fn lighten_strip(
         pixels: &mut [u32],
         width: usize,
         cx: usize,
         cy: usize,
-        pill_w: usize,
-        pill_h: usize,
+        half_axis: usize,
+        radius: usize,
     ) {
-        let radius = pill_h as isize / 2;
-        let half_w = pill_w as isize / 2;
-        let straight = half_w - radius;
-        let r_outer = radius;
+        let r_outer = radius as isize;
         let r_outer2 = r_outer * r_outer;
-        let r_inner = (radius - 1).max(0);
+        let r_inner = (radius - 1) as isize;
         let r_inner2 = r_inner * r_inner;
-        let edge_range = (r_outer2 - r_inner2).max(1);
+        let edge_range = r_outer2 - r_inner2;
 
         for dy in -r_outer..=r_outer {
             let y = cy as isize + dy;
-            if y < 0 || y >= (pixels.len() / width) as isize {
-                continue;
-            }
             let dy2 = dy * dy;
-            for dx in -half_w..=half_w {
-                let x = cx as isize + dx;
-                if x < 0 || x >= width as isize {
-                    continue;
-                }
-                let cap_dx = (dx.abs() - straight).max(0);
-                let dist2 = cap_dx * cap_dx + dy2;
-                if dist2 > r_outer2 {
-                    continue;
-                }
-                let idx = y as usize * width + x as usize;
-                let inv_alpha = if dist2 <= r_inner2 {
-                    0u64
-                } else {
-                    (((dist2 - r_inner2) << 8) / edge_range) as u64
-                };
+            let inv_alpha = if dy2 <= r_inner2 {
+                0u64
+            } else {
+                (((dy2 - r_inner2) << 8) / edge_range) as u64
+            };
+            let row_base = y as usize * width;
+            for dx in -(half_axis as isize)..=(half_axis as isize) {
+                let x = (cx as isize + dx) as usize;
+                let idx = row_base + x;
                 let pixel = pixels[idx] as u64;
                 let mut p = (pixel | (pixel << 16)) & 0x0000FFFF0000FFFF;
                 p = (p | (p << 8)) & 0x00FF00FF00FF00FF;
@@ -2701,137 +2719,6 @@ impl TutorApp {
                 let mut narrowed = (result | (result >> 8)) & 0x0000FFFF0000FFFF;
                 narrowed = narrowed | (narrowed >> 16);
                 pixels[idx] = (narrowed as u32) | 0xFF000000;
-            }
-        }
-    }
-
-    /// Add or subtract colour from an anti-aliased circle region
-    /// Used for the green overlay on the connectivity indicator
-    pub fn draw_filled_circle(
-        pixels: &mut [u32],
-        width: usize,
-        cx: usize,
-        cy: usize,
-        radius: usize,
-        colour: u32,
-        add: bool,
-    ) {
-        let r_outer = radius as isize;
-        let r_outer2 = r_outer * r_outer;
-        let r_inner = (radius - 1) as isize;
-        let r_inner2 = r_inner * r_inner;
-        let edge_range = r_outer2 - r_inner2;
-
-        // Widen the color once
-        let mut colour_wide = colour as u64;
-        colour_wide = (colour_wide | (colour_wide << 16)) & 0x0000FFFF0000FFFF;
-        colour_wide = (colour_wide | (colour_wide << 8)) & 0x00FF00FF00FF00FF;
-
-        for dy in -r_outer..=r_outer {
-            let y = cy as isize + dy;
-            if y < 0 || y >= (pixels.len() / width) as isize {
-                continue;
-            }
-            let dy2 = dy * dy;
-
-            for dx in -r_outer..=r_outer {
-                let dist2 = dx * dx + dy2;
-                if dist2 > r_outer2 {
-                    continue;
-                }
-                let x = cx as isize + dx;
-                if x < 0 || x >= width as isize {
-                    continue;
-                }
-                let idx = y as usize * width + x as usize;
-                // Calculate alpha: 255 inside, 0 at edge
-                let alpha = if dist2 <= r_inner2 {
-                    255
-                } else {
-                    (((r_outer2 - dist2) << 8) / edge_range) as u32
-                };
-
-                // Scale the color by alpha
-                let mut scaled_colour = colour_wide * alpha as u64;
-                scaled_colour = (scaled_colour >> 8) & 0x00FF00FF00FF00FF;
-
-                // Narrow back to u32
-                scaled_colour = (scaled_colour | (scaled_colour >> 8)) & 0x0000FFFF0000FFFF;
-                scaled_colour = scaled_colour | (scaled_colour >> 16);
-                let scaled_colour_u32 = scaled_colour as u32;
-
-                // Add or subtract directly on u32
-                pixels[idx] = if add {
-                    pixels[idx].wrapping_add(scaled_colour_u32)
-                } else {
-                    pixels[idx].wrapping_sub(scaled_colour_u32)
-                };
-            }
-        }
-    }
-
-    /// Add or subtract a single-pixel hairline circle (anti-aliased ring)
-    /// Used for the grey outline on offline indicators
-    /// Draws at the outer edge of the circle (same edge as draw_indicator_base AA zone)
-    fn draw_indicator_hairline(
-        pixels: &mut [u32],
-        width: usize,
-        cx: usize,
-        cy: usize,
-        radius: usize,
-        colour: u32,
-        add: bool,
-    ) {
-        let r_outer = radius as isize;
-        let r_outer2 = r_outer * r_outer;
-        let r_inner = (radius - 2) as isize;
-        let r_inner2 = r_inner * r_inner;
-        let edge_range = r_outer2 - r_inner2;
-
-        // Widen the color once
-        let mut colour_wide = colour as u64;
-        colour_wide = (colour_wide | (colour_wide << 16)) & 0x0000FFFF0000FFFF;
-        colour_wide = (colour_wide | (colour_wide << 8)) & 0x00FF00FF00FF00FF;
-
-        for dy in -r_outer..=r_outer {
-            let y = cy as isize + dy;
-            if y < 0 || y >= (pixels.len() / width) as isize {
-                continue;
-            }
-            let dy2 = dy * dy;
-
-            for dx in -r_outer..=r_outer {
-                let dist2 = dx * dx + dy2;
-                if dist2 > r_outer2 {
-                    continue;
-                }
-                let x = cx as isize + dx;
-                if x < 0 || x >= width as isize {
-                    continue;
-                }
-                let idx = y as usize * width + x as usize;
-                // Calculate alpha: 255 inside, 0 at edge
-                let alpha = if dist2 <= r_inner2 {
-                    continue;
-                } else {
-                    ((r_outer2 - dist2).min(dist2 - r_inner2) << 9) / edge_range
-                };
-
-                // Scale the color by alpha
-                let mut scaled_colour = colour_wide * alpha as u64;
-                scaled_colour = (scaled_colour >> 8) & 0x00FF00FF00FF00FF;
-
-                // Narrow back to u32
-                scaled_colour = (scaled_colour | (scaled_colour >> 8)) & 0x0000FFFF0000FFFF;
-                scaled_colour = scaled_colour | (scaled_colour >> 16);
-                let scaled_colour_u32 = scaled_colour as u32;
-
-                // Add or subtract directly on u32
-                pixels[idx] = if add {
-                    pixels[idx].wrapping_add(scaled_colour_u32)
-                } else {
-                    pixels[idx].wrapping_sub(scaled_colour_u32)
-                };
             }
         }
     }
