@@ -1073,6 +1073,7 @@ impl TrayApp {
                     true,
                 );
                 let cur_x = layout.target_cx - cur_w / 2.0;
+                let phon_colour = if drill_errored { 0xFFFF0000 } else { theme::SENTENCE_CURRENT };
                 text.draw_text_left_u32(
                     pixels,
                     width,
@@ -1081,7 +1082,7 @@ impl TrayApp {
                     layout.phoneme_cy,
                     layout.phoneme_font,
                     700,
-                    theme::SENTENCE_CURRENT,
+                    phon_colour,
                     "Bona Nova",
                     true,
                 );
@@ -1104,6 +1105,7 @@ impl TrayApp {
                         "Bona Nova",
                         true,
                     );
+                    let fut_colour = if drill_errored { 0xFFFF0000 } else { theme::SENTENCE_FUTURE };
                     text.draw_text_left_u32(
                         pixels,
                         width,
@@ -1112,7 +1114,7 @@ impl TrayApp {
                         layout.phoneme_cy,
                         layout.phoneme_font,
                         400,
-                        theme::SENTENCE_FUTURE,
+                        fut_colour,
                         "Bona Nova",
                         true,
                     );
@@ -1135,6 +1137,7 @@ impl TrayApp {
                         true,
                     );
                     let xl = x_right - w;
+                    let past_colour = if drill_errored { 0xFFFF0000 } else { theme::SENTENCE_PAST };
                     text.draw_text_left_u32(
                         pixels,
                         width,
@@ -1143,7 +1146,7 @@ impl TrayApp {
                         layout.phoneme_cy,
                         layout.phoneme_font,
                         400,
-                        theme::SENTENCE_PAST,
+                        past_colour,
                         "Bona Nova",
                         true,
                     );
@@ -1164,7 +1167,7 @@ impl TrayApp {
                     layout.hint_cy,
                     layout.hint_font,
                     700,
-                    word_colour, // red on error
+                    theme::TARGET_WORD, // always white
                     "Bona Nova",
                     false,
                 );
