@@ -8,8 +8,7 @@ use std::sync::mpsc;
 
 /// Cross-platform key event capture using the `rdev` crate.
 ///
-/// Uses `grab` mode to intercept home-row keys when enabled.
-/// When disabled, keys pass through to the OS normally.
+/// Uses `grab` mode to intercept home-row keys when enabled. When disabled, keys pass through to the OS normally.
 ///
 /// On macOS: requires Accessibility permissions.
 pub struct RdevInput {
@@ -19,8 +18,7 @@ pub struct RdevInput {
 impl RdevInput {
     /// Start in grab mode with an enable/disable flag.
     ///
-    /// When `enabled` is true: home-row keys are captured and suppressed.
-    /// When `enabled` is false: all keys pass through normally.
+    /// When `enabled` is true: home-row keys are captured and suppressed. When `enabled` is false: all keys pass through normally.
     pub fn start_grab(enabled: Arc<AtomicBool>) -> Result<Self, String> {
         let (tx, rx) = mpsc::channel();
 

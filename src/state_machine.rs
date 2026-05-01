@@ -1,21 +1,14 @@
-//! Chord detection: accumulates keys, fires on all-zero.
-//! Dual mode: per-hand (word held) vs all-zero (rolls).
+//! Chord detection: accumulates keys, fires on all-zero. Dual mode: per-hand (word held) vs all-zero (rolls).
 
 use crate::hand::{KeyDirection, KeyEvent};
 use crate::key_mask::KeyMask;
-use crate::preferences::chord_map::ChordKey;
+use crate::layout::chords::ChordKey;
 use crate::scan;
 
 /// Events emitted by the state machine.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
-    /// A chord fired. `space_held` is true when the word key was held
-    /// while the chord was being accumulated (→ phoneme lookup);
-    /// false for a free-standing chord (→ brief lookup).
-    /// `first_down` is the scancode that started this accumulation
-    /// cycle — used by the brief lookup to resolve ordered entries
-    /// (homophone splits etc.). `None` only when the accumulation
-    /// somehow fires with an empty record, which shouldn't happen.
+    /// A chord fired. `space_held` is true when the word key was held while the chord was being accumulated (→ phoneme lookup); false for a free-standing chord (→ brief lookup). `first_down` is the scancode that started this accumulation cycle — used by the brief lookup to resolve ordered entries (homophone splits etc.). `None` only when the accumulation somehow fires with an empty record, which shouldn't happen.
     Chord {
         key: ChordKey,
         space_held: bool,
@@ -25,13 +18,7 @@ pub enum Event {
     SpaceUp,
     /// Solo word tap (no fingers during tap) = backspace.
     Backspace,
-    /// Mod (right thumb) tapped cleanly during a word-held session —
-    /// pressed and released with no chord fingers held alongside it.
-    /// Fires on thumb-release, not on word-release: word is a
-    /// sub-session and the user may mod-tap multiple times inside it.
-    /// First tap enters number mode; subsequent taps emit a decimal
-    /// point. The interpreter makes that distinction based on its
-    /// mode state — the state machine only flags the gesture.
+    /// Mod (right thumb) tapped cleanly during a word-held session — pressed and released with no chord fingers held alongside it. Fires on thumb-release, not on word-release: word is a sub-session and the user may mod-tap multiple times inside it. First tap enters number mode; subsequent taps emit a decimal point. The interpreter makes that distinction based on its mode state — the state machine only flags the gesture.
     ModTap,
     /// Undo last phoneme (reserved for future gesture).
     UndoPhoneme,
@@ -45,35 +32,19 @@ use scan::{LEFT_MASK, RIGHT_MASK};
 
 /// State machine for rhe's chord pipeline.
 ///
-/// `live` = keys currently held (chord keys only; word is tracked by
-/// `word_held` since it has distinct firing semantics).
-/// `accum` = union of every key that went down since the last fire.
-/// Firing flushes the relevant bits from `accum`.
+/// `live` = keys currently held (chord keys only; word is tracked by `word_held` since it has distinct firing semantics). `accum` = union of every key that went down since the last fire. Firing flushes the relevant bits from `accum`.
 ///
-/// When `word_held` is true, each hand fires independently the moment
-/// that hand's `live` portion drops to zero (phoneme-per-hand).
-/// When `word_held` is false, both hands accumulate into a single chord
-/// that fires only when all chord keys release (rolls / briefs).
+/// When `word_held` is true, each hand fires independently the moment that hand's `live` portion drops to zero (phoneme-per-hand). When `word_held` is false, both hands accumulate into a single chord that fires only when all chord keys release (rolls / briefs).
 #[derive(Debug)]
 pub struct StateMachine {
     live: KeyMask,
     accum: KeyMask,
     word_held: bool,
-    /// Any chord-bearing activity during the current word-held session:
-    /// a finger press, a mod-tap fire, or a pre-held finger at the
-    /// moment word went down. On word-release, activity = SpaceUp
-    /// (commit whatever is pending); no activity + empty live =
-    /// Backspace (the solo-word-tap gesture).
+    /// Any chord-bearing activity during the current word-held session: a finger press, a mod-tap fire, or a pre-held finger at the moment word went down. On word-release, activity = SpaceUp (commit whatever is pending); no activity + empty live = Backspace (the solo-word-tap gesture).
     activity_during_word: bool,
-    /// Thumb is held alone right now (no non-thumb fingers alongside it)
-    /// during a word-held session. Set on thumb-down from a clean
-    /// state, or seeded at word-down if thumb was pre-held alone.
-    /// Cleared the moment any non-thumb finger goes down — that finger
-    /// pins the gesture to the phoneme path. On thumb-release while
-    /// still eligible, we emit `ModTap` and skip the chord fire.
+    /// Thumb is held alone right now (no non-thumb fingers alongside it) during a word-held session. Set on thumb-down from a clean state, or seeded at word-down if thumb was pre-held alone. Cleared the moment any non-thumb finger goes down — that finger pins the gesture to the phoneme path. On thumb-release while still eligible, we emit `ModTap` and skip the chord fire.
     mod_tap_eligible: bool,
-    /// Scancode of the first key pressed since the last fire. Used to
-    /// disambiguate ordered briefs. Reset when the accumulator clears.
+    /// Scancode of the first key pressed since the last fire. Used to disambiguate ordered briefs. Reset when the accumulator clears.
     first_down: Option<u8>,
 }
 
@@ -188,10 +159,8 @@ impl StateMachine {
     }
 
     /// Fire logic:
-    /// - Word held → fire this hand the moment its live portion drops to
-    ///   zero, carrying just that hand's accumulated bits.
-    /// - Word not held → fire a single combined chord when both hands go
-    ///   to zero, carrying everything accumulated since the last fire.
+    /// - Word held → fire this hand the moment its live portion drops to zero, carrying just that hand's accumulated bits.
+    /// - Word not held → fire a single combined chord when both hands go to zero, carrying everything accumulated since the last fire.
     fn try_fire(&mut self, released_scan: u8) -> Vec<Event> {
         if self.word_held {
             let hand_mask = match scan_hand_mask(released_scan) {
@@ -258,8 +227,7 @@ const BOTH_HANDS: KeyMask = KeyMask::from_raw([
     LEFT_MASK.as_raw()[3] | RIGHT_MASK.as_raw()[3],
 ]);
 
-/// Which hand mask owns this scancode? `None` for anything outside the
-/// chord keyspace.
+/// Which hand mask owns this scancode? `None` for anything outside the chord keyspace.
 fn scan_hand_mask(scan: u8) -> Option<KeyMask> {
     if LEFT_MASK.test(scan) {
         Some(LEFT_MASK)

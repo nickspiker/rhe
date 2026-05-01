@@ -1,17 +1,6 @@
 //! Random Wikipedia article extracts, for tutor practice text.
 //!
-//! Fetches plain-text summaries via the MediaWiki action API on
-//! demand — no cache. Two entry points:
-//!
-//! - `load_sentences()` — blocking fetch of one article's sentences.
-//!   Returns an empty Vec on network failure so the caller can fall
-//!   back to bundled text.
-//! - `SentenceStream` — double-buffered: fetches one article up-front
-//!   (the initial batch blocks), then pre-fetches the next in a
-//!   background thread. The tutor pulls the next batch on a
-//!   non-blocking poll when it finishes the current one, and that
-//!   pull kicks off the following prefetch. Steady state is one
-//!   always-prefetched article sitting ready.
+//! Fetches plain-text summaries via the MediaWiki action API on demand — no cache. `SentenceStream` is double-buffered: it fetches one article up-front (the initial batch blocks), then pre-fetches the next in a background thread. The tutor pulls the next batch on a non-blocking poll when it finishes the current one, and that pull kicks off the following prefetch. Steady state is one always-prefetched article sitting ready.
 
 use std::sync::mpsc;
 use std::time::Duration;
@@ -26,17 +15,11 @@ const ARTICLES_PER_FETCH: usize = 1;
 const MIN_WORDS_PER_SENTENCE: usize = 6;
 const MAX_WORDS_PER_SENTENCE: usize = 30;
 
-pub fn load_sentences() -> Vec<String> {
-    fetch_batch()
-}
-
-/// Perform one fetch and turn the result into cleaned sentences.
-/// Separate from the public entry so `SentenceStream` can reuse it
-/// from a worker thread.
+/// Perform one fetch and turn the result into cleaned sentences. `SentenceStream` reuses this from a worker thread.
 fn fetch_batch() -> Vec<String> {
     let extracts = match fetch_random_extracts(ARTICLES_PER_FETCH) {
         Ok(e) => e,
-        Err(e) => {
+        Err(_) => {
             // wiki fetch failed, fall back to bundled text
             return Vec::new();
         }
@@ -55,36 +38,28 @@ fn fetch_batch() -> Vec<String> {
     sentences
 }
 
-/// Double-buffered article stream. `initial()` blocks until the first
-/// batch is ready; at the same time a background thread starts
-/// prefetching the next. `try_next()` is non-blocking: if the
-/// prefetch is done, it returns the ready batch and kicks off the
-/// next prefetch; otherwise `None`.
+/// Double-buffered article stream. `initial()` blocks until the first batch is ready; at the same time a background thread starts prefetching the next. `try_next()` is non-blocking: if the prefetch is done, it returns the ready batch and kicks off the next prefetch; otherwise `None`.
 pub struct SentenceStream {
     rx: mpsc::Receiver<Vec<String>>,
     tx: mpsc::Sender<Vec<String>>,
 }
 
 impl SentenceStream {
-    /// Spawn the first fetch immediately. Call `initial()` to block
-    /// for it.
+    /// Spawn the first fetch immediately. Call `initial()` to block for it.
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel();
         spawn_fetch(tx.clone());
         Self { rx, tx }
     }
 
-    /// Block until the first batch arrives, then kick off the next
-    /// prefetch so it's ready by the time the tutor needs it.
+    /// Block until the first batch arrives, then kick off the next prefetch so it's ready by the time the tutor needs it.
     pub fn initial(&self) -> Vec<String> {
         let first = self.rx.recv().unwrap_or_default();
         spawn_fetch(self.tx.clone());
         first
     }
 
-    /// Non-blocking poll for the next prefetched batch. If one is
-    /// ready, returns it and immediately kicks off another fetch so
-    /// there's always exactly one prefetch in flight.
+    /// Non-blocking poll for the next prefetched batch. If one is ready, returns it and immediately kicks off another fetch so there's always exactly one prefetch in flight.
     pub fn try_next(&self) -> Option<Vec<String>> {
         let batch = self.rx.try_recv().ok()?;
         spawn_fetch(self.tx.clone());
@@ -98,10 +73,7 @@ fn spawn_fetch(tx: mpsc::Sender<Vec<String>>) {
     });
 }
 
-/// MediaWiki action API: one request returns N random article extracts.
-/// This is properly random (generator=random with grnlimit) — the per-call
-/// rest_v1/page/random/summary endpoint is CDN-cached and frequently
-/// repeats the same article across consecutive calls.
+/// MediaWiki action API: one request returns N random article extracts. This is properly random (generator=random with grnlimit) — the per-call rest_v1/page/random/summary endpoint is CDN-cached and frequently repeats the same article across consecutive calls.
 fn fetch_random_extracts(count: usize) -> Result<Vec<String>, String> {
     let url = format!(
         "https://en.wikipedia.org/w/api.php?\
@@ -124,9 +96,7 @@ fn fetch_random_extracts(count: usize) -> Result<Vec<String>, String> {
     }
 }
 
-/// Strip parenthetical/bracket content (pronunciations, dates, IPA),
-/// drop non-ASCII-letter chars aside from basic punctuation, collapse
-/// whitespace. Output is plain lowercase-friendly English prose.
+/// Strip parenthetical/bracket content (pronunciations, dates, IPA), drop non-ASCII-letter chars aside from basic punctuation, collapse whitespace. Output is plain lowercase-friendly English prose.
 fn clean_extract(text: &str) -> String {
     let without_brackets = strip_nested_brackets(text);
     let kept: String = without_brackets
@@ -206,10 +176,7 @@ fn is_suitable(sentence: &str) -> bool {
     alpha * 100 / total >= 70
 }
 
-/// Finds every `"<key>": "..."` string value in the JSON, in order.
-/// Handles the escapes we see in Wikipedia output (\", \\, \n, \t, \/,
-/// \uXXXX). Not a general JSON parser — just enough for flat string
-/// fields nested inside the `pages` object.
+/// Finds every `"<key>": "..."` string value in the JSON, in order. Handles the escapes we see in Wikipedia output (\", \\, \n, \t, \/, \uXXXX). Not a general JSON parser — just enough for flat string fields nested inside the `pages` object.
 fn extract_all_json_strings(json: &str, key: &str) -> Vec<String> {
     let needle = format!("\"{}\":", key);
     let mut results = Vec::new();
@@ -233,9 +200,7 @@ fn extract_all_json_strings(json: &str, key: &str) -> Vec<String> {
     results
 }
 
-/// Given the contents of a JSON string starting AFTER the opening `"`,
-/// return the unescaped value and the number of bytes consumed (up to
-/// but not including the closing `"`).
+/// Given the contents of a JSON string starting AFTER the opening `"`, return the unescaped value and the number of bytes consumed (up to but not including the closing `"`).
 fn parse_json_string(s: &str) -> (Option<String>, usize) {
     let mut chars = s.char_indices();
     let mut out = String::new();

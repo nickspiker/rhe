@@ -1,25 +1,22 @@
 //! Converts state machine events into output actions (emit text, backspace, suffix).
 
-use crate::preferences::chord_map::{BriefTable, Phoneme, PhonemeTable};
+use crate::layout::chords::{BriefTable, Phoneme, PhonemeTable};
 use crate::state_machine::Event;
-use crate::table_gen::PhonemeDictionary;
+use crate::phoneme_dict::PhonemeDictionary;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
 /// What to emit when a phoneme buffer doesn't resolve to a dictionary word.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FallbackMode {
-    /// Approximate English grapheme spelling (e.g. "muhlee"). Always ASCII,
-    /// always representable in any keyboard layout. Default.
+    /// Approximate English grapheme spelling (e.g. "muhlee"). Always ASCII, always representable in any keyboard layout. Default.
     Autospell,
-    /// Raw IPA characters (e.g. "mɛliː"). Accurate phonetically but
-    /// requires unicode input or a compatible keymap on the output side.
+    /// Raw IPA characters (e.g. "mɛliː"). Accurate phonetically but requires unicode input or a compatible keymap on the output side.
     Ipa,
 }
 
 impl FallbackMode {
-    /// Resolve from the `RHE_FALLBACK` env var. Defaults to `Autospell`.
-    /// Values: "ipa" or "phonetic" → Ipa; anything else → Autospell.
+    /// Resolve from the `RHE_FALLBACK` env var. Defaults to `Autospell`. Values: "ipa" or "phonetic" → Ipa; anything else → Autospell.
     pub fn from_env() -> Self {
         match std::env::var("RHE_FALLBACK").as_deref() {
             Ok("ipa") | Ok("phonetic") | Ok("IPA") => Self::Ipa,
@@ -41,9 +38,7 @@ impl FallbackMode {
         }
     }
 
-    /// Shared handle seeded from `RHE_FALLBACK`. The tray and interpreter
-    /// both hold a clone of this `Arc` so the menu can flip the mode at
-    /// runtime without restarting the engine.
+    /// Shared handle seeded from `RHE_FALLBACK`. The tray and interpreter both hold a clone of this `Arc` so the menu can flip the mode at runtime without restarting the engine.
     pub fn new_shared_from_env() -> Arc<AtomicU8> {
         Arc::new(AtomicU8::new(Self::from_env().as_u8()))
     }
@@ -56,56 +51,16 @@ pub enum Action {
     Emit(String),
     /// Delete N characters. Produced by Backspace over a plain emit.
     Backspace(usize),
-    /// Backspace the `before` text, emit `after`. Covers both
-    /// suffixes (before = trailing space " ", after = suffix text)
-    /// and number-form transforms (before = previous emission,
-    /// after = new form output). The before field is what makes
-    /// undo reversible — Backspace swaps roles to restore.
+    /// Backspace the `before` text, emit `after`. Covers both suffixes (before = trailing space " ", after = suffix text) and number-form transforms (before = previous emission, after = new form output). The before field is what makes undo reversible — Backspace swaps roles to restore.
     Replace { before: String, after: String },
 }
 
-/// Map a brief-mode chord (word not held, left-hand only) to a
-/// number-form if it matches one of the form slots. Returns `None`
-/// for any chord that isn't a form trigger — caller falls through
-/// to the regular brief / English-suffix path.
-///
-/// Slot ranking mirrors the existing SUFFIXES table's bench-measured
-/// effort order: fastest single-finger chords go to the most common
-/// forms.
-///
-/// Pub so the tutor's adaptive cell labels can reuse the same
-/// chord→form mapping when `MODE_FLAG_HAS_NUMBER` is set.
-pub fn chord_to_form(
-    key: crate::preferences::chord_map::ChordKey,
-) -> Option<crate::preferences::number_forms::Form> {
-    use crate::preferences::number_forms::Form;
-    if key.right_bits() != 0 || key.has_mod() {
-        return None;
-    }
-    match key.left_bits() {
-        0b0001 => Some(Form::SpelledCardinal), // L-idx  (fastest alone, 668ms)
-        0b0100 => Some(Form::Ordinal),         // L-ring (703ms)
-        0b1000 => Some(Form::Multiplier),      // L-pinky (721ms)
-        0b0010 => Some(Form::Group),           // L-mid  (739ms)
-        0b0110 => Some(Form::Fraction),        // L-mid + L-ring (754ms)
-        0b0011 => Some(Form::Prefix),          // L-idx + L-mid  (843ms)
-        _ => None,
-    }
-}
-
-/// Bit positions in the shared mode-flags atomic. The interpreter
-/// writes on every mode transition; the tutor reads each frame to
-/// pick adaptive cell labels (digits/symbols vs phonemes/briefs vs
-/// number-form transforms). Pack future sub-modes into more bits.
+/// Bit positions in the shared mode-flags atomic. The interpreter writes on every mode transition; the tutor reads each frame to pick adaptive cell labels (digits/symbols vs phonemes/briefs vs number-form transforms). Pack future sub-modes into more bits.
 pub const MODE_FLAG_NUMBER: u8 = 1 << 0;
-/// `last_number` armed: the most recent committed token is still a
-/// pure-integer the user can transform with an L-hand chord.
-/// Brief-mode L-hand cells re-label to form names while this is set.
+/// `last_number` armed: the most recent committed token is still a pure-integer the user can transform with an L-hand chord. Brief-mode L-hand cells re-label to form names while this is set.
 pub const MODE_FLAG_HAS_NUMBER: u8 = 1 << 1;
 
-/// Allocate a fresh shared mode-flags atomic. Hand a clone to the
-/// interpreter via `with_fallback_and_modes` and another clone to
-/// any reader (the tutor window).
+/// Allocate a fresh shared mode-flags atomic. Hand a clone to the interpreter via `with_fallback_and_modes` and another clone to any reader (the tutor window).
 pub fn new_shared_mode_flags() -> Arc<AtomicU8> {
     Arc::new(AtomicU8::new(0))
 }
@@ -113,22 +68,13 @@ pub fn new_shared_mode_flags() -> Arc<AtomicU8> {
 /// Which sub-session of word-held the user is currently in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
-    /// Default: Chord events look up phonemes (word held) or briefs
-    /// (word not held). Word release commits the phoneme buffer.
+    /// Default: Chord events look up phonemes (word held) or briefs (word not held). Word release commits the phoneme buffer.
     Normal,
-    /// Entered via a mod-tap during a word-held session. Chord events
-    /// emit digits or symbols (if mod is also in the chord). Another
-    /// mod-tap emits a decimal point. Word release emits a trailing
-    /// space and returns to Normal.
+    /// Entered via a mod-tap during a word-held session. Chord events emit digits or symbols (if mod is also in the chord). Another mod-tap emits a decimal point. Word release emits a trailing space and returns to Normal.
     Number,
 }
 
-/// One undo step. Backspace pops the top of `emit_history` and
-/// inverts the corresponding emission: an `Emit` becomes a raw
-/// backspace over its text; a `Replace` swaps `before`/`after` so
-/// the prior visible state is restored. `prior_number_state`
-/// snapshots the number-form context from before the emission so
-/// undo can also re-arm or clear it.
+/// One undo step. Backspace pops the top of `emit_history` and inverts the corresponding emission: an `Emit` becomes a raw backspace over its text; a `Replace` swaps `before`/`after` so the prior visible state is restored. `prior_number_state` snapshots the number-form context from before the emission so undo can also re-arm or clear it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum HistoryEntry {
     Emit {
@@ -142,11 +88,7 @@ enum HistoryEntry {
     },
 }
 
-/// Tracks the state needed for number-form transforms after a
-/// number-mode commit. `digits` feeds form generators; `current` is
-/// whatever's currently visible on screen for this number (digits+
-/// space initially, then the previous form's output after each
-/// transform) and serves as the `before` text of the next Replace.
+/// Tracks the state needed for number-form transforms after a number-mode commit. `digits` feeds form generators; `current` is whatever's currently visible on screen for this number (digits+ space initially, then the previous form's output after each transform) and serves as the `before` text of the next Replace.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct NumberContext {
     digits: String,
@@ -155,73 +97,28 @@ struct NumberContext {
 
 /// Converts state machine events into output actions.
 ///
-/// Chord with space_held=true: look up phoneme, buffer it.
-/// Chord with space_held=false: look up brief, emit immediately.
-/// SpaceUp: look up buffered phonemes in dictionary, emit word.
+/// Chord with space_held=true: look up phoneme, buffer it. Chord with space_held=false: look up brief, emit immediately. SpaceUp: look up buffered phonemes in dictionary, emit word.
 pub struct Interpreter {
     phonemes: PhonemeTable,
     briefs: BriefTable,
     dictionary: PhonemeDictionary,
     buffer: Vec<Phoneme>,
-    /// Stack of undoable emissions. Each entry carries enough info
-    /// to reverse the visible change AND restore prior number-form
-    /// context. `Backspace` pops one entry per press.
+    /// Stack of undoable emissions. Each entry carries enough info to reverse the visible change AND restore prior number-form context. `Backspace` pops one entry per press.
     emit_history: Vec<HistoryEntry>,
     fallback: Arc<AtomicU8>,
-    /// Shared bitfield mirroring `mode` for outside readers (the
-    /// tutor). Written on every transition in `process`; readers do
-    /// a single relaxed load. See `MODE_FLAG_*`.
+    /// Shared bitfield mirroring `mode` for outside readers (the tutor). Written on every transition in `process`; readers do a single relaxed load. See `MODE_FLAG_*`.
     mode_flags: Arc<AtomicU8>,
     mode: Mode,
-    /// Digits typed in the current number-mode session. Appended on
-    /// each plain-digit emission, cleared on symbol / decimal /
-    /// spelled-digit (any non-integer emission invalidates "this was
-    /// a pure integer"). At word-release, if non-empty, a
-    /// `NumberContext` is armed and the buffer is cleared.
+    /// Digits typed in the current number-mode session. Appended on each plain-digit emission, cleared on symbol / decimal / spelled-digit (any non-integer emission invalidates "this was a pure integer"). At word-release, if non-empty, a `NumberContext` is armed and the buffer is cleared.
     number_buffer: String,
-    /// Active number-form context. Armed on a pure-integer commit
-    /// from number mode, consumed by non-form emissions that clear
-    /// it. Form-transform chords use `digits` as input and update
-    /// `current` on success so successive transforms replace in
-    /// place.
+    /// Active number-form context. Armed on a pure-integer commit from number mode, consumed by non-form emissions that clear it. Form-transform chords use `digits` as input and update `current` on success so successive transforms replace in place.
     last_number: Option<NumberContext>,
-    /// True once a phoneme has been buffered during this word session.
-    /// Stays true even if all phonemes are undone. Prevents ModTap
-    /// from entering number mode after phoneme undo-to-empty.
+    /// True once a phoneme has been buffered during this word session. Stays true even if all phonemes are undone. Prevents ModTap from entering number mode after phoneme undo-to-empty.
     phoneme_session: bool,
 }
 
 impl Interpreter {
-    /// Seed the fallback from the `RHE_FALLBACK` env var. The returned
-    /// interpreter owns its own atomic — no runtime switching from outside.
-    pub fn new(phonemes: PhonemeTable, briefs: BriefTable, dictionary: PhonemeDictionary) -> Self {
-        Self::with_fallback_and_modes(
-            phonemes,
-            briefs,
-            dictionary,
-            FallbackMode::new_shared_from_env(),
-            new_shared_mode_flags(),
-        )
-    }
-
-    pub fn with_fallback(
-        phonemes: PhonemeTable,
-        briefs: BriefTable,
-        dictionary: PhonemeDictionary,
-        fallback: Arc<AtomicU8>,
-    ) -> Self {
-        Self::with_fallback_and_modes(
-            phonemes,
-            briefs,
-            dictionary,
-            fallback,
-            new_shared_mode_flags(),
-        )
-    }
-
-    /// Build with both shared atomics handed in. The mode_flags arc is
-    /// the tutor's window into number/symbol/etc. sub-modes — clones
-    /// of it can be given to any number of readers.
+    /// Build with both shared atomics handed in. The mode_flags arc is the tutor's window into number/symbol/etc. sub-modes — clones of it can be given to any number of readers.
     pub fn with_fallback_and_modes(
         phonemes: PhonemeTable,
         briefs: BriefTable,
@@ -244,18 +141,7 @@ impl Interpreter {
         }
     }
 
-    /// Currently inside a word-held number sub-session? The tutor uses
-    /// this to swap keyboard labels (digits/symbols vs phonemes/briefs)
-    /// so the drill shows what the next press actually emits.
-    pub fn in_number_mode(&self) -> bool {
-        self.mode == Mode::Number
-    }
-
-    /// Recompute the shared mode-flags bitfield from `mode` +
-    /// `last_number` and publish it for outside readers. Called
-    /// once per `process()` regardless of the path taken — a single
-    /// relaxed store is cheap, simpler than threading a write call
-    /// onto every internal mutation site.
+    /// Recompute the shared mode-flags bitfield from `mode` + `last_number` and publish it for outside readers. Called once per `process()` regardless of the path taken — a single relaxed store is cheap, simpler than threading a write call onto every internal mutation site.
     fn write_mode_flags(&self) {
         let mut bits = 0u8;
         if self.mode == Mode::Number {
@@ -267,9 +153,7 @@ impl Interpreter {
         self.mode_flags.store(bits, Ordering::Relaxed);
     }
 
-    /// Push a plain Emit entry onto history, snapshotting the
-    /// number-form context. Helper so every emission path records
-    /// undo info consistently.
+    /// Push a plain Emit entry onto history, snapshotting the number-form context. Helper so every emission path records undo info consistently.
     fn record_emit(&mut self, text: String) -> Action {
         let prior_number_state = self.last_number.clone();
         self.emit_history.push(HistoryEntry::Emit {
@@ -312,17 +196,17 @@ impl Interpreter {
                     //   mod, first_down = thumb → symbol ("+")
                     //   mod, first_down = finger → spelled word ("five")
                     if !key.has_mod() {
-                        return crate::preferences::number_data::chord_to_digit(*key).map(|c| {
+                        return crate::layout::numbers::chord_to_digit(*key).map(|c| {
                             self.number_buffer.push(c);
                             self.record_emit(c.to_string())
                         });
                     } else if *first_down == Some(crate::scan::R_THUMB) {
                         self.number_buffer.clear();
-                        return crate::preferences::number_data::chord_to_symbol(*key)
+                        return crate::layout::numbers::chord_to_symbol(*key)
                             .map(|c| self.record_emit(c.to_string()));
                     } else {
                         self.number_buffer.clear();
-                        return crate::preferences::number_data::chord_to_digit_word(*key)
+                        return crate::layout::numbers::chord_to_digit_word(*key)
                             .map(|s| self.record_emit(s.to_string()));
                     }
                 }
@@ -335,10 +219,10 @@ impl Interpreter {
                     None
                 } else {
                     // Form transform check.
-                    if let Some(form) = chord_to_form(*key) {
+                    if let Some(form) = crate::layout::number_forms::Form::from_chord(*key) {
                         if let Some(ctx) = self.last_number.clone() {
                             if let Some(out) =
-                                crate::preferences::number_forms::apply(form, &ctx.digits)
+                                crate::layout::number_forms::apply(form, &ctx.digits)
                             {
                                 let after = format!("{} ", out);
                                 let before = ctx.current.clone();
@@ -498,11 +382,20 @@ impl Interpreter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::preferences::chord_map::ChordKey;
+    use crate::layout::chords::{ChordKey, Phoneme};
 
     fn chord_event(right: u8, left: u8, modkey: bool, space: bool) -> Event {
         Event::Chord {
             key: ChordKey::from_packed(right, left, modkey),
+            space_held: space,
+            first_down: None,
+        }
+    }
+
+    /// Press the canonical chord for `phoneme` with `space_held = space`. Pulls bits from `Phoneme::chord_key`, so chord-map reassignments propagate without retouching the tests.
+    fn phoneme_event(phoneme: Phoneme, space: bool) -> Event {
+        Event::Chord {
+            key: phoneme.chord_key(),
             space_held: space,
             first_down: None,
         }
@@ -518,19 +411,22 @@ mod tests {
 
         let dict = PhonemeDictionary::build("CAT  K AE1 T\nTHE  DH AH0\n", "the 1000\ncat 500\n");
 
-        Interpreter::new(phonemes, briefs, dict)
+        Interpreter::with_fallback_and_modes(
+            phonemes,
+            briefs,
+            dict,
+            FallbackMode::new_shared_from_env(),
+            new_shared_mode_flags(),
+        )
     }
 
     #[test]
     fn phoneme_mode_cat() {
         let mut interp = setup();
 
-        // k = right index+middle (0011), space held
-        interp.process(&chord_event(0b0011, 0, false, true));
-        // æ = left index+middle (0011), space held
-        interp.process(&chord_event(0, 0b0011, false, true));
-        // t = right index (0001), space held
-        interp.process(&chord_event(0b0001, 0, false, true));
+        interp.process(&phoneme_event(Phoneme::K, true));
+        interp.process(&phoneme_event(Phoneme::Ae, true));
+        interp.process(&phoneme_event(Phoneme::T, true));
 
         let action = interp.process(&Event::SpaceUp).unwrap();
         assert_eq!(action, Action::Emit("cat ".to_string()));

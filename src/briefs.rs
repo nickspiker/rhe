@@ -1,20 +1,15 @@
 //! Loads brief and suffix tables from compile-time const arrays.
 
-use super::briefs_data::BRIEFS;
-use super::chord_map::{BriefTable, ChordKey};
-use super::ordered_briefs_data::ORDERED_BRIEFS;
-use super::suffixes_data::SUFFIXES;
+use crate::layout::briefs::BRIEFS;
+use crate::layout::chords::{BriefTable, ChordKey};
+use crate::layout::ordered_briefs::ORDERED_BRIEFS;
+use crate::layout::suffixes::SUFFIXES;
 
-/// Build the brief table from the compile-time BRIEFS / ORDERED_BRIEFS /
-/// SUFFIXES arrays.
+/// Build the brief table from the compile-time BRIEFS / ORDERED_BRIEFS / SUFFIXES arrays.
 ///
-/// Regular briefs store "word " (with trailing space).
-/// Suffixes store "\x01suffix " — the \x01 prefix signals the interpreter
-/// to backspace the previous trailing space before appending.
+/// Regular briefs store "word " (with trailing space). Suffixes store "\x01suffix " — the \x01 prefix signals the interpreter to backspace the previous trailing space before appending.
 ///
-/// Ordered briefs load **first** so the chord-slot lockout is active
-/// by the time unordered briefs try to insert. A BRIEFS entry aimed at
-/// an ordered-claimed chord is silently dropped by `BriefTable::insert`.
+/// Ordered briefs load **first** so the chord-slot lockout is active by the time unordered briefs try to insert. A BRIEFS entry aimed at an ordered-claimed chord is silently dropped by `BriefTable::insert`.
 pub fn load_briefs() -> BriefTable {
     let mut table = BriefTable::new();
 

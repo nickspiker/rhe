@@ -18,8 +18,7 @@ pub const HIT_AVATAR: u8 = 7;
 pub struct TutorApp;
 
 impl TutorApp {
-    /// Calculate window control bounds without drawing.
-    /// Returns (start, crossings, button_x_start, button_height) needed for edges/hairlines.
+    /// Calculate window control bounds without drawing. Returns (start, crossings, button_x_start, button_height) needed for edges/hairlines.
     pub fn window_controls_bounds(
         window_width: u32,
         window_height: u32,
@@ -1633,8 +1632,7 @@ impl TutorApp {
         }
     }
 
-    /// Generate textbox glow mask by blurring textbox_mask left/right and knocking out center
-    /// glow_colour is 0x00RRGGBB format (no alpha), or 0x00010101 for white/gray
+    /// Generate textbox glow mask by blurring textbox_mask left/right and knocking out center glow_colour is 0x00RRGGBB format (no alpha), or 0x00010101 for white/gray
     pub fn apply_textbox_glow(
         pixels: &mut [u32],
         textbox_mask: &[u8],
@@ -2268,10 +2266,7 @@ impl TutorApp {
         }
     }
 
-    /// Photon-logo-style text render: black foreground glyph with a
-    /// soft bright horizontal smear behind it. Composites into the
-    /// pixel buffer at (`cx`, `cy`). Used for brief-mode word display
-    /// in the tutor's phoneme strip.
+    /// Photon-logo-style text render: black foreground glyph with a soft bright horizontal smear behind it. Composites into the pixel buffer at (`cx`, `cy`). Used for brief-mode word display in the tutor's phoneme strip.
     pub fn draw_logo_text(
         pixels: &mut [u32],
         text_renderer: &mut crate::tutor::ui::text_rasterizing::TextRenderer,
@@ -2377,14 +2372,12 @@ impl TutorApp {
 
         let mut prev = glow_buffer[0];
         for i in 1..glow_buffer.len() {
-            prev =
-                (((glow_buffer[i] as u16 + prev as u16 * 3) >> 2) as u8).max(glow_buffer[i]);
+            prev = (((glow_buffer[i] as u16 + prev as u16 * 3) >> 2) as u8).max(glow_buffer[i]);
             glow_buffer[i] = prev;
         }
         let mut prev = glow_buffer[glow_buffer.len() - 1];
         for i in (0..glow_buffer.len()).rev() {
-            prev =
-                (((glow_buffer[i] as u16 + prev as u16 * 3) >> 2) as u8).max(glow_buffer[i]);
+            prev = (((glow_buffer[i] as u16 + prev as u16 * 3) >> 2) as u8).max(glow_buffer[i]);
             glow_buffer[i] = prev;
         }
 
@@ -2420,7 +2413,8 @@ impl TutorApp {
             let g = (((p >> 8) & 0xFF) as u8).saturating_add(grey);
             let b = (p & 0xFF) as u8;
             let b = b.saturating_add(grey);
-            pixels[pixel_idx] = ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
+            pixels[pixel_idx] =
+                ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
         }
 
         // Foreground glyph — colour-parameterised for error feedback.
@@ -2450,19 +2444,16 @@ impl TutorApp {
             let g = (((p >> 8) & 0xFF) as u8).saturating_add(grey);
             let b = (p & 0xFF) as u8;
             let b = b.saturating_add(grey);
-            pixels[pixel_idx] = ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
+            pixels[pixel_idx] =
+                ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
         }
     }
 
-    /// Draw an anti-aliased circle blending the underlying pixels
-    /// toward black. Used as the press-circle indicator on chord
-    /// cells (and as the cap halves of `draw_black_pill`).
+    /// Draw an anti-aliased circle blending the underlying pixels toward black. Used as the press-circle indicator on chord cells (and as the cap halves of `draw_black_pill`).
     ///
-    /// Caller invariants (enforced at call site, see
-    /// `tray.rs::press_circle` / `press_pill`):
+    /// Caller invariants (enforced at call site, see `tray.rs::press_circle` / `press_pill`):
     /// - `radius ≥ 1` (`radius - 1` is computed as usize)
-    /// - `cx - radius`, `cy - radius` ≥ 0 (no usize underflow on
-    ///   `(cx as isize + dx) as usize` for dx = -radius)
+    /// - `cx - radius`, `cy - radius` ≥ 0 (no usize underflow on `(cx as isize + dx) as usize` for dx = -radius)
     /// - `cx + radius < width`, `cy + radius < pixels.len() / width`
     pub fn draw_black_circle(
         pixels: &mut [u32],
@@ -2510,13 +2501,9 @@ impl TutorApp {
         }
     }
 
-    /// Mirror of `draw_black_circle` that lerps the underlying pixel
-    /// toward white (0xFFFFFF) instead of black at the centre, with
-    /// the same AA edge band.
+    /// Mirror of `draw_black_circle` that lerps the underlying pixel toward white (0xFFFFFF) instead of black at the centre, with the same AA edge band.
     ///
-    /// Lerp identity: `result = pixel·(1−α) + 255·α`. Rearranged as
-    /// `result = 255 − (255−pixel)·(1−α)`, which only needs one
-    /// widened multiply per pixel — same shape as the black version.
+    /// Lerp identity: `result = pixel·(1−α) + 255·α`. Rearranged as `result = 255 − (255−pixel)·(1−α)`, which only needs one widened multiply per pixel — same shape as the black version.
     ///
     /// Same caller invariants as `draw_black_circle`.
     pub fn draw_white_circle(
@@ -2573,18 +2560,11 @@ impl TutorApp {
         }
     }
 
-    /// Horizontal-capsule analogue of `draw_black_circle`. Composed
-    /// of the existing circle helper for both end-caps plus a
-    /// constant-height middle strip. End-cap radius = `pill_h / 2`;
-    /// the strip spans the cap-center-to-cap-center distance.
+    /// Horizontal-capsule analogue of `draw_black_circle`. Composed of the existing circle helper for both end-caps plus a constant-height middle strip. End-cap radius = `pill_h / 2`; the strip spans the cap-center-to-cap-center distance.
     ///
-    /// Caller invariants (enforced at call site,
-    /// `tray.rs::press_pill`):
-    /// - `pill_w ≥ pill_h ≥ 2` (so radius = pill_h/2 ≥ 1 satisfies
-    ///   `draw_black_circle`'s `radius ≥ 1` precondition, and
-    ///   `pill_w - pill_h` doesn't underflow)
-    /// - The bounding box `[cx ± pill_w/2] × [cy ± pill_h/2]` lies
-    ///   entirely within `[0, width) × [0, pixels.len() / width)`
+    /// Caller invariants (enforced at call site, `tray.rs::press_pill`):
+    /// - `pill_w ≥ pill_h ≥ 2` (so radius = pill_h/2 ≥ 1 satisfies `draw_black_circle`'s `radius ≥ 1` precondition, and `pill_w - pill_h` doesn't underflow)
+    /// - The bounding box `[cx ± pill_w/2] × [cy ± pill_h/2]` lies entirely within `[0, width) × [0, pixels.len() / width)`
     pub fn draw_black_pill(
         pixels: &mut [u32],
         width: usize,
@@ -2611,8 +2591,7 @@ impl TutorApp {
         }
     }
 
-    /// Horizontal-capsule analogue of `draw_white_circle`. Same shape
-    /// decomposition as `draw_black_pill`. Same caller invariants.
+    /// Horizontal-capsule analogue of `draw_white_circle`. Same shape decomposition as `draw_black_pill`. Same caller invariants.
     pub fn draw_white_pill(
         pixels: &mut [u32],
         width: usize,
@@ -2632,14 +2611,9 @@ impl TutorApp {
         }
     }
 
-    /// Constant-height horizontal strip between the pill's two cap
-    /// centers, lerped toward black with the same AA edge band the
-    /// circle uses. Strip x range is `[cx - half_axis, cx + half_axis]`
-    /// inclusive — the cap-center columns are owned by the strip so
-    /// the caps' inner halves don't double-darken the seam.
+    /// Constant-height horizontal strip between the pill's two cap centers, lerped toward black with the same AA edge band the circle uses. Strip x range is `[cx - half_axis, cx + half_axis]` inclusive — the cap-center columns are owned by the strip so the caps' inner halves don't double-darken the seam.
     ///
-    /// Caller invariants (`draw_black_pill` derives these from its
-    /// own caller invariants):
+    /// Caller invariants (`draw_black_pill` derives these from its own caller invariants):
     /// - `radius ≥ 1`
     /// - `cx - half_axis`, `cy - radius` ≥ 0
     /// - `cx + half_axis < width`, `cy + radius < pixels.len() / width`
@@ -2683,8 +2657,7 @@ impl TutorApp {
         }
     }
 
-    /// Strip variant that lerps toward white. Mirror of `darken_strip`.
-    /// Same caller invariants.
+    /// Strip variant that lerps toward white. Mirror of `darken_strip`. Same caller invariants.
     fn lighten_strip(
         pixels: &mut [u32],
         width: usize,
@@ -2727,21 +2700,11 @@ impl TutorApp {
     /// Unified avatar drawing function
     /// - hit_test_map: Some = fill with HIT_AVATAR, None = skip hit testing
     /// - ring_colour: Some = draw status ring, None = no ring
-    /// - brighten: brighten avatar when file hovering (self avatar only)
-    /// avatar_scaled must be pre-scaled to diameter×diameter (diameter = radius * 2)
+    /// - brighten: brighten avatar when file hovering (self avatar only) avatar_scaled must be pre-scaled to diameter×diameter (diameter = radius * 2)
     ///
-    /// Coordinates are isize to support scrolling (can be partially/fully off-screen).
-    /// Computes intersection of avatar bounds with screen - loop bounds prove safety.
-    /// `straight_alpha = false`: forces alpha to 0xFF on every written
-    /// pixel — the photon-window mode where the destination is an
-    /// opaque surface and AA pixels at the outer fringe are composited
-    /// against the existing buffer contents.
+    /// Coordinates are isize to support scrolling (can be partially/fully off-screen). Computes intersection of avatar bounds with screen - loop bounds prove safety. `straight_alpha = false`: forces alpha to 0xFF on every written pixel — the photon-window mode where the destination is an opaque surface and AA pixels at the outer fringe are composited against the existing buffer contents.
     ///
-    /// `straight_alpha = true`: writes proper non-premultiplied alpha
-    /// at the AA fringes (0 outside the ring, fading up to 0xFF
-    /// inside) so the result can be handed to a tray-icon API that
-    /// expects real alpha. Logo-only pixels and the solid ring still
-    /// write 0xFF; only the outer AA pixels carry sub-255 alpha.
+    /// `straight_alpha = true`: writes proper non-premultiplied alpha at the AA fringes (0 outside the ring, fading up to 0xFF inside) so the result can be handed to a tray-icon API that expects real alpha. Logo-only pixels and the solid ring still write 0xFF; only the outer AA pixels carry sub-255 alpha.
     pub fn draw_avatar(
         pixels: &mut [u32],
         mut hit_test_map: Option<&mut [u8]>,
@@ -2903,8 +2866,7 @@ impl TutorApp {
     }
 }
 
-/// Sample avatar texture at offset (dx, dy) from center
-/// Texture is diameter×diameter, centered at (r, r)
+/// Sample avatar texture at offset (dx, dy) from center Texture is diameter×diameter, centered at (r, r)
 #[inline]
 fn sample_avatar(
     avatar_data: Option<&[u8]>,

@@ -1,28 +1,21 @@
 //! Binary self-verification using Ed25519 cryptographic signatures.
 //!
-//! All official rhe binaries are signed by Nick Spiker
-//! <fractaldecoder@proton.me>. The signature lives in the last 64
-//! bytes of the executable and is verified at startup against the
-//! embedded public key below.
+//! Signed rhe binaries carry a trailer at the very end of the executable: a 64-byte Ed25519 signature followed by the 8-byte magic `RHESIGV1`. The verifier checks for the magic; if present it verifies the preceding 64 bytes against the BLAKE3 hash of everything before the trailer. If the magic is absent, the binary is treated as unsigned (cargo install or local dev build) and verification silently passes.
 //!
 //! # For end users
 //!
-//! Use the official installer — don't build from source unless you
-//! know what you're doing:
+//! Use the official installer — don't build from source unless you know what you're doing:
 //!
 //! - **Linux/macOS**: `curl -sSfL https://brobdingnagian.holdmyoscilloscope.com/rhe/install-release.sh | sh`
 //! - **Windows**: `iwr -useb https://brobdingnagian.holdmyoscilloscope.com/rhe/install-release.ps1 | iex`
 //!
-//! These download pre-built, pre-signed binaries.
+//! These download pre-built, pre-signed binaries that carry the trailer above.
 //!
-//! # For contributors building from source
+//! # For `cargo install rhe` users
 //!
-//! `cargo install rhe` from crates.io will produce an UNSIGNED binary
-//! (the signing scripts and keys aren't published with the crate).
-//! That's fine for personal use — the binary still runs, the verify
-//! check is only invoked explicitly via `rhe verify`.
+//! Cargo builds locally with no signing infrastructure (no private key, no `sign-after-build.sh`), so the resulting binary has no trailer. Verification recognises the missing trailer and returns `Ok(None)` instead of failing — `rhe verify` reports "unsigned" and startup continues normally. You're trusting your own build at that point, the same way you would for any other `cargo install`-ed crate.
 //!
-//! To produce a signed binary you'd need:
+//! To produce a signed binary as a contributor:
 //!
 //! 1. Generate your own keypair: `cargo run --bin rhe-keygen`
 //! 2. Replace `AUTHOR_PUBKEY` below with your generated public key
@@ -32,49 +25,48 @@
 
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 
+/// Trailer magic appended after the 64-byte signature so the verifier can distinguish a signed binary (cargo build → sign-after-build.sh) from an unsigned cargo-install build whose last 64 bytes are arbitrary section data. Versioned so the format can evolve without ambiguity.
+pub const SIGNATURE_TRAILER: &[u8; 8] = b"RHESIGV1";
+const TRAILER_LEN: usize = 64 + 8;
+
 /// Embedded Ed25519 public key for the official rhe distribution.
 ///
-/// Binaries bearing a signature that verifies against this key are
-/// guaranteed to have been built and released by the original author.
-/// Public key (hex): 68519ed076f87fde60510912fb2ce7cba20c0258ac683626c825f377eac25adb
+/// Binaries bearing a signature that verifies against this key are guaranteed to have been built and released by the original author. Public key (hex): 68519ed076f87fde60510912fb2ce7cba20c0258ac683626c825f377eac25adb
 pub const AUTHOR_PUBKEY: [u8; 32] = [
     0x68, 0x51, 0x9e, 0xd0, 0x76, 0xf8, 0x7f, 0xde, 0x60, 0x51, 0x09, 0x12, 0xfb, 0x2c, 0xe7, 0xcb,
     0xa2, 0x0c, 0x02, 0x58, 0xac, 0x68, 0x36, 0x26, 0xc8, 0x25, 0xf3, 0x77, 0xea, 0xc2, 0x5a, 0xdb,
 ];
 
-/// Verify that this binary has a valid Ed25519 signature appended to
-/// the end. Returns the hex-encoded signature on success.
-///
-/// Errors if the signature is missing (all zeros), the binary is too
-/// small to fit a signature, or the signature doesn't verify against
-/// `AUTHOR_PUBKEY`.
-pub fn verify_binary_hash() -> Result<String, String> {
+/// Three-way result of self-verification:
+/// - `Ok(Some(sig_hex))` — binary carries the trailer and the signature verifies against `AUTHOR_PUBKEY`. Hex-encoded signature returned for logging.
+/// - `Ok(None)` — binary has no trailer (cargo install or local unsigned build). Caller should continue without complaint.
+/// - `Err(msg)` — trailer present but signature is invalid: tampered, corrupted, or signed by a different key. Caller should refuse to launch.
+pub fn verify_binary_hash() -> Result<Option<String>, String> {
     let exe_path =
         std::env::current_exe().map_err(|e| format!("Failed to get executable path: {}", e))?;
 
-    let mut exe_data =
+    let exe_data =
         std::fs::read(&exe_path).map_err(|e| format!("Failed to read executable: {}", e))?;
 
-    if exe_data.len() < 64 {
-        return Err("Binary too small — signature verification failed".to_string());
+    // No trailer → unsigned binary. Common case for `cargo install rhe` and local
+    // `cargo build` runs that didn't go through sign-after-build.sh.
+    if exe_data.len() < TRAILER_LEN
+        || &exe_data[exe_data.len() - SIGNATURE_TRAILER.len()..] != SIGNATURE_TRAILER
+    {
+        return Ok(None);
     }
 
-    // Signature lives in the last 64 bytes.
-    let signature_bytes = exe_data.split_off(exe_data.len() - 64);
-
-    if signature_bytes.iter().all(|&b| b == 0) {
-        return Err("Binary signature missing — executable was not signed".to_string());
-    }
+    let body_end = exe_data.len() - TRAILER_LEN;
+    let signature_bytes = &exe_data[body_end..exe_data.len() - SIGNATURE_TRAILER.len()];
+    let body = &exe_data[..body_end];
 
     let signature = Signature::from_bytes(
         signature_bytes
-            .as_slice()
             .try_into()
             .map_err(|_| "Invalid signature length".to_string())?,
     );
 
-    // Hash the binary minus its signature.
-    let hash = blake3::hash(&exe_data);
+    let hash = blake3::hash(body);
 
     let verifying_key = VerifyingKey::from_bytes(&AUTHOR_PUBKEY)
         .map_err(|e| format!("Invalid embedded public key: {}", e))?;
@@ -83,5 +75,5 @@ pub fn verify_binary_hash() -> Result<String, String> {
         .verify(hash.as_bytes(), &signature)
         .map_err(|_| "Signature verification failed — binary corrupted or modified".to_string())?;
 
-    Ok(hex::encode(signature.to_bytes()).to_uppercase())
+    Ok(Some(hex::encode(signature.to_bytes()).to_uppercase()))
 }

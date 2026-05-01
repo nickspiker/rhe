@@ -1,11 +1,8 @@
 //! Number-mode chord → character lookup.
 //!
-//! Number mode is a sub-session of word-held: entered by tapping the
-//! mod key (right thumb) while word is held, exited when word is
-//! released (with a trailing space emitted).
+//! Number mode is a sub-session of word-held: entered by tapping the mod key (right thumb) while word is held, exited when word is released (with a trailing space emitted).
 //!
-//! Single-finger chord → digit. Ten positions laid out right-to-left
-//! from R-pinky:
+//! Single-finger chord → digit. Ten positions laid out right-to-left from R-pinky:
 //!
 //! ```text
 //!   position:  0    1    2    3    4         5         6    7    8    9
@@ -13,38 +10,27 @@
 //!   digit:    0    1    2    3    4         5         6    7    8    9
 //! ```
 //!
-//! The inner-index keys (QWERTY G and H) only participate in number
-//! mode — they're silent in normal phoneme/brief typing.
+//! The inner-index keys (QWERTY G and H) only participate in number mode — they're silent in normal phoneme/brief typing.
 //!
-//! Mod-held + single-finger chord → symbol. Same ten positions, same
-//! layout, different output:
+//! Mod-held + single-finger chord → symbol. Same ten positions, same layout, different output:
 //!
 //! ```text
 //!   0: -   1: /   2: *   3: +   4: )   5: (   6: =   7: %   8: ^   9: ,
 //! ```
 //!
-//! Right hand = basic arithmetic, left hand = comparison / grouping /
-//! separators. The matched parentheses sit on the two inner-index
-//! positions, mirrored visually across the keyboard's centerline.
+//! Right hand = basic arithmetic, left hand = comparison / grouping / separators. The matched parentheses sit on the two inner-index positions, mirrored visually across the keyboard's centerline.
 //!
 //! The mod bit can arrive two ways, distinguished by `first_down`:
 //! - mod pressed *first*, then the finger → symbol (above table).
-//! - finger pressed *first*, then mod → **spelled** digit ("five"),
-//!   useful for prose where you want the word form without leaving
-//!   number mode.
+//! - finger pressed *first*, then mod → **spelled** digit ("five"), useful for prose where you want the word form without leaving number mode.
 //!
-//! Multi-finger chords, chords with no fingers (mod alone), and any
-//! scancode outside the ten positions return `None`. The interpreter
-//! treats a `None` as a silent no-op in number mode.
+//! Multi-finger chords, chords with no fingers (mod alone), and any scancode outside the ten positions return `None`. The interpreter treats a `None` as a silent no-op in number mode.
 
-use super::chord_map::ChordKey;
+use super::chords::ChordKey;
 use crate::key_mask::KeyMask;
 use crate::scan;
 
-/// Which of the ten positions (0..=9) a single-finger chord occupies,
-/// after optionally ignoring the mod/thumb bit. Returns `None` if the
-/// chord isn't a single-finger press on one of the ten number-mode
-/// positions.
+/// Which of the ten positions (0..=9) a single-finger chord occupies, after optionally ignoring the mod/thumb bit. Returns `None` if the chord isn't a single-finger press on one of the ten number-mode positions.
 fn position(key: ChordKey, ignore_mod: bool) -> Option<u8> {
     let mut mask = key.mask();
     if ignore_mod {
@@ -71,8 +57,7 @@ fn position(key: ChordKey, ignore_mod: bool) -> Option<u8> {
     })
 }
 
-/// Digit for a single-finger chord with no mod. Returns `None` for
-/// multi-finger, mod-inclusive, or out-of-range chords.
+/// Digit for a single-finger chord with no mod. Returns `None` for multi-finger, mod-inclusive, or out-of-range chords.
 pub fn chord_to_digit(key: ChordKey) -> Option<char> {
     if key.has_mod() {
         return None;
@@ -81,9 +66,7 @@ pub fn chord_to_digit(key: ChordKey) -> Option<char> {
     Some(DIGITS[pos as usize])
 }
 
-/// Symbol for a single-finger chord with mod held. Returns `None` if
-/// the chord lacks the mod bit, has zero or multi-finger bits beyond
-/// that, or falls outside the ten positions.
+/// Symbol for a single-finger chord with mod held. Returns `None` if the chord lacks the mod bit, has zero or multi-finger bits beyond that, or falls outside the ten positions.
 pub fn chord_to_symbol(key: ChordKey) -> Option<char> {
     if !key.has_mod() {
         return None;
@@ -92,10 +75,7 @@ pub fn chord_to_symbol(key: ChordKey) -> Option<char> {
     Some(SYMBOLS[pos as usize])
 }
 
-/// Spelled word for a single-finger chord with mod held. Same position
-/// map as `chord_to_digit`; the caller discriminates symbol vs word by
-/// inspecting `first_down` on the incoming Chord event (mod-first =
-/// symbol, finger-first = word).
+/// Spelled word for a single-finger chord with mod held. Same position map as `chord_to_digit`; the caller discriminates symbol vs word by inspecting `first_down` on the incoming Chord event (mod-first = symbol, finger-first = word).
 pub fn chord_to_digit_word(key: ChordKey) -> Option<&'static str> {
     if !key.has_mod() {
         return None;

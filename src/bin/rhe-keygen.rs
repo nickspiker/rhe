@@ -1,11 +1,8 @@
 //! Generate Ed25519 keypair for signing rhe release binaries.
 //!
-//! Stores the private key unencrypted (filesystem encryption assumed).
-//! After running this, copy the printed public key into
-//! `src/crypto/self_verify.rs` so the resulting binary self-verifies.
+//! Stores the private key unencrypted (filesystem encryption assumed). After running this, copy the printed public key into `src/crypto/self_verify.rs` so the resulting binary self-verifies.
 //!
-//! Usage: `cargo run --bin rhe-keygen [--out-dir <path>]`
-//! (default out-dir: $HOME/.rhe-keys)
+//! Usage: `cargo run --bin rhe-keygen [--out-dir <path>]` (default out-dir: $HOME/.rhe-keys)
 
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::rngs::OsRng;
@@ -66,7 +63,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
     println!("Next steps:");
     println!("  1. Copy this pubkey into src/crypto/self_verify.rs as AUTHOR_PUBKEY");
-    println!("  2. Set RHE_SIGNING_KEY={} when running rhe-signature-signer", private_key_path.display());
+    println!(
+        "  2. Set RHE_SIGNING_KEY={} when running rhe-signature-signer",
+        private_key_path.display()
+    );
     println!("  3. KEEP THE PRIVATE KEY SECURE.");
 
     Ok(())

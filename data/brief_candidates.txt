@@ -1,2046 +1,2087 @@
-# Brief candidates for rhe, ranked by savings-weighted value.
+# Brief candidates for rhe.
+#
+# Comment a line out (`#` at line start) to exclude that word from
+# brief assignment — the freed slot goes to the next-ranked word on
+# the next gen_briefs run. The reason column tells you what gen_briefs
+# noticed about each word; an empty reason means no auto signal (a
+# `#`'d line with empty reason is something you decided manually).
+#
+# Reasons gen_briefs emits:
+#
+#   ordered brief (slot already claimed)
+#       Word is in `ordered_briefs.rs` already. The chord slot is
+#       locked and the word is excluded from regular brief
+#       assignment. Listed here only so its rank/value is visible.
+#
+#   +<suffix>→<base>(<base_freq>) <tag>
+#       Word decomposes as `base + <SUFFIX>` (the suffix is in the
+#       SUFFIXES table) and `base` is in the frequency table, so
+#       you could reach this word via the suffix chord on `base`.
+#       Tags:
+#         defer — base freq ≥ 2× this word's freq (likely
+#                 redundant; consider commenting out)
+#         keep  — this word's freq ≥ 2× base (auxiliary or
+#                 dominant; brief slot earns its keep)
+#         (none) — within 2×, judgment call
+#
+#   homophone of "<word>"(<freq>)
+#       Same phoneme sequence as <word>. Phoneme-path emits the
+#       higher-freq <word>, so this word only fires via its own
+#       brief — even with a slot, you'll often type the homophone
+#       instead. Promote to ordered_briefs.rs if you want both
+#       reachable from the same chord with finger-order disambig.
+#
+# Multiple reasons are comma-separated. Reasons re-generate each run.
 #
 # value = frequency × (phonemes - 1). Single-phoneme words are
-# omitted because a brief chord saves nothing over typing the
-# one phoneme directly.
+# omitted (a brief saves nothing over typing the one chord).
 #
-# One word per line. Delete any line to exclude that word from
-# brief assignment. Lines starting with '#' are ignored. Delete
-# the whole file to regenerate from defaults.
+# Adding a custom word: append a line with the word as the FIRST
+# whitespace token. Custom words and `#` exclusions survive regens;
+# everything else (rank, value, phonemes, reason) refreshes.
 #
-# Adding a word not in this list is fine — give it its own line
-# with any annotations you like, as long as the word is the
-# last whitespace-separated token.
+# Fields: word  value  phonemes  rank  [# reason(s)]
 #
-# Fields: rank  value  phonemes  word
-#
-    1        28787591    2  you
-    2        22761659    2  the
-    3        21145876    3  and
-    4        20407484    3  that
-    5        17099834    2  to
-    6        13800328    3  what
-    7        13631703    2  it
-    8        11479576    3  this
-    9        10348120    3  for
-   10        10003176    4  just
-   11         9528020    3  have
-   12         9221890    3  your
-   13         8915110    2  of
-   14         8803062    3  was
-   15         8524546    3  not
-   16         7652236    3  can
-   17         7613954    3  with
-   18         7462044    4  about
-   19         7400675    2  is
-   20         7337058    2  in
-   21         7262924    3  but
-   22         6755687    2  we
-   23         6444985    2  me
-   24         6297056    3  there
-   25         6277182    3  here
-   26         5966054    3  like
-   27         5852535    4  want
-   28         5766386    3  get
-   29         5518419    4  think
-#    30         5516364    2  he
-   31         5193190    6  something
-   32         5153642    3  right
-   33         5128746    4  from
-   34         4938948    2  my
-#    35         4862118    3  him
-   36         4821861    2  on
-   37         4562301    4  going
-#    38         4527912    3  one  (number-mode gesture)
-   39         4419883    2  do
-   40         4407838    3  come
-   41         4374975    2  no
-   42         4319818    3  well
-   43         4210868    2  be
-   44         4203821    2  are
-   45         3939614    3  will
-   46         3936778    3  got
-   47         3892394    2  know
-   48         3564570    4  gonna
-   49         3544700    2  all
-   50         3543660    5  people
-   51         3524130    4  really
-   52         3520448    5  because
-   53         3485528    3  did
-   54         3483460    3  good
-   55         3478088    5  little
-   56         3434152    2  so
-   57         3410524    3  let
-#    58         3332722    3  his
-   59         3268100    3  yes
-   60         3201030    6  anything
-   61         3118770    7  everything
-   62         3063462    3  when
-   63         3060204    2  they
-   64         2921680    9  understand
-   65         2907416    3  time
-   66         2857768    3  okay
-   67         2836959    4  very
-   68         2810048    3  back
-   69         2792493    4  never
-#    70         2778359    2  she
-   71         2738504    2  go
-   72         2696934    3  look
-   73         2680140    3  would
-   74         2662089    4  only
-   75         2655018    3  them
-   76         2644452    3  where
-   77         2630800    2  if
-   78         2624464    3  take
-   79         2551004    3  then
-   80         2549074    3  had
-   81         2530300    3  been
-   82         2526360    4  please
-   83         2510010    2  out
-   84         2489660    5  nothing
-   85         2459855    2  up
-   86         2454057    4  sorry
-   87         2431398    2  at
-   88         2352580    3  tell
-#    89         2347176    3  man
-   90         2333828    3  some
-   91         2320731    4  thank
-   92         2314424    5  before
-   93         2298830    2  now
-   94         2233632    4  even
-   95         2223674    3  could
-   96         2196435    4  doing
-#    97         2154982    2  her
-   98         2149746    7  remember
-   99         2140365    2  how
-  100         2080262    3  need
-  101         2070620    3  has
-  102         2020780    3  more
-  103         2013668    5  always
-  104         2005810    6  someone
-  105         2000641    2  yeah
-  106         1998858    4  help
-  107         1969161    4  first
-  108         1967241    4  into
-  109         1962550    6  wanted
-  110         1957932    3  down
-  111         1927770    3  make
-  112         1918620    4  still
-  113         1879560    4  find
-  114         1878515    6  happened
-  115         1792220    2  as
-  116         1781493    2  see
-  117         1770057    4  again
-  118         1761682    3  over
-  119         1743261    4  maybe
-  120         1742793    4  must
-  121         1734491    2  who
-  122         1722797    2  why
-  123         1722048    4  stop
-  124         1718283    4  after
-  125         1677570    7  actually
-  126         1660648    3  love
-  127         1647422    3  should
-  128         1642550    3  mean
-  129         1637756    3  said
-  130         1637304    4  great
-  131         1623838    3  give
-  132         1615496    5  believe
-  133         1582760    5  thanks
-  134         1582185    4  last
-  135         1560984    4  better
-  136         1559796    5  coming
-  137         1553853    4  told
-  138         1535936    3  any
-  139         1517750    6  morning
-  140         1512020    6  together
-  141         1510926    4  things
-  142         1510065    6  yourself
-  143         1477198    3  much
-  144         1476192    7  everyone
-  145         1472715    6  family
-  146         1463164    5  listen
-  147         1461684    5  another
-  148         1449181    2  an
-  149         1445580    4  years
-  150         1439185    6  already
-  151         1419152    8  probably
-  152         1418780    3  sure
-  153         1414929    4  money
-  154         1414389    4  around
-  155         1405677    8  beautiful
-  156         1395056    3  thing
-  157         1393950    7  problem
-  158         1366256    3  these
-  159         1350516    5  talking
-  160         1346903    2  us
-  161         1342292    5  next
-  162         1334589    4  place
-  163         1326591    8  exactly
-  164         1324744    5  getting
-  165         1319724    8  everybody
-  166         1319130    7  excuse
-  167         1315964    2  were
-  168         1315088    9  important
-#   169         1312611    4  father
-  170         1306200    5  looking
-#   171         1298692    5  woman
-  172         1267646    2  or
-  173         1249192    3  life
-  174         1243645    6  tomorrow
-  175         1232816    5  friend
-#  176         1223848    3  god
-  177         1223354    3  work
-  178         1216602    4  hello
-  179         1213152    5  trying
-  180         1202342    3  their
-  181         1202300    6  myself
-  182         1191941    2  our
-  183         1176726    4  kind
-  184         1165560    4  every
-  185         1162036    5  without
-  186         1159584    4  being
-  187         1154394    3  other
-  188         1153915    2  say
-  189         1152320    6  friends
-  190         1149504    3  wait
-  191         1149292    2  hey
-  192         1145994    3  call
-  193         1145448    4  course
-  194         1141660    6  anyone
-  195         1135761    4  left
-  196         1134072    3  talk
-  197         1130919    4  enough
-  198         1128536    3  away
-  199         1122028    3  than
-#   200         1118538    4  mother
-  201         1117084    3  thought
-  202         1113788    3  home
-  203         1112636    3  night
-  204         1111860    4  world
-  205         1104492    3  put
-  206         1099185    4  today
-  207         1090424    2  by
-  208         1079275    6  business
-  209         1056808    3  those
-  210         1047942    7  different
-#   211         1039508    5  brother
-  212         1038000    5  pretty
-  213         1036025    6  music
-  214         1033852    5  haven
-  215         1029576    7  somebody
-  216         1025668    5  start
-  217         1022558    2  too
-  218         1012146    4  found
-  219         1000182    2  way
-  220          996784    3  keep
-  221          992534    3  long
-  222          986056    5  tonight
-  223          979375    6  thinking
-  224          968435    6  second
-  225          965472    4  went
-  226          956564    3  leave
-#   227          956364    7  husband
-  228          956348    3  does
-  229          944550    4  many
-  230          938781    4  mind
-  231          937086    7  children
-  232          931380    5  fucking
-  233          926070    7  started
-  234          921213    4  best
-  235          911086    3  name
-  236          900684    5  until
-  237          900410    6  whatever
-  238          888176    3  ever
-  239          888028    3  feel
-  240          885520    5  police
-#   241          884482    3  guys
-  242          875455    6  minutes
-  243          871488    4  baby
-  244          867800    3  made
-  245          863822    3  old
-  246          860596    5  wants
-  247          849018    4  most
-  248          845820    7  question
-  249          844966    3  which
-  250          834436    3  big
-  251          825165    6  against
-  252          824424    5  having
-  253          823320    3  lot
-  254          817520    3  done
-  255          810994    3  nice
-  256          809112    4  once
-#   257          805114    3  girl
-  258          801804    4  ready
-  259          801060    3  fine
-  260          799975    6  moment
-  261          799351    2  off
-  262          793764    4  called
-  263          793696    5  doctor
-  264          790698    4  used
-  265          789291    4  idea
-  266          787101    4  hold
-  267          786423    4  happy
-  268          785830    2  am
-  269          785070    6  nobody
-  270          779409    4  also
-  271          777170    3  house
-  272          776676    3  ok
-  273          776254    3  through
-  274          772688    5  working
-  275          772674    7  sometimes
-  276          770608    5  person
-  277          765585    6  supposed
-  278          764564    2  two
-  279          763281    4  since
-  280          762600    6  between
-  281          757452    3  stay
-#   282          757080    3  dad
-  283          755832    5  minute
-  284          755068    5  crazy
-  285          754512    5  forget
-  286          748972    3  came
-  287          744164    5  happen
-  288          743436    4  matter
-  289          742345    6  behind
-  290          742029    4  bring
-  291          742025    6  almost
-  292          741898    3  wrong
-  293          739992    3  bad
-  294          734515    6  anymore
-  295          734290    3  might
-#   296          733252    3  three  (number-mode gesture)
-  297          730320    5  drink
-  298          729327    4  wanna
-  299          728613    4  hard
-  300          721425    4  alone
-  301          721330    3  hear
-  302          720528    4  school
-  303          716175    6  trouble
-  304          710668    5  taking
-  305          709800    4  saying
-  306          708646    3  ask
-  307          705164    5  hands
-  308          701635    6  welcome
-  309          701442    4  looks
-  310          696334    3  same
-  311          696324    5  inside
-#   312          693280    9  gentlemen
-  313          691053    4  gotta
-  314          689007    4  open
-  315          686532    8  hospital
-  316          684891    4  killed
-  317          681512    3  else
-  318          679018    3  kill
-  319          678848    9  absolutely
-  320          676148    5  making
-  321          675492    7  anybody
-  322          675096    5  afraid
-  323          667194    4  lost
-  324          666808    5  anyway
-  325          664548    5  party
-  326          661912    3  care
-  327          661236    7  parents
-  328          661011   14  congratulations
-  329          660522    3  car
-#   330          658488    7  himself
-  331          657485    6  stupid
-  332          656160    5  story
-#   333          655840    9  president
-  334          653036    5  number
-#   335          651994    3  son
-  336          651496    3  try
-  337          650284    5  waiting
-  338          648438    7  company
-  339          641742    4  heart
-  340          636480    7  possible
-  341          635178    3  dead
-  342          631268    5  married
-  343          628655    6  country
-  344          626634    4  later
-#   345          626564    5  mr
-#   346          624370    6  captain
-  347          621564    5  stand
-#   348          619500    2  sir
-  349          618741    4  hand
-  350          617674    2  day
-  351          616692    7  control
-#   352          616380    5  sister
-#   353          610278    3  mom
-#   354          608550    3  hell
-#   355          603212    5  women
-  356          599319    8  wonderful
-  357          597822    3  job
-  358          589072    3  real
-  359          586460    5  playing
-  360          582216    9  completely
-  361          580412    3  room
-  362          580209    8  questions
-  363          579540    6  promise
-  364          579042    4  water
-  365          577596    5  reason
-  366          576744    4  part
-  367          576150    4  kids
-  368          574720    9  information
-  369          572192    9  definitely
-  370          572024    9  security
-  371          571887    4  stuff
-  372          568041    4  under
-  373          567614    3  move
-  374          565308    5  trust
-  375          564840    3  seen
-  376          562092    3  live
-  377          561860    3  miss
-  378          561145    6  perfect
-  379          560886    4  change
-  380          555984    5  couple
-  381          551720    6  special
-  382          546624    3  shit
-  383          546200    6  perhaps
-  384          544436    5  telling
-  385          543870    6  serious
-  386          541440    3  both
-  387          541364    5  front
-  388          539702    3  heard
-  389          533688    3  head
-  390          529566    4  times
-  391          522933    4  means
-  392          522615    4  point
-  393          522236    3  door
-  394          522208    3  such
-  395          520656    9  interesting
-  396          520242    3  fuck
-  397          518928    5  months
-  398          517858    3  bit
-  399          517616    3  took
-  400          516843    4  makes
-  401          515894    3  yet
-  402          515220    4  asked
-  403          514864    5  become
-#   404          514638    3  men
-  405          514218    3  whole
-  406          512975    6  human
-  407          512158    3  use
-  408          511940    3  while
-  409          509004    5  outside
-  410          508486    2  new
-#   411          508076    3  wife
-  412          506394    4  body
-  413          506342    3  days
-  414          506208    7  explain
-  415          504309    4  sleep
-  416          504235    6  happens
-  417          503943    4  chance
-  418          502938    7  yesterday
-  419          500940    4  quite
-  420          500640    3  guess
-  421          500031    4  close
-  422          499520    6  finally
-#   423          498035    6  chuckles
-  424          496152   10  relationship
-  425          494932    3  meet
-  426          493509    4  comes
-#   427          489213    4  daughter
-  428          488715    4  least
-  429          488400    3  run
-  430          488260    5  feeling
-  431          488232    9  interested
-  432          486208    5  living
-  433          480164    3  gone
-  434          479668    8  seriously
-#   435          477183    4  girls
-  436          476928    4  rest
-  437          474774    3  end
-  438          472570    6  million
-  439          470492    3  phone
-  440          468200    5  leaving
-  441          467892    5  running
-  442          467730    3  play
-  443          466516    5  alright
-  444          462750    3  few
-  445          462312    7  happening
-  446          462203    8  situation
-  447          461325    6  somewhere
-  448          460944    5  taken
-  449          460098    7  decided
-  450          459502    3  ago
-  451          455592    4  child
-  452          453986    3  hope
-  453          452781    4  speak
-  454          450964    3  face
-  455          448335    6  careful
-  456          446180    6  secret
-  457          445167    4  truth
-  458          443739    4  blood
-  459          441615    4  able
-#   460          441363    4  lady
-#   461          439845    8  american
-  462          438678    7  evidence
-  463          438192    4  gets
-  464          437126    3  turn
-  465          436560    5  sounds
-#   466          435832    2  guy
-  467          431697    8  accident
-  468          431624    5  scared
-  469          431522    8  government
-#   470          431304    5  uncle
-  471          430548    3  case
-  472          430416   10  experience
-  473          430180    3  says
-  474          429546    3  true
-  475          429321    4  break
-  476          428610    7  certainly
-  477          428216    9  impossible
-  478          427719    4  city
-  479          426558    3  soon
-  480          424431    8  problems
-  481          424431    8  detective
-  482          423744    7  christmas
-  483          423420    4  office
-  484          422828    8  difficult
-  485          422658    3  worry
-  486          421983    4  brought
-  487          421712    9  apartment
-  488          421659    4  yours
-  489          417684    7  expect
-  490          417410    3  year
-  491          416994    7  terrible
-  492          415898    3  watch
-  493          415652    5  cannot
-  494          413845    6  speaking
-  495          411896    5  asking
-  496          411200    6  darling
-  497          410097    4  seems
-  498          406893    4  honey
-  499          406203    4  tried
-  500          402264    4  answer
-  501          401335    6  amazing
-  502          399048    7  protect
-  503          397472    9  continues
-  504          396298    3  sit
-  505          395997    4  send
-  506          395844    7  dangerous
-#   507          395325    8  girlfriend
-  508          393680    5  laughing
-  509          392526    7  attention
-  510          392028    5  street
-  511          389620    3  young
-  512          389312    5  meeting
-  513          389120    6  report
-  514          384660    4  along
-  515          384315    6  strange
-  516          384080    6  general
-  517          383978    3  late
-  518          383504    9  immediately
-  519          382383   10  department
-  520          381284    5  evening
-#   521          380524    5  master
-#   522          380247    8  lieutenant
-  523          379842    7  present
-  524          379194    4  needs
-  525          378000    3  death
-  526          377190    4  clear
-  527          376338    4  order
-  528          375716    3  kid
-  529          374985    4  fact
-  530          374785    6  mistake
-  531          374689    8  obviously
-#   532          374640    4  lord
-  533          373526    2  may
-  534          372890    3  gave
-  535          372460    6  building
-#   536          372261    4  six  (number-mode gesture)
-  537          371772    4  funny
-  538          371154    4  black
-  539          368499    4  alive
-#   540          368456    3  damn
-  541          368390    6  system
-  542          367810   11  responsible
-#   543          367252    3  five  (number-mode gesture)
-  544          366379   14  responsibility
-  545          364574    3  far
-  546          364140    5  longer
-  547          363472    5  calling
-  548          363326    3  knows
-  549          362390    6  totally
-  550          362286    7  personal
-  551          362208    5  quiet
-  552          361188    3  its
-  553          360885    4  ahead
-  554          359365    6  imagine
-  555          358953    8  continue
-  556          358806    8  appreciate
-#   557          358218    7  america
-  558          357855    6  instead
-  559          357804    5  return
-  560          356796    7  afternoon
-  561          356756    3  shut
-  562          355540    3  hit
-  563          354906    7  screaming
-  564          354674    3  easy
-  565          354387    4  plan
-  566          353958   12  investigation
-  567          353910    4  dinner
-  568          353014    3  check
-  569          352542    2  own
-  570          351801    4  sort
-  571          350952    5  given
-  572          349858    3  deal
-  573          349512    5  straight
-  574          347408    2  show
-  575          347328    5  future
-  576          347196    7  standing
-  577          345882    7  respect
-  578          345595    6  history
-  579          344532    5  changed
-  580          343089   10  ridiculous
-  581          342855    6  station
-  582          342200    6  except
-  583          341877    4  sent
-  584          341272    3  mine
-#   585          340116    5  ladies
-  586          336948    4  small
-  587          335874    7  starting
-  588          335445    6  handle
-  589          334702    3  dear
-  590          333914    3  four
-  591          333844    5  picture
-  592          333704    8  computer
-  593          331749    4  lives
-  594          331612    5  wonder
-  595          331386    3  fun
-  596          329905    6  anywhere
-  597          329876    3  word
-  598          328340    5  giving
-  599          328339   12  unfortunately
-  600          328330    3  set
-  601          328324    3  shall
-  602          328295    6  finished
-  603          327390    8  usually
-  604          326694    7  position
-  605          325450    6  simple
-  606          324888    7  especially
-  607          324772    5  moving
-  608          324192    5  figure
-  609          323070    6  single
-  610          322842    3  hurt
-  611          322308    7  involved
-  612          322004    5  strong
-  613          320408    3  wish
-  614          320316    2  hi
-  615          319822    3  fight
-  616          319317    4  past
-  617          318888    3  week
-#   618          318744    7  boyfriend
-  619          318380    6  normal
-  620          315894    4  sound
-  621          315680    5  needed
-  622          315064    3  fire
-  623          315002    3  game
-#   624          314739    4  laughs
-  625          314415   10  conversation
-  626          313824    8  themselves
-  627          312156    7  professor
-  628          311334    3  side
-  629          310850    6  surprise
-  630          310500    7  contact
-  631          310360    6  quickly
-  632          310056    5  goodbye
-  633          309640    9  apparently
-  634          309334    3  read
-  635          309304    5  missing
-  636          308814    3  cut
-  637          308544    4  glad
-  638          307760    5  wedding
-  639          307308    4  drive
-  640          306976    5  kidding
-#   641          304060    5  officer
-  642          303399    4  murder
-  643          302905    6  prison
-  644          302676    7  decision
-#   645          302508    2  boy
-  646          302390    3  goes
-  647          302312    3  hours
-  648          301800    6  record
-  649          300414    7  beginning
-#   650          300015    4  daddy
-  651          298938    7  hundred
-  652          298575    6  relax
-  653          298458    7  difference
-  654          298435    6  public
-  655          297985    2  saw
-  656          297252    4  fast
-  657          297196    5  finish
-  658          297192    5  during
-  659          297096    4  cold
-#   660          296660    6  bastard
-  661          295320    6  forward
-  662          294800    5  watching
-  663          294726    4  words
-  664          293860    5  suppose
-  665          293688    9  opportunity
-  666          292017    4  dance
-  667          289893    4  others
-  668          289587    4  follow
-  669          289544    3  shot
-  670          289326    4  sense
-  671          289293    4  sex
-  672          289030    8  pregnant
-  673          288560    5  birthday
-  674          287660    5  forgive
-  675          287616    7  seconds
-  676          286074   10  incredible
-  677          285650    3  war
-  678          285354    7  promised
-  679          285267    4  dream
-  680          284110    3  walk
-  681          283916    5  unless
-#   682          283872    5  seven  (number-mode gesture)
-  683          283716    5  clothes
-  684          283670    3  town
-  685          282636    5  hotel
-  686          282416    3  met
-  687          282171    4  sweet
-  688          282171    4  rather
-  689          281995    8  breakfast
-  690          281955    6  broken
-  691          281478    4  felt
-  692          280998    7  suddenly
-#   693          278385    6  english
-  694          277131    4  lucky
-  695          277054    3  half
-  696          276864    3  died
-  697          276295    6  hungry
-  698          276278    3  cool
-  699          275196    3  free
-  700          274896    3  either
-  701          274890    6  private
-  702          274656    2  huh
-  703          274040    5  forever
-  704          273416    5  thinks
-  705          273384    7  listening
-  706          273222    3  power
-  707          273220    5  message
-  708          273128    5  entire
-  709          272580    7  everywhere
-  710          272313    4  worked
-  711          271530    6  realize
-  712          271404   10  comfortable
-  713          271323    4  looked
-  714          270808    5  table
-  715          270380    5  across
-  716          268950    4  coffee
-  717          268944    5  lovely
-  718          268716    3  team
-  719          268620    7  drinking
-  720          266936    5  middle
-  721          266775    4  weeks
-  722          266455    6  accept
-  723          266144    3  gun
-  724          266012    5  using
-  725          265550    6  besides
-#   726          265188    3  boys
-  727          264866    3  line
-  728          264576    4  seeing
-  729          264476    5  spend
-  730          263198    3  news
-  731          262988    2  knew
-  732          262890    3  bed
-  733          262260    4  fault
-  734          260877    4  takes
-  735          260364    3  hurry
-  736          259470    3  full
-  737          258780    3  save
-  738          258414    4  loved
-  739          258349    8  sweetheart
-  740          258304    9  fantastic
-  741          258108    7  surprised
-  742          258084    5  sitting
-  743          257943    8  excellent
-  744          257860    5  marriage
-  745          257772    7  innocent
-  746          257131    8  military
-  747          256676    5  forgot
-  748          256386    7  ourselves
-  749          256306    3  hate
-  750          255837    4  turned
-  751          255558    4  drop
-  752          255314    3  food
-  753          254646    4  step
-  754          254330    6  driving
-  755          253314    3  light
-  756          252868    8  necessary
-  757          252714    4  clean
-  758          252156    7  according
-  759          251785    6  sleeping
-  760          251538    3  dog
-  761          251440    5  ground
-#   762          251196    7  grunting
-  763          250392    7  upstairs
-  764          250266    4  land
-  765          250008    5  radio
-#   766          249993   10  indistinct
-#   767          249900    7  sergeant
-  768          249428    5  idiot
-  769          249109    8  apologize
-  770          247988    3  hot
-  771          246996    5  wearing
-  772          246792    5  crying
-  773          245882    8  restaurant
-  774          245396    3  pick
-  775          244644    4  quick
-  776          244200    5  certain
-  777          242528    3  cause
-  778          242454    4  state
-  779          241755    6  support
-  780          241588    5  smart
-#   781          241265    6  grunts
-  782          241260    7  complete
-  783          241235    6  partner
-#   784          241094    8  inspector
-  785          240800    5  stopped
-  786          240513    8  emergency
-  787          239670    6  thousand
-  788          238853    2  um
-  789          238695    6  victim
-  790          238638    4  ones
-  791          237969    4  works
-  792          237820    6  planet
-  793          237671    8  understood
-  794          237424    3  lose
-  795          237108    5  service
-#   796          236460    3  king
-  797          235512    7  interest
-  798          234992    5  angry
-  799          234951    4  weird
-#   800          234820    3  sighs
-  801          234690    6  holding
-  802          234628    5  fighting
-  803          234620   11  complicated
-  804          234432    5  agent
-  805          234249    4  worried
-  806          233472    3  boss
-  807          231840    7  excited
-  808          231560    5  killing
-  809          231108    7  animals
-  810          230190    7  suspect
-  811          229620    4  tired
-  812          229467    4  class
-  813          229140    6  patient
-  814          228208    3  safe
-  815          227926    3  book
-  816          227790    4  kept
-  817          227676    5  drunk
-  818          227064    7  medical
-  819          227028    5  camera
-  820          226836    5  within
-  821          226671    4  busy
-#   822          226194    7  majesty
-  823          225762    3  white
-  824          224936    5  honest
-  825          223740    4  court
-  826          223664    8  example
-  827          223344    5  spent
-  828          222990    7  consider
-  829          222552    5  visit
-  830          222138    7  wondering
-  831          221814    4  marry
-  832          221787    4  meant
-  833          221408    9  expecting
-  834          221310    4  dark
-  835          221140    5  window
-  836          221018    8  criminal
-  837          219210    4  movie
-#   838          218760    9  gentleman
-  839          218407    8  perfectly
-#   840          218070    7  commander
-  841          217980    6  otherwise
-  842          217845   10  professional
-  843          217750    6  pictures
-  844          217192    3  sick
-  845          217120    9  expected
-  846          216711   10  university
-  847          216560    5  machine
-  848          216470    6  director
-  849          216460    5  walking
-  850          216340    5  pleasure
-#   851          216276    7  princess
-#   852          216162    4  tv
-#   853          216104    5  bloody
-  854          215732    5  college
-  855          215718    4  born
-#   856          215644    5  french
-  857          214888    3  poor
-  858          214580    6  narrator
-#   859          214420    6  herself
-  860          214412    5  became
-#   861          214400    6  london
-  862          214368    8  condition
-  863          214245   10  competition
-  864          214221    4  film
-  865          214215    6  feelings
-  866          214062    2  die
-  867          213489    4  month
-  868          213414    7  language
-  869          213294    4  lying
-  870          213178    3  red
-  871          212922    4  train
-  872          212562    8  recognize
-  873          212320    9  community
-  874          212134    3  shoot
-  875          211943    2  each
-  876          211749    4  attack
-  877          211692    3  touch
-#   878          211296    7  grandma
-  879          210564    3  top
-  880          210390    6  destroy
-  881          210260    5  upset
-  882          210129    4  round
-  883          209160    6  helping
-  884          208765    6  witness
-  885          206652    7  possibly
-  886          205912    3  win
-  887          205887    4  broke
-  888          205765    6  favorite
-  889          205205    6  places
-#   890          205125    6  brothers
-  891          205060    6  starts
-  892          204111   10  eventually
-  893          203765    6  mention
-  894          203704    3  hair
-  895          203238    8  students
-  896          203168    5  village
-  897          202998    4  talked
-  898          202950    6  figured
-  899          202804    8  brilliant
-  900          202650    7  practice
-#   901          202604    3  bitch
-  902          202456    3  luck
-  903          202182    7  national
-#   904          201918    7  minister
-  905          200784    5  laughter
-  906          200428    5  island
-#   907          200266    3  ten  (number-mode gesture)
-  908          200154    4  buddy
-  909          199824    9  expensive
-  910          199368    4  floor
-  911          198966    7  operation
-  912          198471    4  swear
-  913          198192    7  towards
-  914          197922    7  student
-  915          197780    6  spirit
-  916          197700    7  strength
-  917          197654    2  eat
-#   918          197640    4  york
-  919          197385    4  army
-  920          197150    3  seem
-  921          196984    9  secretary
-  922          196650    6  itself
-  923          196576    5  singing
-#   924          196348    5  mrs
-  925          196344    4  letter
-  926          196152    7  greatest
-  927          195825    4  club
-#   928          195724    5  madam
-  929          195680    6  following
-  930          195556    3  hang
-  931          195475    6  bathroom
-  932          195188    5  putting
-  933          194973    4  space
-  934          194952    7  horrible
-  935          194907    4  test
-  936          194364    4  box
-  937          194283    4  group
-  938          194088    3  till
-  939          193936    5  magic
-  940          193865    8  disappeared
-  941          193218    3  catch
-  942          192582    7  nonsense
-#   943          192512    9  grandfather
-  944          192240    7  project
-#   945          192144    5  colonel
-  946          192035    6  client
-  947          191675    6  extra
-  948          191211    4  force
-  949          191142    4  short
-  950          191142    7  prepared
-  951          191114    8  introduce
-  952          190872    7  united
-#   953          190602    7  grandpa
-#   954          190600    5  christ
-  955          190500    6  simply
-  956          190428    8  recently
-  957          190250    3  known
-  958          190180    6  animal
-  959          189942    7  character
-  960          189928    3  write
-  961          189882    4  enjoy
-  962          189252    4  crime
-  963          189006    7  honestly
-  964          188964    5  staying
-  965          188840    5  dreams
-  966          188822    2  pay
-  967          188769    4  horse
-  968          188289    4  count
-  969          188265    4  area
-  970          188238    4  charge
-  971          188208    3  voice
-  972          188034    7  records
-  973          187852    8  discovered
-  974          187746    4  lunch
-  975          187569    4  miles
-  976          186900    7  forgotten
-  977          186648    7  original
-  978          186498    4  paper
-#   979          186350    6  goddamn
-  980          186282    7  concerned
-  981          185958    7  invited
-  982          185805    4  gold
-  983          185575    6  weekend
-  984          185024    3  sign
-  985          185008    9  political
-  986          184705    6  plenty
-  987          183248    5  kitchen
-  988          183156    4  cover
-  989          183146    3  bet
-  990          183120    9  particular
-  991          182709    4  star
-  992          182456    5  final
-  993          182405    6  justice
-  994          182212    5  escape
-  995          182148    4  agree
-  996          181680    4  major
-  997          181644    4  stick
-  998          181350    7  pretend
-  999          181328    5  address
- 1000          181248    7  society
-#  1001          180856    5  gasps
- 1002          180732    5  grand
- 1003          180222    8  contract
- 1004          180022    3  less
- 1005          179979    4  whether
- 1006          179886    4  bank
- 1007          179760    3  pull
- 1008          179718    4  trip
- 1009          179652    5  nervous
- 1010          179574    3  beat
- 1011          179260    2  eyes
- 1012          179224    5  decide
- 1013          179185    6  clearly
- 1014          178734    7  destroyed
- 1015          178671    4  list
- 1016          178590    7  universe
- 1017          178494    7  opinion
- 1018          178392    4  brain
- 1019          178064    5  drugs
- 1020          178047    4  fix
- 1021          178008    7  program
- 1022          177927    4  proud
- 1023          177816    7  usual
- 1024          177156    5  mission
- 1025          176985    6  bullshit
-#  1026          176924    5  heaven
- 1027          176814    3  date
-#  1028          176440    5  paris
- 1029          176160    6  several
- 1030          176139    4  park
- 1031          175524    3  fall
- 1032          175406    8  personally
- 1033          175287    4  dress
- 1034          175192    5  action
- 1035          175144    5  orders
- 1036          174972    4  missed
- 1037          174804    7  created
- 1038          174486    7  realized
- 1039          173960    6  stories
- 1040          173754    3  song
- 1041          173744    9  television
- 1042          173260    5  notice
- 1043          173001    4  saved
- 1044          172665    4  killer
- 1045          172520    5  begin
- 1046          172410    6  hardly
- 1047          172164    4  feels
- 1048          171502    3  road
- 1049          171276    3  calm
- 1050          171196    5  enemy
- 1051          171150    8  connection
- 1052          171143    8  assistant
- 1053          171140    5  battle
-#  1054          171030    7  england
- 1055          170820    5  dollars
- 1056          170732    3  mad
- 1057          169977    4  card
- 1058          169872    3  learn
- 1059          169836    5  guilty
- 1060          169672    3  early
- 1061          169668    5  apart
- 1062          169270    6  powerful
- 1063          169197    4  smell
- 1064          169194    7  distance
- 1065          168895    6  weapons
- 1066          168875    6  manager
- 1067          168775    6  pardon
- 1068          168448    3  piece
- 1069          167994    4  often
- 1070          167984    5  chicken
- 1071          167916    7  thousands
- 1072          167820    4  calls
- 1073          167820    6  biggest
- 1074          167700    6  natural
- 1075          167455    6  dancing
- 1076          167358    3  throw
- 1077          167268    5  admit
- 1078          167204    5  closed
- 1079          167064    7  happiness
- 1080          166890    7  property
- 1081          166691    8  including
- 1082          166590    3  feet
-#  1083          166465    6  martin
- 1084          166364    5  indeed
- 1085          166152    7  interview
-#  1086          166116    4  mama
- 1087          165980    6  freedom
- 1088          165495    6  challenge
- 1089          165484    5  keeping
- 1090          165405    6  market
- 1091          165288    4  moved
- 1092          165237    4  prove
- 1093          165160    5  energy
- 1094          165118    3  worth
- 1095          165100    6  bringing
- 1096          164940    5  helped
- 1097          164380    3  dude
- 1098          164140    5  writing
- 1099          164095    6  monster
- 1100          163989    8  romantic
- 1101          163821    8  downstairs
-#  1102          163656    5  prince
- 1103          162530    6  arrested
- 1104          162526    8  insurance
- 1105          162072    5  ringing
- 1106          162000    6  planning
- 1107          161748    7  medicine
- 1108          161605    6  breaking
- 1109          161548    5  hiding
- 1110          161505    6  noticed
- 1111          161365    6  screams
- 1112          161128    5  engine
- 1113          160984    5  written
- 1114          160930    8  statement
- 1115          160780    5  video
-#  1116          160776    5  applause
- 1117          160650    4  lived
- 1118          160630    3  none
- 1119          160490    6  soldiers
- 1120          160392    5  however
- 1121          160356    4  neither
- 1122          160260    5  pressure
- 1123          160132    5  weapon
- 1124          159865    6  training
- 1125          159528    5  study
- 1126          159476    5  reading
- 1127          159348    8  celebrate
- 1128          159080    5  double
-#  1129          159018    4  queen
- 1130          159012    4  teacher
- 1131          158955    6  travel
- 1132          158943    4  cops
- 1133          158766    7  basically
- 1134          158253    4  loves
- 1135          158202    4  carry
- 1136          158072    5  danger
- 1137          158040    3  act
- 1138          157928    5  empty
- 1139          157904    5  level
- 1140          157671    4  green
- 1141          157455    4  liked
- 1142          157324    5  memory
- 1143          157304    5  acting
- 1144          157075    6  target
- 1145          156720    4  cute
- 1146          156568    5  plans
- 1147          156530    6  breathing
- 1148          156525    4  evil
- 1149          156425    6  numbers
- 1150          156305    6  suicide
- 1151          156088    5  closer
-#  1152          155468    5  groans
- 1153          155145    6  credit
- 1154          154743    4  huge
- 1155          154610    6  discuss
-#  1156          154497    4  holy
- 1157          154479    2  though
- 1158          154476    4  store
- 1159          154394    3  choice
- 1160          154340    5  losing
- 1161          154002    4  likes
- 1162          153996    4  lawyer
-#  1163          153902    3  chief
- 1164          153598    3  pain
- 1165          153270    3  pass
- 1166          152916    5  bottle
- 1167          152825    6  mountain
- 1168          152538    7  funeral
- 1169          152388    7  reality
- 1170          152159    8  confused
- 1171          151947    4  quit
- 1172          151851    4  field
-#  1173          151728    7  japanese
- 1174          151675    6  audience
- 1175          151656    5  shooting
- 1176          151552    3  wake
- 1177          151190    3  worse
- 1178          151076    5  hoping
- 1179          150980    6  finding
- 1180          150796    5  flowers
- 1181          150536    5  famous
- 1182          150312    7  exciting
- 1183          150309    4  glass
- 1184          150140    5  asleep
- 1185          150060    5  beauty
- 1186          149994    7  permission
- 1187          149896    5  driver
- 1188          149889    4  dying
- 1189          149580    3  kiss
- 1190          149376    5  local
- 1191          149132    5  deserve
- 1192          149112    4  plane
- 1193          148974    8  yourselves
- 1194          148920    7  subject
- 1195          148810    6  prepare
- 1196          148448    3  ship
- 1197          148120    3  caught
- 1198          148090    6  stolen
- 1199          147752    5  willing
- 1200          147664    5  pants
- 1201          147604    3  sell
- 1202          147395    6  command
- 1203          147376    5  asshole
- 1204          147357    4  eating
- 1205          147321    4  north
-#  1206          147208    5  fuckin
-#  1207          146892    5  cheering
- 1208          146792    5  common
- 1209          146720    5  bottom
- 1210          146685    6  believed
- 1211          146673    4  gift
-#  1212          146440    5  german
- 1213          146421    4  truck
- 1214          146140    3  ride
- 1215          146140    5  whoever
- 1216          146008    5  papers
- 1217          145998    4  board
- 1218          145959    4  grab
- 1219          145491    4  stuck
- 1220          145466    3  mouth
-#  1221          145345    6  british
- 1222          145035    4  rules
-#  1223          144756    5  devil
- 1224          144189    4  wind
- 1225          144092    5  flying
- 1226          143700    4  gives
- 1227          143457    4  cheers
- 1228          143097    4  upon
- 1229          143008    5  agreed
- 1230          142936    5  corner
- 1231          142630    6  exist
- 1232          142422    7  victims
- 1233          142386    4  dirty
- 1234          142380    5  correct
- 1235          142296    7  mentioned
- 1236          142196    5  stars
- 1237          142188    5  faster
-#  1238          142020    6  daniel
- 1239          141930    6  opening
- 1240          141910    3  wear
- 1241          141065    6  suggest
- 1242          140982    4  arrest
- 1243          140868    7  results
- 1244          140755    6  whenever
- 1245          140432    5  shouting
- 1246          140264    5  blind
- 1247          140088    7  familiar
- 1248          140078    2  high
- 1249          140058    7  telephone
- 1250          140004    5  gotten
- 1251          139710    4  lots
- 1252          139650    6  process
- 1253          139593    2  wow
- 1254          139232    5  hanging
- 1255          139150    3  sing
- 1256          139092    5  advice
- 1257          139074    4  jump
- 1258          138640    6  received
- 1259          138420    7  secrets
- 1260          138396    5  murdered
- 1261          138380    5  beyond
- 1262          138372    3  bag
- 1263          137710    6  horses
- 1264          137678    3  blue
- 1265          137580    3  near
- 1266          137580    5  cousin
- 1267          137550    6  ancient
- 1268          137535    4  worst
- 1269          137502    4  river
- 1270          137500    5  trial
- 1271          137472    7  humans
- 1272          137406    7  delicious
- 1273          137310    6  handsome
- 1274          137170    6  saturday
- 1275          137164    5  somehow
- 1276          137034    4  passed
- 1277          136844    5  hearing
- 1278          136833    4  summer
- 1279          136564    2  whoa
- 1280          136512    5  states
- 1281          136352    5  account
- 1282          136276    2  bye
- 1283          136170    4  arms
- 1284          136137    2  buy
- 1285          136122    4  turns
-#  1286          135688    5  angel
-#  1287          135305    6  spanish
- 1288          135220    6  garden
- 1289          135198    7  request
- 1290          134862    7  carefully
- 1291          134722    3  rock
- 1292          134478    7  depends
- 1293          134214    7  positive
- 1294          134046    7  direction
- 1295          134028    7  families
- 1296          133872    4  press
- 1297          133857    4  bother
- 1298          133692    7  location
- 1299          133680    6  fingers
- 1300          133602    4  blame
- 1301          133587    4  crap
- 1302          133052    3  paid
- 1303          132993    4  rings
- 1304          132792    4  named
- 1305          132354    3  ran
- 1306          132342    4  picked
- 1307          132190    6  signal
- 1308          132054    7  millions
- 1309          132036    3  ring
- 1310          132015    4  risk
- 1311          131988    5  dropped
- 1312          131766    7  regular
- 1313          131691    4  books
- 1314          131517    4  further
- 1315          131512    3  lead
- 1316          131504    3  bought
- 1317          131391    4  allowed
- 1318          131148    4  learned
- 1319          131013    4  price
- 1320          130948    3  fair
- 1321          130920    4  arrived
- 1322          130920    5  nearly
- 1323          130920    6  sending
- 1324          130896    3  sun
- 1325          130864    3  fool
- 1326          130855    6  remind
- 1327          130335    6  streets
- 1328          130265    6  silence
- 1329          130263    4  smoke
- 1330          130188    5  dressed
- 1331          130110    4  favor
- 1332          130071    4  played
- 1333          129945    6  success
- 1334          129894    4  awesome
- 1335          129885    4  smile
- 1336          129810    4  guard
- 1337          129685    6  members
- 1338          129300    6  returned
- 1339          129258    7  patients
- 1340          129237    4  spot
- 1341          129102    7  committed
- 1342          128994    7  sexual
- 1343          128912    3  join
- 1344          128728    5  ideas
- 1345          128704    3  fear
- 1346          128584    5  center
- 1347          128524    3  peace
- 1348          128215    6  drinks
- 1349          127500    6  stomach
- 1350          127332    5  science
- 1351          127280    6  changes
- 1352          127255    6  details
- 1353          127221    4  earlier
- 1354          127165    6  divorce
- 1355          126990    6  football
- 1356          126987    4  duty
- 1357          126657    4  west
-#  1358          126518    2  l
-#  1359          126515    6  william
- 1360          126456    4  legs
- 1361          126279    4  hero
-#  1362          126268    5  charles
-#  1363          126244    5  chinese
- 1364          126222    4  stage
- 1365          126192    4  bunch
- 1366          126056    5  truly
- 1367          125760    5  survive
- 1368          125619    4  bigger
- 1369          125444    3  honor
- 1370          125316    4  names
- 1371          125280    6  artist
- 1372          125180    5  sweetie
- 1373          125160    4  steal
- 1374          125079    4  twice
- 1375          125076    4  cross
-#  1376          125033    2  em
- 1377          124900    5  belong
- 1378          124865    6  tickets
- 1379          124715    6  forest
- 1380          124650    3  ball
- 1381          124540    5  remain
- 1382          124296    3  boat
- 1383          124230    6  regret
- 1384          123854    3  bar
- 1385          123720    4  waste
- 1386          123628    5  research
- 1387          123626    3  fish
- 1388          123579    4  fired
- 1389          123240    4  taste
- 1390          123237    4  locked
- 1391          123204    5  strike
-#  1392          123084    4  adam
- 1393          122825    6  revenge
- 1394          122742    3  fell
- 1395          122499    4  form
- 1396          122388    4  sold
- 1397          122274    4  silly
- 1398          122214    4  build
- 1399          122157    4  throat
- 1400          122155    6  reasons
- 1401          122005    6  painting
- 1402          121900    6  doctors
- 1403          121880    5  nowhere
- 1404          121876    3  deep
-#  1405          121832    5  sheriff
- 1406          121815    6  century
- 1407          121734    4  track
- 1408          121680    5  turning
- 1409          121164    4  above
- 1410          121150    6  obvious
- 1411          121096    5  jealous
- 1412          121029    4  seemed
- 1413          120950    6  goodness
- 1414          120888    3  offer
- 1415          120576    5  meaning
- 1416          120488    5  pieces
- 1417          120266    3  hide
- 1418          120228    5  letting
- 1419          120196    5  began
- 1420          120160    6  genius
- 1421          120147    4  fresh
- 1422          120000    6  memories
- 1423          119812    5  female
- 1424          119691    4  stole
- 1425          119568    4  crowd
- 1426          119568    5  release
- 1427          119484    5  cards
- 1428          119409    4  treat
- 1429          119100    5  ended
- 1430          118968    5  movies
- 1431          118876    5  soldier
- 1432          118500    5  ticket
- 1433          118455    4  cost
- 1434          118424    5  prefer
- 1435          118260    5  surely
- 1436          118156    5  matters
- 1437          117915    6  warning
- 1438          117710    6  bedroom
-#  1439          117460    6  groaning
- 1440          117428    5  selling
- 1441          117395    6  defense
-#  1442          117354    3  soul
- 1443          117302    3  rich
- 1444          117292    5  create
- 1445          117160    5  afford
- 1446          117128    5  sunday
- 1447          117123    4  built
- 1448          117062    3  blow
- 1449          117056    5  total
- 1450          116895    6  fortune
- 1451          116754    4  band
-#  1452          116688    5  france
- 1453          116465    6  airport
- 1454          116034    3  scene
- 1455          115960    5  social
- 1456          115790    6  period
- 1457          115780    5  bodies
- 1458          115512    4  flight
- 1459          115488    4  nature
- 1460          115472    5  opened
-#  1461          115092    5  kevin
- 1462          115084    3  mess
- 1463          115065    4  warm
- 1464          114972    3  tough
-#  1465          114956    5  mister
- 1466          114660    4  heavy
-#  1467          114508    3  church
-#  1468          114501    4  mommy
- 1469          114492    4  dogs
- 1470          114486    4  wild
- 1471          114476    5  focus
- 1472          114358    3  sad
- 1473          114350    6  belongs
- 1474          114128    5  opens
- 1475          114066    3  cell
- 1476          114040    5  followed
-#  1477          114026    2  ma
- 1478          113884    5  purpose
- 1479          113860    5  letters
-#  1480          113853    4  billy
- 1481          113742    4  keeps
- 1482          113721    4  camp
- 1483          113708    3  share
- 1484          113679    4  guns
- 1485          113508    5  bullet
- 1486          113360    5  lately
- 1487          113190    3  fly
- 1488          113164    5  falling
- 1489          113160    5  season
- 1490          113020    6  glasses
- 1491          112920    3  laugh
- 1492          112782    2  hour
-#  1493          112562    3  mum
- 1494          112480    6  officers
- 1495          112215    4  awful
- 1496          112119    4  large
- 1497          111609    4  stone
- 1498          111500    3  third
- 1499          111452    5  lonely
- 1500          111420    6  forces
- 1501          111252    5  forced
- 1502          111192    5  settle
- 1503          111140    6  useless
- 1504          110784    5  friday
- 1505          110672    3  judge
- 1506          110648    5  kinda
- 1507          110620    6  deliver
- 1508          110583    4  skin
- 1509          110520    5  surgery
- 1510          110510    6  changing
- 1511          110262    3  dare
-#  1512          110199    2  s
-#  1513          110180    6  temple
-#  1514          109768    5  thomas
- 1515          109626    3  wall
- 1516          109584    4  walked
- 1517          109525    6  carrying
- 1518          109504    5  unit
- 1519          109355    6  official
- 1520          109230    3  seat
- 1521          109092    5  split
- 1522          108948    4  drug
- 1523          108840    6  becomes
- 1524          108805    6  closes
-#  1525          108555    6  panting
- 1526          108508    5  ordered
- 1527          108484    5  slowly
- 1528          108464    5  alarm
- 1529          108448    5  member
- 1530          108308    5  slept
- 1531          108220    6  golden
- 1532          108192    3  art
- 1533          108138    4  although
- 1534          108117    4  lights
- 1535          108020    5  brings
- 1536          107974    2  ha
- 1537          107908    5  model
- 1538          107868    5  finger
- 1539          107748    5  access
- 1540          107628    4  knowing
- 1541          107415    6  wherever
- 1542          107360    5  easily
- 1543          107348    3  cry
- 1544          107200    6  chocolate
- 1545          107152    5  insane
- 1546          106735    6  charges
- 1547          106416    4  cars
- 1548          106394    2  earth
- 1549          106293    4  folks
- 1550          106005    4  fellow
- 1551          105905    6  mystery
- 1552          105654    3  sake
- 1553          105544    5  covered
- 1554          105465    4  leader
- 1555          105462    3  teach
- 1556          105450    4  leaves
- 1557          105420    6  traffic
-#  1558          105245    6  indian
- 1559          105153    4  ghost
-#  1560          105152    5  russian
- 1561          105009    2  ass
- 1562          104619    4  tells
- 1563          104488    5  naked
- 1564          104448    4  pulled
- 1565          104392    5  heading
- 1566          104382    4  speed
- 1567          104364    4  health
- 1568          104244    5  damage
- 1569          104199    4  held
- 1570          103780    5  amount
- 1571          103496    5  manage
- 1572          103456    3  joke
- 1573          103444    5  safety
- 1574          103402    3  cop
- 1575          103248    5  harder
-#  1576          103192    5  fbi
- 1577          103084    5  fancy
- 1578          102858    3  jail
- 1579          102607    2  hmm
- 1580          102574    3  doubt
- 1581          102492    5  buried
- 1582          102350    3  cat
- 1583          102105    4  spoke
- 1584          101952    3  shop
- 1585          101600    3  wrote
- 1586          101589    4  milk
- 1587          101248    5  ruined
- 1588          101164    5  spread
- 1589          101048    5  sudden
- 1590          101046    4  career
- 1591          101044    3  wine
- 1592          100917    4  super
- 1593          100736    5  spring
- 1594          100728    3  south
-#  1595          100660    5  simon
- 1596          100650    4  plays
- 1597          100600    5  castle
- 1598          100572    5  hidden
- 1599          100572    5  storm
- 1600          100552    3  slow
- 1601          100467    4  copy
- 1602          100242    4  plus
- 1603          100137    2  air
- 1604           99952    3  cash
- 1605           99636    5  barely
- 1606           99616    3  whose
- 1607           99570    4  among
- 1608           99528    4  breath
- 1609           99380    3  push
- 1610           99372    5  lesson
- 1611           99140    5  legal
- 1612           99116    5  growing
-#  1613           99012    5  jason
-#  1614           98680    5  beeping
- 1615           98636    5  points
- 1616           98580    5  dating
- 1617           98523    4  breathe
- 1618           98511    4  color
- 1619           98271    4  photo
-#  1620           98128    5  santa
- 1621           98108    5  likely
- 1622           98034    3  tree
- 1623           97869    4  games
- 1624           97764    4  bridge
- 1625           97700    5  yelling
- 1626           97480    5  foreign
- 1627           97452    5  murderer
- 1628           97348    3  bear
- 1629           97282    3  beer
- 1630           97044    5  pocket
- 1631           96999    4  checked
- 1632           96744    5  parts
- 1633           96442    3  reach
- 1634           96390    4  older
- 1635           96308    5  square
-#  1636           96168    5  europe
- 1637           96092    5  cases
- 1638           96020    5  winter
- 1639           95930    2  lie
- 1640           95811    4  trick
- 1641           95740    5  cancer
-#  1642           95556    5  dna
- 1643           95188    5  planned
- 1644           95168    5  emily
- 1645           95088    4  paying
- 1646           95068    3  bus
- 1647           94948    5  boring
- 1648           94878    3  search
- 1649           94396    5  plant
- 1650           94308    5  knocking
- 1651           94092    5  silver
-#  1652           93960    5  madame
- 1653           93868    5  toilet
- 1654           93852    5  event
-#  1655           93812    5  priest
- 1656           93576    5  invite
- 1657           93304    5  burning
-#  1658           93285    4  papa
- 1659           93156    4  onto
-#  1660           93040    5  walter
- 1661           92980    3  shoes
- 1662           92908    5  giant
- 1663           92632    5  pleased
- 1664           92628    4  easier
- 1665           92484    3  rid
- 1666           92456    3  knock
- 1667           92412    4  hurts
- 1668           92344    5  stops
-#  1669           92304    4  roger
- 1670           92144    5  repeat
- 1671           92140    5  photos
- 1672           92076    5  finds
- 1673           92020    3  grow
- 1674           91844    5  younger
-#  1675           91668    3  aunt
-#  1676           91647    4  dr
- 1677           91556    5  proper
- 1678           91474    3  fat
- 1679           91472    5  attacked
- 1680           91288    5  knowledge
- 1681           91220    5  guests
- 1682           91185    4  brown
- 1683           91050    4  heads
- 1684           90844    3  moon
- 1685           90492    5  ashamed
- 1686           90446    3  match
- 1687           90384    4  guest
- 1688           90300    5  fixed
- 1689           90192    3  yep
- 1690           89932    5  pounds
- 1691           89706    3  choose
- 1692           89564    3  mate
- 1693           89536    5  waited
- 1694           89397    4  balls
- 1695           89380    5  attorney
- 1696           89176    3  foot
- 1697           88978    3  type
- 1698           88840    5  grant
- 1699           88794    4  aware
- 1700           88784    5  saving
- 1701           88724    5  speaks
- 1702           88584    4  lift
- 1703           88464    5  answers
- 1704           88290    4  proof
- 1705           88178    3  race
- 1706           88140    5  scary
- 1707           88134    4  cream
- 1708           87452    5  jacket
- 1709           87111    4  nuts
- 1710           87096    5  sexy
- 1711           87084    4  birds
- 1712           87084    5  faces
- 1713           87004    3  fit
- 1714           87000    5  badly
- 1715           86708    5  pizza
- 1716           86628    5  clears
- 1717           86526    4  bucks
- 1718           86139    4  ugly
-#  1719           85965    4  ryan
- 1720           85716    5  clever
- 1721           85424    5  dealing
- 1722           85298    3  allow
- 1723           85292    5  poison
-#  1724           85076    3  nine
- 1725           85032    5  headed
- 1726           84940    5  babies
- 1727           84927    4  stayed
- 1728           84726    4  ends
- 1729           84692    5  picking
-#  1730           84646    3  jim
- 1731           84630    3  suit
- 1732           84598    3  bell
- 1733           83784    4  sword
- 1734           83649    4  fucked
- 1735           83487    4  tiny
- 1736           83460    4  desk
- 1737           83452    3  arm
- 1738           83394    3  kick
- 1739           83350    3  ways
- 1740           83070    3  gas
- 1741           82191    4  staff
- 1742           82149    4  lines
- 1743           81316    3  hole
- 1744           81222    4  signed
- 1745           81222    4  enter
- 1746           80970    4  brave
- 1747           80924    3  lock
- 1748           80898    3  leg
- 1749           80637    4  failed
- 1750           80544    4  flat
- 1751           80487    4  based
- 1752           80472    4  screw
- 1753           80331    4  cares
- 1754           80220    4  weather
- 1755           79972    3  sky
- 1756           79926    4  soft
- 1757           79748    3  burn
- 1758           79722    4  harm
- 1759           79707    4  style
- 1760           79582    3  roll
- 1761           79179    4  spare
- 1762           79179    4  speech
- 1763           78723    4  bright
- 1764           78522    4  paint
- 1765           78388    3  nose
- 1766           78339    4  post
- 1767           78330    4  sugar
- 1768           78264    2  law
- 1769           78060    4  doors
- 1770           77355    4  block
- 1771           77355    4  showing
- 1772           77064    4  chest
- 1773           76898    3  raise
- 1774           76838    3  pop
- 1775           76790    3  bomb
- 1776           76742    3  neck
- 1777           76680    4  trade
-#  1778           76658    2  ya
- 1779           76554    4  journey
- 1780           76446    3  van
- 1781           76308    4  thoughts
-#  1782           76266    4  maria
- 1783           76080    4  theory
- 1784           76014    3  showed
- 1785           75708    4  sooner
-#  1786           75591    4  larry
- 1787           75586    3  shame
- 1788           75470    3  whom
- 1789           75422    3  bird
-#  1790           74937    4  jerry
- 1791           74886    3  keys
- 1792           74834    3  rain
- 1793           74526    4  lover
- 1794           74484    4  bread
-#  1795           74466    4  andy
-#  1796           74396    3  jane
- 1797           74262    2  age
- 1798           74058    4  caused
- 1799           73682    3  beach
-#  1800           73630    3  faith
- 1801           73614    3  beg
- 1802           73353    4  rent
- 1803           73200    4  trees
- 1804           73062    3  cook
- 1805           72972    4  nights
-#  1806           72881    2  t
- 1807           72852    4  runs
- 1808           72762    4  farm
- 1809           72708    3  hall
- 1810           72584    3  main
- 1811           72394    3  knife
-#  1812           72312    4  alan
- 1813           72024    4  ruin
-#  1814           71992    3  dick
- 1815           71884    3  rose
- 1816           71823    4  buying
- 1817           71721    4  clock
- 1818           71715    4  ocean
- 1819           71656    3  hat
-#  1820           71583    4  bleep
-#  1821           71517    4  lisa
- 1822           71472    4  rights
- 1823           71422    3  code
- 1824           71402    3  note
-#  1825           71397    4  smith
- 1826           70905    4  bones
- 1827           70761    4  bless
- 1828           70641    4  crash
- 1829           70418    3  shows
-#  1830           70344    4  royal
- 1831           70218    3  east
- 1832           70131    4  tears
- 1833           70122    4  avoid
- 1834           70074    4  reached
- 1835           70032    3  cup
- 1836           69957    4  filled
- 1837           69944    3  tight
-#  1838           69939    4  kelly
-#  1839           69933    4  alice
- 1840           69804    4  jobs
- 1841           69798    4  grown
- 1842           69654    3  lies
- 1843           69642    3  nor
- 1844           69633    4  woods
- 1845           69576    4  scare
- 1846           69261    4  player
-#  1847           69150    4  laura
- 1848           69034    3  rule
-#  1849           68778    4  china
- 1850           68514    4  hired
- 1851           68148    4  horn
- 1852           68001    4  pity
- 1853           67947    4  powers
- 1854           67938    3  file
- 1855           67848    4  assume
- 1856           67808    3  tape
- 1857           67474    3  vote
- 1858           67434    4  data
-#  1859           67408    3  jake
- 1860           67226    3  taught
- 1861           67167    4  jury
- 1862           66741    4  walls
- 1863           66512    3  cake
- 1864           66226    3  crew
- 1865           66100    3  meat
- 1866           65958    3  lied
- 1867           65949    4  offered
- 1868           65682    3  size
- 1869           65586    4  switch
- 1870           65514    3  loud
- 1871           65493    4  grave
- 1872           65430    3  sight
- 1873           65157    4  affair
- 1874           65136    4  raised
- 1875           65007    4  image
- 1876           64942    3  coach
- 1877           64626    4  watched
- 1878           64488    4  suffer
-#  1879           64473    4  arthur
- 1880           64398    4  plate
- 1881           64380    3  serve
- 1882           64347    4  appear
-#  1883           64304    2  d
- 1884           64230    4  mercy
- 1885           64220    3  pack
- 1886           64197    4  shots
-#  1887           64146    3  doc
-#  1888           64098    4  lucy
- 1889           64056    4  trap
- 1890           63927    4  drove
- 1891           63678    4  yellow
- 1892           63432    4  wound
- 1893           63230    3  teeth
- 1894           63210    4  courage
- 1895           63204    4  hunt
- 1896           62946    3  bro
- 1897           62818    3  feed
- 1898           62812    3  nurse
- 1899           62710    3  fake
-#  1900           62386    3  amy
- 1901           62153    2  key
- 1902           61748    3  view
- 1903           61652    3  chair
-#  1904           61400    2  eight  (number-mode gesture)
- 1905           61366    3  fill
-#  1906           60894    3  kim
- 1907           60812    2  sea
- 1908           60366    3  shirt
- 1909           60204    3  dry
-#  1910           59968    3  jeff
-#  1911           59724    3  pray
- 1912           59414    3  wash
- 1913           59290    3  heat
- 1914           59277    2  tea
- 1915           59096    3  male
- 1916           59094    3  base
- 1917           59008    3  lab
- 1918           58458    3  dumb
- 1919           58446    3  threw
- 1920           58334    3  birth
- 1921           58098    3  noise
- 1922           57706    3  ours
- 1923           57545    2  ice
- 1924           57006    3  draw
- 1925           56280    3  issue
-#  1926           55842    2  y
- 1927           55802    3  shower
- 1928           55768    3  weak
- 1929           55636    3  pool
- 1930           55522    3  weight
- 1931           55444    3  gang
- 1932           55438    3  bite
- 1933           55060    3  mayor
- 1934           55036    3  babe
- 1935           54744    3  fan
- 1936           54598    3  fate
- 1937           53978    3  pig
- 1938           53380    3  san
- 1939           53362    3  path
- 1940           53010    3  sees
- 1941           52854    3  nope
- 1942           52768    3  shake
- 1943           52712    3  loose
- 1944           52616    3  snow
- 1945           52546    2  la
- 1946           52530    3  lake
- 1947           52408    3  roof
- 1948           52326    3  pal
-#  1949           52032    3  pete
- 1950           51974    3  wet
- 1951           51508    3  chef
- 1952           51396    3  dig
-#  1953           51266    3  dave
- 1954           50670    3  gosh
- 1955           50616    3  gate
- 1956           50580    3  outta
- 1957           50522    3  coat
- 1958           50444    3  cheese
- 1959           50366    3  page
- 1960           50336    3  ears
-#  1961           50232    3  cos
- 1962           50108    3  hill
- 1963           49794    3  eggs
-#  1964           49746    3  goin
- 1965           49478    3  mood
- 1966           49444    3  owner
- 1967           49250    3  loss
- 1968           48750    3  rush
- 1969           48740    3  rough
- 1970           48586    3  pair
- 1971           48466    3  bike
- 1972           48416    3  grew
-#  1973           48394    3  tim
- 1974           48002    3  tongue
- 1975           47764    3  liar
- 1976           47750    3  tour
- 1977           47740    3  thief
- 1978           47058    3  lower
- 1979           46920    3  shape
- 1980           46860    3  cheap
- 1981           46708    3  higher
- 1982           46233    2  yo
- 1983           45964    3  suck
-#  1984           45768    3  rome
- 1985           45732    3  bath
- 1986           45668    3  site
-#  1987           45657    2  m
- 1988           45612    3  led
- 1989           45452    3  map
- 1990           45192    3  rise
-#  1991           44903    2  de
- 1992           44340    3  fought
- 1993           44290    3  meal
- 1994           43660    3  chase
- 1995           43626    3  role
- 1996           43474    3  tall
- 1997           43434    3  shock
-#  1998           42676    3  phil
- 1999           42654    3  bang
- 2000           42628    3  butt
- 2001           42536    2  gay
- 2002           42404    3  soup
- 2003           42326    3  sat
- 2004           42084    3  rat
- 2005           41837    2  low
-#  2006           38047    2  lee
- 2007           36984    2  lay
-#  2008           36830    2  c
- 2009           35669    2  due
- 2010           34342    2  ought
- 2011           31269    2  oil
-#  2012           31217    2  whoo
- 2013           31008    2  ugh
-#  2014           29883    2  ho
-#  2015           29291    2  h
- 2016           28920    2  tie
- 2017           28200    2  joy
- 2018           27132    2  add
-#  2019           26447    2  al
-#  2020           26011    2  ed
- 2021           25962    2  nah
- 2022           24763    2  ill
- 2023           24218    2  ate
-#  2024           23954    2  da
-#  2025           23559    2  re
-#  2026           23195    2  n
-#  2027           22813    2  b
- 2028           22472    2  per
- 2029           21790    2  odd
- 2030           21429    2  hm
+#you                    28787591    2      1
+#the                    22761659    2      2
+ and                    21145876    3      3
+ that                   20407484    3      4
+ to                     17099834    2      5  # ordered brief (slot already claimed)
+ what                   13800328    3      6
+ it                     13631703    2      7
+ this                   11479576    3      8
+ for                    10348120    3      9  # ordered brief (slot already claimed)
+ just                   10003176    4     10
+ have                    9528020    3     11  # ordered brief (slot already claimed)
+ your                    9221890    3     12  # ordered brief (slot already claimed)
+ of                      8915110    2     13
+ was                     8803062    3     14  # +s→wa(5502) keep
+ not                     8524546    3     15  # ordered brief (slot already claimed)
+ can                     7652236    3     16
+#with                    7613954    3     17
+ about                   7462044    4     18
+ is                      7400675    2     19
+ in                      7337058    2     20  # ordered brief (slot already claimed)
+ but                     7262924    3     21  # ordered brief (slot already claimed)
+ we                      6755687    2     22
+ me                      6444985    2     23
+ there                   6297056    3     24  # ordered brief (slot already claimed)
+ here                    6277182    3     25  # ordered brief (slot already claimed)
+ like                    5966054    3     26
+ want                    5852535    4     27
+ get                     5766386    3     28
+ think                   5518419    4     29  # ordered brief (slot already claimed)
+#he                      5516364    2     30
+ something               5193190    6     31
+ right                   5153642    3     32  # ordered brief (slot already claimed)
+ from                    5128746    4     33
+ my                      4938948    2     34
+#him                     4862118    3     35
+ on                      4821861    2     36
+ going                   4562301    4     37  # ordered brief (slot already claimed), +ing→go(2738504)
+#one                     4527912    3     38
+ do                      4419883    2     39  # ordered brief (slot already claimed)
+ come                    4407838    3     40
+ no                      4374975    2     41  # ordered brief (slot already claimed)
+ well                    4319818    3     42
+ be                      4210868    2     43  # ordered brief (slot already claimed)
+ are                     4203821    2     44
+ will                    3939614    3     45
+ got                     3936778    3     46
+ know                    3892394    2     47  # ordered brief (slot already claimed), homophone of "no"(4374975)
+ gonna                   3564570    4     48
+ all                     3544700    2     49
+ people                  3543660    5     50
+ really                  3524130    4     51  # ordered brief (slot already claimed)
+ because                 3520448    5     52
+ did                     3485528    3     53
+ good                    3483460    3     54
+ little                  3478088    5     55
+ so                      3434152    2     56
+ let                     3410524    3     57
+#his                     3332722    3     58
+ yes                     3268100    3     59
+ anything                3201030    6     60
+#everything              3118770    7     61
+ when                    3063462    3     62
+ they                    3060204    2     63
+ understand              2921680    9     64
+ time                    2907416    3     65
+ okay                    2857768    3     66
+ very                    2836959    4     67
+ back                    2810048    3     68
+ never                   2792493    4     69
+#she                     2778359    2     70
+ go                      2738504    2     71  # ordered brief (slot already claimed)
+ look                    2696934    3     72
+ would                   2680140    3     73  # ordered brief (slot already claimed)
+ only                    2662089    4     74
+ them                    2655018    3     75
+ where                   2644452    3     76  # ordered brief (slot already claimed)
+ if                      2630800    2     77
+ take                    2624464    3     78  # ordered brief (slot already claimed)
+ then                    2551004    3     79
+ had                     2549074    3     80
+ been                    2530300    3     81
+ please                  2526360    4     82
+ out                     2510010    2     83
+ nothing                 2489660    5     84
+ up                      2459855    2     85
+ sorry                   2454057    4     86
+ at                      2431398    2     87
+ tell                    2352580    3     88  # ordered brief (slot already claimed)
+#man                     2347176    3     89
+ some                    2333828    3     90
+ thank                   2320731    4     91  # ordered brief (slot already claimed)
+ before                  2314424    5     92
+ now                     2298830    2     93
+ even                    2233632    4     94
+ could                   2223674    3     95
+ doing                   2196435    4     96  # +ing→do(4419883) defer
+#her                     2154982    2     97
+ remember                2149746    7     98
+ how                     2140365    2     99
+ need                    2080262    3    100  # +ed→ne(4128) keep
+ has                     2070620    3    101
+ more                    2020780    3    102
+ always                  2013668    5    103
+ someone                 2005810    6    104
+ yeah                    2000641    2    105
+ help                    1998858    4    106
+ first                   1969161    4    107
+ into                    1967241    4    108
+ wanted                  1962550    6    109
+ down                    1957932    3    110
+ make                    1927770    3    111
+ still                   1918620    4    112
+ find                    1879560    4    113
+ happened                1878515    6    114  # +ed→happen(186041) keep
+ as                      1792220    2    115
+ see                     1781493    2    116  # ordered brief (slot already claimed)
+ again                   1770057    4    117
+ over                    1761682    3    118
+ maybe                   1743261    4    119
+ must                    1742793    4    120
+ who                     1734491    2    121
+ why                     1722797    2    122
+ stop                    1722048    4    123
+ after                   1718283    4    124  # +er→aft(1253) keep
+ actually                1677570    7    125
+ love                    1660648    3    126
+ should                  1647422    3    127
+ mean                    1642550    3    128
+ said                    1637756    3    129
+ great                   1637304    4    130
+ give                    1623838    3    131
+ believe                 1615496    5    132
+ thanks                  1582760    5    133  # ordered brief (slot already claimed), +s→thank(773577)
+#last                    1582185    4    134
+ better                  1560984    4    135  # +er→bett(64) keep
+ coming                  1559796    5    136  # +ing→come(2203919) defer
+ told                    1553853    4    137
+ any                     1535936    3    138
+ morning                 1517750    6    139  # +ing→morn(1410) keep
+ together                1512020    6    140
+ things                  1510926    4    141  # ordered brief (slot already claimed), +s→thing(697528)
+ yourself                1510065    6    142
+ much                    1477198    3    143
+ everyone                1476192    7    144
+ family                  1472715    6    145
+ listen                  1463164    5    146
+ another                 1461684    5    147
+ an                      1449181    2    148
+ years                   1445580    4    149  # ordered brief (slot already claimed), +s→year(208705) keep
+ already                 1439185    6    150
+ probably                1419152    8    151
+ sure                    1418780    3    152
+ money                   1414929    4    153
+ around                  1414389    4    154
+ beautiful               1405677    8    155
+ thing                   1395056    3    156  # ordered brief (slot already claimed)
+ problem                 1393950    7    157
+ these                   1366256    3    158
+ talking                 1350516    5    159  # +ing→talk(567036)
+ us                      1346903    2    160
+ next                    1342292    5    161
+ place                   1334589    4    162
+ exactly                 1326591    8    163  # +ly→exact(18213) keep
+ getting                 1324744    5    164  # +ing→get(2883193) defer
+ everybody               1319724    8    165
+ excuse                  1319130    7    166
+ were                    1315964    2    167
+ important               1315088    9    168
+#father                  1312611    4    169
+ looking                 1306200    5    170  # +ing→look(1348467) defer
+#woman                   1298692    5    171
+ or                      1267646    2    172
+ life                    1249192    3    173
+ tomorrow                1243645    6    174
+ friend                  1232816    5    175  # ordered brief (slot already claimed)
+#god                     1223848    3    176
+ work                    1223354    3    177  # ordered brief (slot already claimed)
+ hello                   1216602    4    178
+ trying                  1213152    5    179  # +ing→try(325748)
+ their                   1202342    3    180  # ordered brief (slot already claimed), homophone of "there"(3148528)
+ myself                  1202300    6    181
+ our                     1191941    2    182  # ordered brief (slot already claimed)
+ kind                    1176726    4    183
+ every                   1165560    4    184
+ without                 1162036    5    185
+ being                   1159584    4    186  # +ing→be(4210868) defer
+ other                   1154394    3    187
+ say                     1153915    2    188
+ friends                 1152320    6    189  # ordered brief (slot already claimed), +s→friend(308204)
+ wait                    1149504    3    190  # ordered brief (slot already claimed)
+ hey                     1149292    2    191
+#call                    1145994    3    192
+ course                  1145448    4    193
+ anyone                  1141660    6    194
+ left                    1135761    4    195
+ talk                    1134072    3    196
+ enough                  1130919    4    197
+ away                    1128536    3    198
+ than                    1122028    3    199
+#mother                  1118538    4    200
+ thought                 1117084    3    201
+ home                    1113788    3    202
+ night                   1112636    3    203  # ordered brief (slot already claimed)
+ world                   1111860    4    204
+ put                     1104492    3    205
+ today                   1099185    4    206
+ by                      1090424    2    207  # ordered brief (slot already claimed)
+ business                1079275    6    208
+ those                   1056808    3    209
+ different               1047942    7    210
+#brother                 1039508    5    211
+ pretty                  1038000    5    212
+ music                   1036025    6    213
+ haven                   1033852    5    214
+ somebody                1029576    7    215
+ start                   1025668    5    216  # ordered brief (slot already claimed)
+ too                     1022558    2    217  # ordered brief (slot already claimed), homophone of "to"(17099834)
+ found                   1012146    4    218
+ way                     1000182    2    219
+#keep                     996784    3    220
+ long                     992534    3    221  # ordered brief (slot already claimed)
+ tonight                  986056    5    222
+ thinking                 979375    6    223  # ordered brief (slot already claimed), +ing→think(1839473) defer
+ second                   968435    6    224
+ went                     965472    4    225
+ leave                    956564    3    226
+#husband                  956364    7    227
+ does                     956348    3    228
+ many                     944550    4    229
+ mind                     938781    4    230
+ children                 937086    7    231
+ fucking                  931380    5    232  # +ing→fuck(260121)
+ started                  926070    7    233  # ordered brief (slot already claimed), +ed→start(256417)
+ best                     921213    4    234
+ name                     911086    3    235
+ until                    900684    5    236
+ whatever                 900410    6    237
+ ever                     888176    3    238  # +er→ev(1278) keep
+ feel                     888028    3    239  # ordered brief (slot already claimed)
+ police                   885520    5    240
+#guys                     884482    3    241  # +s→guy(435832)
+ minutes                  875455    6    242  # ordered brief (slot already claimed), +s→minute(188958)
+ baby                     871488    4    243
+ made                     867800    3    244
+ old                      863822    3    245
+ wants                    860596    5    246  # +s→want(1950845) defer
+ most                     849018    4    247
+ question                 845820    7    248  # ordered brief (slot already claimed)
+ which                    844966    3    249  # ordered brief (slot already claimed)
+ big                      834436    3    250
+ against                  825165    6    251
+ having                   824424    5    252  # ordered brief (slot already claimed), +ing→have(4764010) defer
+ lot                      823320    3    253
+ done                     817520    3    254
+ nice                     810994    3    255
+ once                     809112    4    256
+#girl                     805114    3    257
+ ready                    801804    4    258
+ fine                     801060    3    259
+ moment                   799975    6    260  # +ment→mo(8810) keep
+ off                      799351    2    261
+ called                   793764    4    262  # +ed→call(572997) defer
+ doctor                   793696    5    263
+ used                     790698    4    264
+ idea                     789291    4    265
+ hold                     787101    4    266
+ happy                    786423    4    267
+ am                       785830    2    268
+ nobody                   785070    6    269
+ also                     779409    4    270
+ house                    777170    3    271
+ ok                       776676    3    272  # homophone of "okay"(1428884)
+ through                  776254    3    273  # ordered brief (slot already claimed)
+ working                  772688    5    274  # ordered brief (slot already claimed), +ing→work(611677) defer
+ sometimes                772674    7    275  # +s→sometime(17142) keep
+ person                   770608    5    276
+ supposed                 765585    6    277  # +ed→suppose(73465) keep
+ two                      764564    2    278  # ordered brief (slot already claimed), homophone of "to"(17099834)
+ since                    763281    4    279
+ between                  762600    6    280
+ stay                     757452    3    281
+#dad                      757080    3    282
+ minute                   755832    5    283  # ordered brief (slot already claimed)
+ crazy                    755068    5    284
+ forget                   754512    5    285
+ came                     748972    3    286
+ happen                   744164    5    287
+ matter                   743436    4    288  # +er→matt(24245) keep
+ behind                   742345    6    289
+ bring                    742029    4    290
+ almost                   742025    6    291
+ wrong                    741898    3    292
+ bad                      739992    3    293
+ anymore                  734515    6    294
+ might                    734290    3    295
+ three                    733252    3    296
+ drink                    730320    5    297
+ wanna                    729327    4    298
+ hard                     728613    4    299
+ alone                    721425    4    300
+ hear                     721330    3    301  # ordered brief (slot already claimed), homophone of "here"(3138591)
+ school                   720528    4    302
+ trouble                  716175    6    303
+ taking                   710668    5    304  # ordered brief (slot already claimed), +ing→take(1312232) defer
+ saying                   709800    4    305  # +ing→say(1153915) defer
+ ask                      708646    3    306
+ hands                    705164    5    307  # ordered brief (slot already claimed), +s→hand(206247)
+ welcome                  701635    6    308
+ looks                    701442    4    309  # +s→look(1348467) defer
+#same                     696334    3    310
+ inside                   696324    5    311
+#gentlemen                693280    9    312
+ gotta                    691053    4    313
+ open                     689007    4    314
+ hospital                 686532    8    315
+ killed                   684891    4    316  # ordered brief (slot already claimed), +ed→kill(339509)
+ else                     681512    3    317
+ kill                     679018    3    318  # ordered brief (slot already claimed)
+ absolutely               678848    9    319  # +ly→absolute(10696) keep
+ making                   676148    5    320  # +ing→make(963885) defer
+ anybody                  675492    7    321
+ afraid                   675096    5    322
+ lost                     667194    4    323
+ anyway                   666808    5    324
+ party                    664548    5    325
+ care                     661912    3    326  # ordered brief (slot already claimed)
+ parents                  661236    7    327  # +s→parent(10204) keep
+ congratulations          661011   14    328  # +s→congratulation(553) keep
+ car                      660522    3    329
+#himself                  658488    7    330
+ stupid                   657485    6    331
+ story                    656160    5    332
+#president                655840    9    333
+ number                   653036    5    334  # +er→numb(3088) keep
+#son                      651994    3    335  # ordered brief (slot already claimed)
+ try                      651496    3    336
+ waiting                  650284    5    337  # +ing→wait(574752) defer
+ company                  648438    7    338
+ heart                    641742    4    339
+ possible                 636480    7    340
+ dead                     635178    3    341
+ married                  631268    5    342  # +ed→marry(73938) keep
+ country                  628655    6    343
+ later                    626634    4    344
+#mr                       626564    5    345
+#captain                  624370    6    346
+ stand                    621564    5    347
+#sir                      619500    2    348
+ hand                     618741    4    349  # ordered brief (slot already claimed)
+ day                      617674    2    350  # ordered brief (slot already claimed)
+ control                  616692    7    351
+#sister                   616380    5    352
+#mom                      610278    3    353
+#hell                     608550    3    354
+#women                    603212    5    355
+ wonderful                599319    8    356  # +ful→wonder(82903)
+ job                      597822    3    357
+ real                     589072    3    358  # ordered brief (slot already claimed)
+ playing                  586460    5    359  # ordered brief (slot already claimed), +ing→play(233865)
+ completely               582216    9    360  # +ly→complete(40210)
+ room                     580412    3    361
+ questions                580209    8    362  # ordered brief (slot already claimed), +s→question(140970)
+ promise                  579540    6    363
+ water                    579042    4    364  # +er→wat(763) keep
+ reason                   577596    5    365
+ part                     576744    4    366
+ kids                     576150    4    367  # ordered brief (slot already claimed), +s→kid(187858)
+ information              574720    9    368
+ definitely               572192    9    369  # +ly→definite(3634) keep
+ security                 572024    9    370
+ stuff                    571887    4    371
+ under                    568041    4    372  # +er→und(1601) keep
+ move                     567614    3    373
+ trust                    565308    5    374
+ seen                     564840    3    375
+ live                     562092    3    376  # ordered brief (slot already claimed)
+ miss                     561860    3    377
+ perfect                  561145    6    378
+ change                   560886    4    379
+ couple                   555984    5    380
+ special                  551720    6    381
+ shit                     546624    3    382
+ perhaps                  546200    6    383
+ telling                  544436    5    384  # ordered brief (slot already claimed), +ing→tell(1176290) defer
+ serious                  543870    6    385  # ordered brief (slot already claimed)
+#both                     541440    3    386
+ front                    541364    5    387
+ heard                    539702    3    388
+ head                     533688    3    389
+ times                    529566    4    390  # +s→time(1453708) defer
+ means                    522933    4    391  # +s→mean(821275) defer
+ point                    522615    4    392
+ door                     522236    3    393
+ such                     522208    3    394
+ interesting              520656    9    395  # +ing→interest(39252)
+ fuck                     520242    3    396
+ months                   518928    5    397  # +s→month(71163)
+ bit                      517858    3    398
+ took                     517616    3    399
+ makes                    516843    4    400  # +s→make(963885) defer
+ yet                      515894    3    401
+ asked                    515220    4    402  # +ed→ask(354323) defer
+ become                   514864    5    403
+#men                      514638    3    404
+ whole                    514218    3    405  # ordered brief (slot already claimed)
+ human                    512975    6    406
+ use                      512158    3    407
+ while                    511940    3    408
+ outside                  509004    5    409
+ new                      508486    2    410  # ordered brief (slot already claimed)
+#wife                     508076    3    411
+ body                     506394    4    412
+ days                     506342    3    413  # ordered brief (slot already claimed), +s→day(617674) defer
+ explain                  506208    7    414
+ sleep                    504309    4    415
+ happens                  504235    6    416  # +s→happen(186041)
+ chance                   503943    4    417
+ yesterday                502938    7    418
+ quite                    500940    4    419
+ guess                    500640    3    420
+ close                    500031    4    421
+ finally                  499520    6    422  # +ly→final(45614) keep
+#chuckles                 498035    6    423  # +s→chuckle(6141) keep
+ relationship             496152   10    424
+ meet                     494932    3    425  # ordered brief (slot already claimed)
+ comes                    493509    4    426  # +s→come(2203919) defer
+#daughter                 489213    4    427
+ least                    488715    4    428
+ run                      488400    3    429
+ feeling                  488260    5    430  # ordered brief (slot already claimed), +ing→feel(444014) defer
+ interested               488232    9    431  # +ed→interest(39252)
+ living                   486208    5    432  # ordered brief (slot already claimed), +ing→liv(3848) keep
+ gone                     480164    3    433
+ seriously                479668    8    434  # ordered brief (slot already claimed), +ly→serious(108774)
+#girls                    477183    4    435  # +s→girl(402557) defer
+ rest                     476928    4    436
+ end                      474774    3    437
+ million                  472570    6    438
+ phone                    470492    3    439
+ leaving                  468200    5    440  # +ing→leave(478282) defer
+ running                  467892    5    441  # +ing→run(244200) defer
+ play                     467730    3    442  # ordered brief (slot already claimed)
+ alright                  466516    5    443
+ few                      462750    3    444
+ happening                462312    7    445  # +ing→happen(186041) defer
+ situation                462203    8    446
+ somewhere                461325    6    447
+ taken                    460944    5    448
+ decided                  460098    7    449  # +ed→decide(44806)
+ ago                      459502    3    450
+ child                    455592    4    451
+ hope                     453986    3    452
+ speak                    452781    4    453  # ordered brief (slot already claimed)
+ face                     450964    3    454
+ careful                  448335    6    455  # ordered brief (slot already claimed), +ful→care(330956) defer
+ secret                   446180    6    456
+ truth                    445167    4    457
+ blood                    443739    4    458
+ able                     441615    4    459
+#lady                     441363    4    460
+#american                 439845    8    461
+ evidence                 438678    7    462
+ gets                     438192    4    463  # +s→get(2883193) defer
+ turn                     437126    3    464
+ sounds                   436560    5    465  # +s→sound(105298)
+#guy                      435832    2    466
+ accident                 431697    8    467
+ scared                   431624    5    468  # +ed→scare(23192) keep
+ government               431522    8    469
+#uncle                    431304    5    470
+ case                     430548    3    471
+ experience               430416   10    472
+ says                     430180    3    473
+ true                     429546    3    474
+ break                    429321    4    475
+ certainly                428610    7    476  # +ly→certain(61050)
+ impossible               428216    9    477
+ city                     427719    4    478
+ soon                     426558    3    479
+ problems                 424431    8    480  # +s→problem(232325) defer
+ detective                424431    8    481  # +ive→detect(4113) keep
+ christmas                423744    7    482
+ office                   423420    4    483
+ difficult                422828    8    484
+ worry                    422658    3    485
+ brought                  421983    4    486
+ apartment                421712    9    487  # +ment→apart(42417)
+ yours                    421659    4    488  # ordered brief (slot already claimed)
+ expect                   417684    7    489
+ year                     417410    3    490  # ordered brief (slot already claimed)
+ terrible                 416994    7    491
+ watch                    415898    3    492
+ cannot                   415652    5    493
+ speaking                 413845    6    494  # ordered brief (slot already claimed), +ing→speak(150927)
+ asking                   411896    5    495  # +ing→ask(354323) defer
+ darling                  411200    6    496
+ seems                    410097    4    497  # +s→seem(98575)
+ honey                    406893    4    498
+ tried                    406203    4    499  # +ed→tri(355) keep
+ answer                   402264    4    500
+ amazing                  401335    6    501  # +ing→amaze(1206) keep
+ protect                  399048    7    502
+ continues                397472    9    503  # +s→continue(51279)
+ sit                      396298    3    504
+ send                     395997    4    505
+ dangerous                395844    7    506  # +ous→danger(39518)
+#girlfriend               395325    8    507
+ laughing                 393680    5    508  # +ing→laugh(56460)
+ attention                392526    7    509
+ street                   392028    5    510
+ young                    389620    3    511
+ meeting                  389312    5    512  # +ing→meet(247466) defer
+ report                   389120    6    513
+ along                    384660    4    514
+ strange                  384315    6    515
+ general                  384080    6    516
+ late                     383978    3    517
+ immediately              383504    9    518  # +ly→immediate(8061) keep
+ department               382383   10    519  # +ment→depart(2640) keep
+ evening                  381284    5    520
+#master                   380524    5    521  # +er→mast(1115) keep
+#lieutenant               380247    8    522
+ present                  379842    7    523
+ needs                    379194    4    524  # +s→need(1040131) defer
+ death                    378000    3    525
+ clear                    377190    4    526
+ order                    376338    4    527  # +er→ord(201) keep
+ kid                      375716    3    528  # ordered brief (slot already claimed)
+ fact                     374985    4    529
+ mistake                  374785    6    530
+ obviously                374689    8    531  # +ly→obvious(24230) keep
+#lord                     374640    4    532
+ may                      373526    2    533
+ gave                     372890    3    534
+ building                 372460    6    535  # +ing→build(40738)
+ six                      372261    4    536
+ funny                    371772    4    537
+ black                    371154    4    538
+ alive                    368499    4    539
+#damn                     368456    3    540
+ system                   368390    6    541
+ responsible              367810   11    542
+ five                     367252    3    543
+ responsibility           366379   14    544
+ far                      364574    3    545
+ longer                   364140    5    546  # ordered brief (slot already claimed), +er→long(496267) defer
+ calling                  363472    5    547  # +ing→call(572997) defer
+ knows                    363326    3    548  # +s→know(3892394) defer
+ totally                  362390    6    549  # +ly→total(29264) keep
+ personal                 362286    7    550
+ quiet                    362208    5    551
+ its                      361188    3    552  # +s→it(13631703) defer
+ ahead                    360885    4    553
+ imagine                  359365    6    554
+ continue                 358953    8    555
+ appreciate               358806    8    556
+#america                  358218    7    557
+ instead                  357855    6    558
+ return                   357804    5    559
+ afternoon                356796    7    560
+ shut                     356756    3    561
+ hit                      355540    3    562
+ screaming                354906    7    563  # +ing→scream(19681) keep
+ easy                     354674    3    564
+ plan                     354387    4    565
+ investigation            353958   12    566
+ dinner                   353910    4    567
+ check                    353014    3    568
+#own                      352542    2    569
+ sort                     351801    4    570
+ given                    350952    5    571
+ deal                     349858    3    572  # +al→de(44903) keep
+ straight                 349512    5    573
+ show                     347408    2    574
+ future                   347328    5    575
+ standing                 347196    7    576  # +ing→stand(155391) defer
+ respect                  345882    7    577
+ history                  345595    6    578
+ changed                  344532    5    579  # +ed→change(186962) defer
+ ridiculous               343089   10    580
+ station                  342855    6    581
+ except                   342200    6    582
+ sent                     341877    4    583
+ mine                     341272    3    584
+#ladies                   340116    5    585
+ small                    336948    4    586
+ starting                 335874    7    587  # +ing→start(256417) defer
+ handle                   335445    6    588
+ dear                     334702    3    589
+ four                     333914    3    590  # ordered brief (slot already claimed), homophone of "for"(5174060)
+ picture                  333844    5    591
+ computer                 333704    8    592
+ lives                    331749    4    593
+ wonder                   331612    5    594
+ fun                      331386    3    595
+ anywhere                 329905    6    596
+#word                     329876    3    597
+ giving                   328340    5    598  # +ing→give(811919) defer
+ unfortunately            328339   12    599  # +ly→unfortunate(9101) keep
+ set                      328330    3    600
+ shall                    328324    3    601
+ finished                 328295    6    602  # +ed→finish(74299)
+ usually                  327390    8    603  # +ly→usual(29636)
+ position                 326694    7    604
+ simple                   325450    6    605
+ especially               324888    7    606
+ moving                   324772    5    607  # +ing→move(283807) defer
+ figure                   324192    5    608
+ single                   323070    6    609
+ hurt                     322842    3    610
+ involved                 322308    7    611  # +ed→involve(5533) keep
+ strong                   322004    5    612
+ wish                     320408    3    613
+ hi                       320316    2    614
+ fight                    319822    3    615
+ past                     319317    4    616
+ week                     318888    3    617  # ordered brief (slot already claimed)
+#boyfriend                318744    7    618
+ normal                   318380    6    619  # +al→norm(3707) keep
+ sound                    315894    4    620
+ needed                   315680    5    621  # +ed→need(1040131) defer
+ fire                     315064    3    622
+ game                     315002    3    623
+#laughs                   314739    4    624  # +s→laugh(56460)
+ conversation             314415   10    625
+ themselves               313824    8    626
+ professor                312156    7    627
+ side                     311334    3    628
+ surprise                 310850    6    629
+ contact                  310500    7    630
+ quickly                  310360    6    631  # +ly→quick(81548)
+ goodbye                  310056    5    632
+ apparently               309640    9    633  # +ly→apparent(3257) keep
+ read                     309334    3    634  # ordered brief (slot already claimed)
+ missing                  309304    5    635  # +ing→miss(280930) defer
+ cut                      308814    3    636
+ glad                     308544    4    637
+ wedding                  307760    5    638  # +ing→wedd(33) keep
+ drive                    307308    4    639
+ kidding                  306976    5    640  # +ing→kidd(464) keep
+#officer                  304060    5    641
+ murder                   303399    4    642
+ prison                   302905    6    643
+ decision                 302676    7    644
+#boy                      302508    2    645
+ goes                     302390    3    646  # +s→goe(33) keep
+ hours                    302312    3    647  # +s→hour(112782)
+ record                   301800    6    648
+ beginning                300414    7    649  # +ing→begin(43130)
+#daddy                    300015    4    650
+ hundred                  298938    7    651
+ relax                    298575    6    652
+ difference               298458    7    653
+ public                   298435    6    654
+ saw                      297985    2    655
+ fast                     297252    4    656
+ finish                   297196    5    657
+ during                   297192    5    658
+ cold                     297096    4    659
+#bastard                  296660    6    660
+ forward                  295320    6    661
+ watching                 294800    5    662  # +ing→watch(207949) defer
+ words                    294726    4    663  # +s→word(164938)
+ suppose                  293860    5    664
+ opportunity              293688    9    665
+ dance                    292017    4    666
+ others                   289893    4    667  # +s→other(577197) defer
+ follow                   289587    4    668
+ shot                     289544    3    669
+ sense                    289326    4    670
+ sex                      289293    4    671
+ pregnant                 289030    8    672
+ birthday                 288560    5    673
+ forgive                  287660    5    674
+ seconds                  287616    7    675  # +s→second(193687) defer
+ incredible               286074   10    676
+ war                      285650    3    677
+ promised                 285354    7    678  # +ed→promise(115908) defer
+ dream                    285267    4    679
+ walk                     284110    3    680
+ unless                   283916    5    681
+ seven                    283872    5    682
+ clothes                  283716    5    683  # +s→clothe(452) keep
+ town                     283670    3    684
+ hotel                    282636    5    685
+ met                      282416    3    686
+ sweet                    282171    4    687
+ rather                   282171    4    688
+ breakfast                281995    8    689
+ broken                   281955    6    690
+ felt                     281478    4    691
+ suddenly                 280998    7    692  # +ly→sudden(25262)
+#english                  278385    6    693
+ lucky                    277131    4    694
+ half                     277054    3    695
+ died                     276864    3    696  # +ed→die(214062)
+ hungry                   276295    6    697
+ cool                     276278    3    698
+ free                     275196    3    699
+ either                   274896    3    700
+ private                  274890    6    701
+ huh                      274656    2    702
+ forever                  274040    5    703
+ thinks                   273416    5    704  # +s→think(1839473) defer
+ listening                273384    7    705  # +ing→listen(365791) defer
+ power                    273222    3    706  # +er→pow(2638) keep
+ message                  273220    5    707
+ entire                   273128    5    708
+ everywhere               272580    7    709
+ worked                   272313    4    710  # +ed→work(611677) defer
+ realize                  271530    6    711
+ comfortable              271404   10    712  # +able→comfort(13536) keep
+ looked                   271323    4    713  # +ed→look(1348467) defer
+ table                    270808    5    714
+ across                   270380    5    715
+ coffee                   268950    4    716
+ lovely                   268944    5    717  # +ly→love(830324) defer
+ team                     268716    3    718
+ drinking                 268620    7    719  # +ing→drink(182580) defer
+ middle                   266936    5    720
+ weeks                    266775    4    721  # +s→week(159444)
+ accept                   266455    6    722
+ gun                      266144    3    723
+ using                    266012    5    724
+ besides                  265550    6    725  # +s→beside(11813) keep
+#boys                     265188    3    726  # +s→boy(302508) defer
+ line                     264866    3    727
+ seeing                   264576    4    728  # +ing→see(1781493) defer
+ spend                    264476    5    729
+ news                     263198    3    730  # +s→new(508486) defer
+ knew                     262988    2    731  # ordered brief (slot already claimed), homophone of "new"(508486)
+ bed                      262890    3    732
+ fault                    262260    4    733
+ takes                    260877    4    734  # +s→take(1312232) defer
+ hurry                    260364    3    735
+ full                     259470    3    736
+ save                     258780    3    737
+ loved                    258414    4    738  # +ed→love(830324) defer
+ sweetheart               258349    8    739
+ fantastic                258304    9    740
+ surprised                258108    7    741  # +ed→surprise(62170)
+ sitting                  258084    5    742  # +ing→sit(198149) defer
+ excellent                257943    8    743
+ marriage                 257860    5    744
+ innocent                 257772    7    745
+ military                 257131    8    746
+ forgot                   256676    5    747
+ ourselves                256386    7    748
+ hate                     256306    3    749
+ turned                   255837    4    750  # +ed→turn(218563) defer
+ drop                     255558    4    751
+ food                     255314    3    752
+ step                     254646    4    753
+ driving                  254330    6    754  # +ing→drive(102436) defer
+ light                    253314    3    755
+ necessary                252868    8    756
+ clean                    252714    4    757
+ according                252156    7    758  # +ing→accord(1508) keep
+ sleeping                 251785    6    759  # +ing→sleep(168103) defer
+ dog                      251538    3    760
+ ground                   251440    5    761
+#grunting                 251196    7    762  # +ing→grunt(3681) keep
+ upstairs                 250392    7    763
+ land                     250266    4    764
+ radio                    250008    5    765
+#indistinct               249993   10    766
+#sergeant                 249900    7    767
+ idiot                    249428    5    768
+ apologize                249109    8    769
+ hot                      247988    3    770
+ wearing                  246996    5    771  # +ing→wear(70955)
+ crying                   246792    5    772  # +ing→cry(53674)
+ restaurant               245882    8    773
+ pick                     245396    3    774
+ quick                    244644    4    775
+ certain                  244200    5    776
+ cause                    242528    3    777
+ state                    242454    4    778
+ support                  241755    6    779
+ smart                    241588    5    780
+#grunts                   241265    6    781  # +s→grunt(3681) keep
+ complete                 241260    7    782
+ partner                  241235    6    783
+#inspector                241094    8    784
+ stopped                  240800    5    785  # +ed→stop(574016) defer
+ emergency                240513    8    786
+ thousand                 239670    6    787
+ um                       238853    2    788  # homophone of "'m"(4386306)
+ victim                   238695    6    789
+ ones                     238638    4    790  # +s→one(2263956) defer
+ works                    237969    4    791  # +s→work(611677) defer
+ planet                   237820    6    792
+ understood               237671    8    793
+ lose                     237424    3    794
+ service                  237108    5    795
+#king                     236460    3    796
+ interest                 235512    7    797
+ angry                    234992    5    798
+ weird                    234951    4    799
+#sighs                    234820    3    800  # +s→sigh(6086) keep
+ holding                  234690    6    801  # +ing→hold(262367) defer
+ fighting                 234628    5    802  # +ing→fight(159911) defer
+ complicated              234620   11    803  # +ed→complicate(1205) keep
+ agent                    234432    5    804
+ worried                  234249    4    805  # +ed→worry(211329) defer
+ boss                     233472    3    806
+ excited                  231840    7    807  # +ed→excite(1133) keep
+ killing                  231560    5    808  # +ing→kill(339509) defer
+ animals                  231108    7    809  # +s→animal(38036)
+ suspect                  230190    7    810
+ tired                    229620    4    811  # +ed→tire(8199) keep
+ class                    229467    4    812
+ patient                  229140    6    813
+ safe                     228208    3    814
+ book                     227926    3    815
+ kept                     227790    4    816
+ drunk                    227676    5    817
+ medical                  227064    7    818
+ camera                   227028    5    819
+ within                   226836    5    820
+ busy                     226671    4    821
+#majesty                  226194    7    822
+ white                    225762    3    823
+ honest                   224936    5    824
+ court                    223740    4    825
+ example                  223664    8    826
+ spent                    223344    5    827
+ consider                 222990    7    828
+ visit                    222552    5    829
+ wondering                222138    7    830  # +ing→wonder(82903) defer
+ marry                    221814    4    831
+ meant                    221787    4    832
+ expecting                221408    9    833  # +ing→expect(69614) defer
+ dark                     221310    4    834
+ window                   221140    5    835
+ criminal                 221018    8    836
+ movie                    219210    4    837
+#gentleman                218760    9    838
+ perfectly                218407    8    839
+#commander                218070    7    840  # +er→command(29479)
+ otherwise                217980    6    841
+ professional             217845   10    842  # +al→profession(7420) keep
+ pictures                 217750    6    843  # +s→picture(83461)
+ sick                     217192    3    844
+ expected                 217120    9    845  # +ed→expect(69614) defer
+ university               216711   10    846
+ machine                  216560    5    847
+ director                 216470    6    848
+ walking                  216460    5    849  # +ing→walk(142055) defer
+ pleasure                 216340    5    850
+#princess                 216276    7    851
+#tv                       216162    4    852
+#bloody                   216104    5    853
+ college                  215732    5    854
+ born                     215718    4    855
+#french                   215644    5    856
+ poor                     214888    3    857
+ narrator                 214580    6    858
+#herself                  214420    6    859
+ became                   214412    5    860
+#london                   214400    6    861
+ condition                214368    8    862
+ competition              214245   10    863
+ film                     214221    4    864
+ feelings                 214215    6    865  # +s→feeling(122065) defer
+ die                      214062    2    866
+ month                    213489    4    867
+ language                 213414    7    868
+ lying                    213294    4    869  # +ing→ly(760) keep
+ red                      213178    3    870  # ordered brief (slot already claimed), homophone of "read"(154667)
+ train                    212922    4    871
+ recognize                212562    8    872
+ community                212320    9    873
+ shoot                    212134    3    874
+ each                     211943    2    875
+ attack                   211749    4    876
+ touch                    211692    3    877
+#grandma                  211296    7    878
+ top                      210564    3    879
+ destroy                  210390    6    880
+ upset                    210260    5    881
+ round                    210129    4    882
+ helping                  209160    6    883  # +ing→help(666286) defer
+ witness                  208765    6    884  # +ness→wit(3379) keep
+ possibly                 206652    7    885
+ win                      205912    3    886
+ broke                    205887    4    887
+ favorite                 205765    6    888
+ places                   205205    6    889  # +s→place(444863) defer
+#brothers                 205125    6    890  # +s→brother(259877) defer
+ starts                   205060    6    891  # +s→start(256417) defer
+ eventually               204111   10    892
+ mention                  203765    6    893  # +tion→men(257319) defer
+ hair                     203704    3    894
+ students                 203238    8    895  # +s→student(32987)
+ village                  203168    5    896
+ talked                   202998    4    897  # +ed→talk(567036) defer
+ figured                  202950    6    898  # +ed→figure(81048)
+ brilliant                202804    8    899
+ practice                 202650    7    900
+#bitch                    202604    3    901
+ luck                     202456    3    902
+ national                 202182    7    903
+#minister                 201918    7    904
+ laughter                 200784    5    905
+ island                   200428    5    906
+ ten                      200266    3    907
+ buddy                    200154    4    908
+ expensive                199824    9    909
+ floor                    199368    4    910
+ operation                198966    7    911
+ swear                    198471    4    912
+ towards                  198192    7    913  # +s→toward(13252) keep
+ student                  197922    7    914
+ spirit                   197780    6    915
+ strength                 197700    7    916
+ eat                      197654    2    917
+#york                     197640    4    918
+ army                     197385    4    919
+ seem                     197150    3    920
+ secretary                196984    9    921
+ itself                   196650    6    922
+ singing                  196576    5    923  # +ing→sing(69575)
+#mrs                      196348    5    924
+ letter                   196344    4    925  # +er→lett(108) keep
+ greatest                 196152    7    926
+ club                     195825    4    927
+#madam                    195724    5    928
+ following                195680    6    929  # +ing→follow(96529) defer
+ hang                     195556    3    930
+ bathroom                 195475    6    931
+ putting                  195188    5    932  # +ing→putt(581) keep
+ space                    194973    4    933
+ horrible                 194952    7    934
+ test                     194907    4    935
+ box                      194364    4    936
+ group                    194283    4    937
+ till                     194088    3    938
+ magic                    193936    5    939
+ disappeared              193865    8    940  # +ed→disappear(19933)
+ catch                    193218    3    941
+ nonsense                 192582    7    942
+#grandfather              192512    9    943
+ project                  192240    7    944
+#colonel                  192144    5    945
+ client                   192035    6    946
+ extra                    191675    6    947
+ force                    191211    4    948
+ short                    191142    4    949
+ prepared                 191142    7    950  # +ed→prepare(29762)
+ introduce                191114    8    951
+ united                   190872    7    952  # +ed→unite(3860) keep
+#grandpa                  190602    7    953
+#christ                   190600    5    954
+ simply                   190500    6    955
+ recently                 190428    8    956  # +ly→recent(12948) keep
+ known                    190250    3    957
+ animal                   190180    6    958
+ character                189942    7    959
+ write                    189928    3    960  # ordered brief (slot already claimed), homophone of "right"(2576821)
+ enjoy                    189882    4    961
+ crime                    189252    4    962
+ honestly                 189006    7    963  # +ly→honest(56234)
+ staying                  188964    5    964  # +ing→stay(378726) defer
+ dreams                   188840    5    965  # +s→dream(95089) defer
+ pay                      188822    2    966
+ horse                    188769    4    967
+ count                    188289    4    968
+ area                     188265    4    969
+ charge                   188238    4    970
+ voice                    188208    3    971
+ records                  188034    7    972  # +s→record(60360)
+ discovered               187852    8    973  # +ed→discover(10961) keep
+ lunch                    187746    4    974
+ miles                    187569    4    975  # +s→mile(12874) keep
+ forgotten                186900    7    976
+ original                 186648    7    977
+ paper                    186498    4    978
+#goddamn                  186350    6    979
+ concerned                186282    7    980  # +ed→concern(20376)
+ invited                  185958    7    981  # +ed→invite(23394)
+ gold                     185805    4    982
+ weekend                  185575    6    983
+ sign                     185024    3    984
+ political                185008    9    985
+ plenty                   184705    6    986
+ kitchen                  183248    5    987
+ cover                    183156    4    988
+ bet                      183146    3    989
+ particular               183120    9    990
+ star                     182709    4    991
+ final                    182456    5    992
+ justice                  182405    6    993
+ escape                   182212    5    994
+ agree                    182148    4    995
+ major                    181680    4    996
+ stick                    181644    4    997
+ pretend                  181350    7    998
+ address                  181328    5    999
+ society                  181248    7   1000
+#gasps                    180856    5   1001  # +s→gasp(5613) keep
+ grand                    180732    5   1002
+ contract                 180222    8   1003
+ less                     180022    3   1004
+ whether                  179979    4   1005
+ bank                     179886    4   1006
+ pull                     179760    3   1007
+ trip                     179718    4   1008
+ nervous                  179652    5   1009
+ beat                     179574    3   1010
+ eyes                     179260    2   1011  # +s→eye(81953) keep
+ decide                   179224    5   1012
+ clearly                  179185    6   1013  # +ly→clear(125730) defer
+ destroyed                178734    7   1014  # +ed→destroy(42078)
+ list                     178671    4   1015
+ universe                 178590    7   1016
+ opinion                  178494    7   1017
+ brain                    178392    4   1018
+ drugs                    178064    5   1019  # +s→drug(36316)
+ fix                      178047    4   1020
+ program                  178008    7   1021
+ proud                    177927    4   1022
+ usual                    177816    7   1023
+ mission                  177156    5   1024
+ bullshit                 176985    6   1025
+#heaven                   176924    5   1026
+ date                     176814    3   1027
+#paris                    176440    5   1028
+ several                  176160    6   1029
+ park                     176139    4   1030
+ fall                     175524    3   1031
+ personally               175406    8   1032
+ dress                    175287    4   1033
+ action                   175192    5   1034
+ orders                   175144    5   1035  # +s→order(125446) defer
+ missed                   174972    4   1036  # +ed→miss(280930) defer
+ created                  174804    7   1037  # +ed→create(29323)
+ realized                 174486    7   1038  # +ed→realize(54306)
+ stories                  173960    6   1039  # +s→storie(4) keep
+ song                     173754    3   1040
+ television               173744    9   1041
+ notice                   173260    5   1042
+ saved                    173001    4   1043  # +ed→save(129390) defer
+ killer                   172665    4   1044  # +er→kill(339509) defer
+ begin                    172520    5   1045
+ hardly                   172410    6   1046  # +ly→hard(242871) defer
+ feels                    172164    4   1047  # +s→feel(444014) defer
+ road                     171502    3   1048
+ calm                     171276    3   1049
+ enemy                    171196    5   1050
+ connection               171150    8   1051
+ assistant                171143    8   1052
+ battle                   171140    5   1053
+#england                  171030    7   1054
+ dollars                  170820    5   1055  # +s→dollar(14367) keep
+ mad                      170732    3   1056
+ card                     169977    4   1057
+ learn                    169872    3   1058
+ guilty                   169836    5   1059
+ early                    169672    3   1060
+ apart                    169668    5   1061
+ powerful                 169270    6   1062  # +ful→power(136611) defer
+ smell                    169197    4   1063
+ distance                 169194    7   1064
+ weapons                  168895    6   1065  # +s→weapon(40033)
+ manager                  168875    6   1066
+ pardon                   168775    6   1067
+ piece                    168448    3   1068
+ often                    167994    4   1069
+ chicken                  167984    5   1070
+ thousands                167916    7   1071  # +s→thousand(47934)
+ calls                    167820    4   1072  # +s→call(572997) defer
+ biggest                  167820    6   1073
+ natural                  167700    6   1074
+ dancing                  167455    6   1075  # +ing→dance(97339) defer
+ throw                    167358    3   1076
+ admit                    167268    5   1077
+ closed                   167204    5   1078
+ happiness                167064    7   1079
+ property                 166890    7   1080
+ including                166691    8   1081  # +ing→include(7716) keep
+ feet                     166590    3   1082
+#martin                   166465    6   1083
+ indeed                   166364    5   1084
+ interview                166152    7   1085
+#mama                     166116    4   1086
+ freedom                  165980    6   1087
+ challenge                165495    6   1088
+ keeping                  165484    5   1089  # +ing→keep(498392) defer
+ market                   165405    6   1090
+ moved                    165288    4   1091  # +ed→move(283807) defer
+ prove                    165237    4   1092
+ energy                   165160    5   1093
+ worth                    165118    3   1094
+ bringing                 165100    6   1095  # +ing→bring(247343) defer
+ helped                   164940    5   1096  # +ed→help(666286) defer
+ dude                     164380    3   1097
+ writing                  164140    5   1098  # +ing→write(94964) defer
+ monster                  164095    6   1099
+ romantic                 163989    8   1100
+ downstairs               163821    8   1101
+#prince                   163656    5   1102
+ arrested                 162530    6   1103  # +ed→arrest(46994)
+ insurance                162526    8   1104
+ ringing                  162072    5   1105  # +ing→ring(66018)
+ planning                 162000    6   1106  # +ing→plan(118129) defer
+ medicine                 161748    7   1107
+ breaking                 161605    6   1108  # +ing→break(143107) defer
+ hiding                   161548    5   1109  # +ing→hide(60133)
+#noticed                  161505    6   1110  # +ed→notice(43315)
+ screams                  161365    6   1111  # +s→scream(19681)
+ engine                   161128    5   1112
+ written                  160984    5   1113
+ statement                160930    8   1114  # +ment→state(80818) defer
+ video                    160780    5   1115
+#applause                 160776    5   1116
+ lived                    160650    4   1117  # +ed→liv(3848) keep
+ none                     160630    3   1118
+ soldiers                 160490    6   1119  # +s→soldier(29719)
+ however                  160392    5   1120
+ neither                  160356    4   1121
+ pressure                 160260    5   1122
+ weapon                   160132    5   1123
+ training                 159865    6   1124  # +ing→train(70974) defer
+ study                    159528    5   1125
+ reading                  159476    5   1126
+ celebrate                159348    8   1127
+ double                   159080    5   1128
+#queen                    159018    4   1129
+ teacher                  159012    4   1130  # +er→teach(52731)
+ travel                   158955    6   1131
+ cops                     158943    4   1132  # +s→cop(51701)
+ basically                158766    7   1133
+ loves                    158253    4   1134  # +s→love(830324) defer
+ carry                    158202    4   1135
+ danger                   158072    5   1136
+ act                      158040    3   1137
+ empty                    157928    5   1138
+ level                    157904    5   1139
+ green                    157671    4   1140
+ liked                    157455    4   1141  # +ed→like(2983027) defer
+ memory                   157324    5   1142
+ acting                   157304    5   1143  # +ing→act(79020) defer
+ target                   157075    6   1144
+ cute                     156720    4   1145
+ plans                    156568    5   1146  # +s→plan(118129) defer
+ breathing                156530    6   1147  # +ing→breathe(32841)
+ evil                     156525    4   1148
+ numbers                  156425    6   1149  # +s→number(163259) defer
+ suicide                  156305    6   1150
+ closer                   156088    5   1151
+#groans                   155468    5   1152  # +s→groan(2586) keep
+ credit                   155145    6   1153
+ huge                     154743    4   1154
+ discuss                  154610    6   1155
+#holy                     154497    4   1156  # +ly→ho(29883)
+ though                   154479    2   1157
+ store                    154476    4   1158
+ choice                   154394    3   1159
+ losing                   154340    5   1160  # +ing→lose(118712) defer
+ likes                    154002    4   1161  # +s→like(2983027) defer
+ lawyer                   153996    4   1162
+#chief                    153902    3   1163
+ pain                     153598    3   1164
+ pass                     153270    3   1165
+ bottle                   152916    5   1166
+ mountain                 152825    6   1167
+ funeral                  152538    7   1168
+ reality                  152388    7   1169
+ confused                 152159    8   1170  # +ed→confuse(3343) keep
+ quit                     151947    4   1171
+ field                    151851    4   1172
+#japanese                 151728    7   1173
+ audience                 151675    6   1174
+ shooting                 151656    5   1175  # +ing→shoot(106067) defer
+ wake                     151552    3   1176
+ worse                    151190    3   1177
+ hoping                   151076    5   1178  # +ing→hope(226993) defer
+ finding                  150980    6   1179  # +ing→find(626520) defer
+ flowers                  150796    5   1180  # +s→flower(19199)
+ famous                   150536    5   1181
+ exciting                 150312    7   1182  # +ing→excite(1133) keep
+ glass                    150309    4   1183
+ asleep                   150140    5   1184
+ beauty                   150060    5   1185
+ permission               149994    7   1186
+ driver                   149896    5   1187
+ dying                    149889    4   1188  # +ing→dye(2493) keep
+ kiss                     149580    3   1189
+ local                    149376    5   1190
+ deserve                  149132    5   1191
+ plane                    149112    4   1192
+ yourselves               148974    8   1193
+ subject                  148920    7   1194
+ prepare                  148810    6   1195
+ ship                     148448    3   1196
+ caught                   148120    3   1197
+ stolen                   148090    6   1198
+ willing                  147752    5   1199  # +ing→will(1969807) defer
+ pants                    147664    5   1200  # +s→pant(1285) keep
+ sell                     147604    3   1201
+ command                  147395    6   1202
+ asshole                  147376    5   1203
+ eating                   147357    4   1204  # +ing→eat(197654) defer
+ north                    147321    4   1205
+#fuckin                   147208    5   1206
+#cheering                 146892    5   1207  # +ing→cheer(14507) keep
+ common                   146792    5   1208
+ bottom                   146720    5   1209
+ believed                 146685    6   1210  # +ed→believe(403874) defer
+ gift                     146673    4   1211
+#german                   146440    5   1212
+ truck                    146421    4   1213
+ ride                     146140    3   1214
+ whoever                  146140    5   1215
+ papers                   146008    5   1216  # +s→paper(62166)
+ board                    145998    4   1217
+ grab                     145959    4   1218
+ stuck                    145491    4   1219
+ mouth                    145466    3   1220
+#british                  145345    6   1221
+ rules                    145035    4   1222  # +s→rule(34517)
+#devil                    144756    5   1223
+ wind                     144189    4   1224
+ flying                   144092    5   1225  # +ing→fly(56595)
+ gives                    143700    4   1226  # +s→give(811919) defer
+ cheers                   143457    4   1227  # +s→cheer(14507) keep
+ upon                     143097    4   1228
+ agreed                   143008    5   1229  # +ed→agree(60716)
+ corner                   142936    5   1230  # +er→corn(9781) keep
+ exist                    142630    6   1231
+ victims                  142422    7   1232  # +s→victim(47739) defer
+ dirty                    142386    4   1233
+ correct                  142380    5   1234
+ mentioned                142296    7   1235  # +ed→mention(40753)
+ stars                    142196    5   1236  # +s→star(60903)
+ faster                   142188    5   1237  # +er→fast(99084) defer
+#daniel                   142020    6   1238
+ opening                  141930    6   1239  # +ing→open(229669) defer
+ wear                     141910    3   1240  # ordered brief (slot already claimed), homophone of "where"(1322226)
+ suggest                  141065    6   1241
+ arrest                   140982    4   1242
+ results                  140868    7   1243  # +s→result(19823)
+ whenever                 140755    6   1244
+ shouting                 140432    5   1245  # +ing→shout(13856) keep
+ blind                    140264    5   1246
+ familiar                 140088    7   1247
+ high                     140078    2   1248  # homophone of "hi"(320316)
+ telephone                140058    7   1249
+ gotten                   140004    5   1250
+ lots                     139710    4   1251  # +s→lot(411660) defer
+ process                  139650    6   1252
+ wow                      139593    2   1253
+ hanging                  139232    5   1254  # +ing→hang(97778) defer
+ sing                     139150    3   1255
+ advice                   139092    5   1256
+ jump                     139074    4   1257
+ received                 138640    6   1258  # +ed→receive(18100)
+ secrets                  138420    7   1259  # +s→secret(89236) defer
+ murdered                 138396    5   1260  # +ed→murder(101133) defer
+ beyond                   138380    5   1261
+ bag                      138372    3   1262
+ horses                   137710    6   1263  # +s→horse(62923) defer
+ blue                     137678    3   1264
+ near                     137580    3   1265
+ cousin                   137580    5   1266
+ ancient                  137550    6   1267
+ worst                    137535    4   1268
+ river                    137502    4   1269
+ trial                    137500    5   1270  # +al→tri(355) keep
+ humans                   137472    7   1271  # +s→human(102595) defer
+ delicious                137406    7   1272
+ handsome                 137310    6   1273
+ saturday                 137170    6   1274
+ somehow                  137164    5   1275
+ passed                   137034    4   1276  # +ed→pass(76635), homophone of "past"(106439)
+ hearing                  136844    5   1277  # +ing→hear(360665) defer
+ summer                   136833    4   1278
+ whoa                     136564    2   1279
+ states                   136512    5   1280  # +s→state(80818) defer
+ account                  136352    5   1281
+ bye                      136276    2   1282  # ordered brief (slot already claimed), homophone of "by"(1090424)
+ arms                     136170    4   1283  # +s→arm(41726)
+ buy                      136137    2   1284  # ordered brief (slot already claimed), homophone of "by"(1090424)
+ turns                    136122    4   1285  # +s→turn(218563) defer
+#angel                    135688    5   1286
+#spanish                  135305    6   1287
+ garden                   135220    6   1288
+ request                  135198    7   1289
+ carefully                134862    7   1290  # +ly→careful(89667) defer
+ rock                     134722    3   1291
+ depends                  134478    7   1292  # +s→depend(6872) keep
+ positive                 134214    7   1293  # +ive→posit(108) keep
+ direction                134046    7   1294
+ families                 134028    7   1295
+ press                    133872    4   1296
+ bother                   133857    4   1297
+ location                 133692    7   1298
+ fingers                  133680    6   1299  # +s→finger(26967)
+ blame                    133602    4   1300
+ crap                     133587    4   1301
+ paid                     133052    3   1302
+ rings                    132993    4   1303  # +s→ring(66018)
+ named                    132792    4   1304  # +ed→name(455543) defer
+ ran                      132354    3   1305
+ picked                   132342    4   1306  # +ed→pick(122698) defer
+ signal                   132190    6   1307
+ millions                 132054    7   1308  # +s→million(94514) defer
+ ring                     132036    3   1309
+ risk                     132015    4   1310
+ dropped                  131988    5   1311  # +ed→drop(85186) defer
+ regular                  131766    7   1312
+ books                    131691    4   1313  # +s→book(113963) defer
+ further                  131517    4   1314
+ lead                     131512    3   1315
+ bought                   131504    3   1316
+ allowed                  131391    4   1317  # +ed→allow(42649)
+ learned                  131148    4   1318  # +ed→learn(84936)
+ price                    131013    4   1319
+ fair                     130948    3   1320
+ arrived                  130920    4   1321  # +ed→arrive(19306) keep
+ nearly                   130920    5   1322  # +ly→near(68790) defer
+ sending                  130920    6   1323  # +ing→send(131999) defer
+ sun                      130896    3   1324  # ordered brief (slot already claimed), homophone of "son"(325997)
+ fool                     130864    3   1325
+ remind                   130855    6   1326
+ streets                  130335    6   1327  # +s→street(98007) defer
+ silence                  130265    6   1328
+ smoke                    130263    4   1329
+ dressed                  130188    5   1330  # +ed→dress(58429)
+ favor                    130110    4   1331
+ played                   130071    4   1332  # +ed→play(233865) defer
+ success                  129945    6   1333
+ awesome                  129894    4   1334
+ smile                    129885    4   1335
+ guard                    129810    4   1336
+ members                  129685    6   1337  # +s→member(27112)
+ returned                 129300    6   1338  # +ed→return(89451) defer
+ patients                 129258    7   1339  # +s→patient(45828) defer
+ spot                     129237    4   1340
+ committed                129102    7   1341  # +ed→commit(15921)
+ sexual                   128994    7   1342
+ join                     128912    3   1343
+ ideas                    128728    5   1344  # +s→idea(263097) defer
+ fear                     128704    3   1345
+ center                   128584    5   1346  # +er→cent(5364) keep
+ peace                    128524    3   1347  # homophone of "piece"(84224)
+ drinks                   128215    6   1348  # +s→drink(182580) defer
+ stomach                  127500    6   1349
+ science                  127332    5   1350
+ changes                  127280    6   1351  # +s→change(186962) defer
+ details                  127255    6   1352  # +s→detail(15745)
+ earlier                  127221    4   1353
+ divorce                  127165    6   1354
+ football                 126990    6   1355
+ duty                     126987    4   1356
+ west                     126657    4   1357
+#l                        126518    2   1358
+#william                  126515    6   1359
+ legs                     126456    4   1360  # +s→leg(40449)
+ hero                     126279    4   1361
+#charles                  126268    5   1362  # +s→charle(11) keep
+#chinese                  126244    5   1363
+ stage                    126222    4   1364
+ bunch                    126192    4   1365
+ truly                    126056    5   1366
+ survive                  125760    5   1367
+ bigger                   125619    4   1368
+ honor                    125444    3   1369
+ names                    125316    4   1370  # +s→name(455543) defer
+ artist                   125280    6   1371
+ sweetie                  125180    5   1372
+ steal                    125160    4   1373
+ twice                    125079    4   1374
+ cross                    125076    4   1375
+#em                       125033    2   1376
+ belong                   124900    5   1377
+ tickets                  124865    6   1378  # +s→ticket(29625)
+ forest                   124715    6   1379
+ ball                     124650    3   1380
+ remain                   124540    5   1381
+ boat                     124296    3   1382
+ regret                   124230    6   1383
+ bar                      123854    3   1384
+ waste                    123720    4   1385
+ research                 123628    5   1386
+ fish                     123626    3   1387
+ fired                    123579    4   1388  # +ed→fire(157532) defer
+ taste                    123240    4   1389
+#locked                   123237    4   1390  # +ed→lock(40462)
+ strike                   123204    5   1391
+#adam                     123084    4   1392
+ revenge                  122825    6   1393
+ fell                     122742    3   1394
+ form                     122499    4   1395
+ sold                     122388    4   1396
+ silly                    122274    4   1397  # +ly→sil(509) keep
+ build                    122214    4   1398
+ throat                   122157    4   1399
+#reasons                  122155    6   1400  # +s→reason(144399) defer
+ painting                 122005    6   1401  # +ing→paint(26174)
+ doctors                  121900    6   1402  # +s→doctor(198424) defer
+ nowhere                  121880    5   1403
+ deep                     121876    3   1404
+#sheriff                  121832    5   1405
+ century                  121815    6   1406
+ track                    121734    4   1407
+ turning                  121680    5   1408  # +ing→turn(218563) defer
+ above                    121164    4   1409
+ obvious                  121150    6   1410
+ jealous                  121096    5   1411
+ seemed                   121029    4   1412  # +ed→seem(98575) defer
+ goodness                 120950    6   1413  # +ness→good(1741730) defer
+ offer                    120888    3   1414  # +er→off(799351) defer
+ meaning                  120576    5   1415  # +ing→mean(821275) defer
+ pieces                   120488    5   1416  # +s→piece(84224) defer
+ hide                     120266    3   1417
+ letting                  120228    5   1418  # +ing→lett(108) keep
+ began                    120196    5   1419
+ genius                   120160    6   1420
+ fresh                    120147    4   1421
+ memories                 120000    6   1422
+ female                   119812    5   1423
+ stole                    119691    4   1424
+ crowd                    119568    4   1425
+ release                  119568    5   1426
+ cards                    119484    5   1427  # +s→card(56659)
+ treat                    119409    4   1428
+ ended                    119100    5   1429  # +ed→end(237387) defer
+ movies                   118968    5   1430  # +s→movie(73070) defer
+ soldier                  118876    5   1431
+ ticket                   118500    5   1432
+ cost                     118455    4   1433
+ prefer                   118424    5   1434
+ surely                   118260    5   1435  # +ly→sure(709390) defer
+ matters                  118156    5   1436  # +s→matter(247812) defer
+ warning                  117915    6   1437  # +ing→warn(18847)
+ bedroom                  117710    6   1438
+#groaning                 117460    6   1439  # +ing→groan(2586) keep
+ selling                  117428    5   1440  # +ing→sell(73802) defer
+ defense                  117395    6   1441
+#soul                     117354    3   1442
+ rich                     117302    3   1443
+ create                   117292    5   1444
+ afford                   117160    5   1445
+ sunday                   117128    5   1446
+ built                    117123    4   1447
+ blow                     117062    3   1448
+ total                    117056    5   1449
+ fortune                  116895    6   1450
+ band                     116754    4   1451
+#france                   116688    5   1452
+ airport                  116465    6   1453
+ scene                    116034    3   1454  # homophone of "seen"(282420)
+ social                   115960    5   1455
+ period                   115790    6   1456
+ bodies                   115780    5   1457
+ flight                   115512    4   1458
+ nature                   115488    4   1459
+ opened                   115472    5   1460  # +ed→open(229669) defer
+#kevin                    115092    5   1461
+ mess                     115084    3   1462
+ warm                     115065    4   1463
+ tough                    114972    3   1464
+#mister                   114956    5   1465  # +er→mist(2730) keep, homophone of "mr"(156641)
+ heavy                    114660    4   1466
+#church                   114508    3   1467
+#mommy                    114501    4   1468
+ dogs                     114492    4   1469
+ wild                     114486    4   1470
+ focus                    114476    5   1471
+ sad                      114358    3   1472
+ belongs                  114350    6   1473  # +s→belong(31225)
+ opens                    114128    5   1474  # +s→open(229669) defer
+ cell                     114066    3   1475  # homophone of "sell"(73802)
+ followed                 114040    5   1476  # +ed→follow(96529) defer
+#ma                       114026    2   1477
+ purpose                  113884    5   1478
+ letters                  113860    5   1479  # +s→letter(65448) defer
+#billy                    113853    4   1480  # +ly→bil(102) keep
+ keeps                    113742    4   1481  # +s→keep(498392) defer
+ camp                     113721    4   1482
+ share                    113708    3   1483
+ guns                     113679    4   1484  # +s→gun(133072) defer
+ bullet                   113508    5   1485
+ lately                   113360    5   1486  # +ly→late(191989) defer
+ fly                      113190    3   1487
+ falling                  113164    5   1488
+ season                   113160    5   1489
+ glasses                  113020    6   1490
+ laugh                    112920    3   1491
+ hour                     112782    2   1492  # ordered brief (slot already claimed), homophone of "our"(1191941)
+#mum                      112562    3   1493
+ officers                 112480    6   1494  # +s→officer(76015) defer
+ awful                    112215    4   1495
+ large                    112119    4   1496
+ stone                    111609    4   1497
+ third                    111500    3   1498
+ lonely                   111452    5   1499  # +ly→lone(3807) keep
+ forces                   111420    6   1500  # +s→force(63737) defer
+ forced                   111252    5   1501  # +ed→force(63737) defer
+ settle                   111192    5   1502
+ useless                  111140    6   1503
+ friday                   110784    5   1504
+ judge                    110672    3   1505
+ kinda                    110648    5   1506
+ deliver                  110620    6   1507
+ skin                     110583    4   1508
+ surgery                  110520    5   1509
+ changing                 110510    6   1510  # +ing→change(186962) defer
+ dare                     110262    3   1511
+#s                        110199    2   1512  # homophone of "'s"(14291013)
+#temple                   110180    6   1513
+#thomas                   109768    5   1514
+ wall                     109626    3   1515
+ walked                   109584    4   1516  # +ed→walk(142055) defer
+ carrying                 109525    6   1517  # +ing→carry(52734) defer
+ unit                     109504    5   1518
+ official                 109355    6   1519
+ seat                     109230    3   1520
+ split                    109092    5   1521
+ drug                     108948    4   1522
+ becomes                  108840    6   1523  # +s→become(128716) defer
+ closes                   108805    6   1524
+#panting                  108555    6   1525  # +ing→pant(1285) keep
+#ordered                  108508    5   1526  # +ed→order(125446) defer
+ slowly                   108484    5   1527  # +ly→slow(50276)
+ alarm                    108464    5   1528
+ member                   108448    5   1529
+ slept                    108308    5   1530
+ golden                   108220    6   1531
+ art                      108192    3   1532
+ although                 108138    4   1533
+ lights                   108117    4   1534  # +s→light(126657) defer
+ brings                   108020    5   1535  # +s→bring(247343) defer
+ ha                       107974    2   1536
+ model                    107908    5   1537
+ finger                   107868    5   1538
+ access                   107748    5   1539
+ knowing                  107628    4   1540  # +ing→know(3892394) defer
+ wherever                 107415    6   1541
+ easily                   107360    5   1542
+ cry                      107348    3   1543
+ chocolate                107200    6   1544
+ insane                   107152    5   1545
+ charges                  106735    6   1546  # +s→charge(62746) defer
+ cars                     106416    4   1547  # +s→car(330261) defer
+ earth                    106394    2   1548
+ folks                    106293    4   1549  # +s→folk(7245) keep
+ fellow                   106005    4   1550
+ mystery                  105905    6   1551
+ sake                     105654    3   1552
+ covered                  105544    5   1553  # +ed→cover(61052) defer
+ leader                   105465    4   1554
+ teach                    105462    3   1555
+ leaves                   105450    4   1556  # +s→leave(478282) defer
+ traffic                  105420    6   1557
+#indian                   105245    6   1558
+ ghost                    105153    4   1559
+#russian                  105152    5   1560
+ ass                      105009    2   1561
+ tells                    104619    4   1562  # +s→tell(1176290) defer
+ naked                    104488    5   1563
+ pulled                   104448    4   1564  # +ed→pull(89880) defer
+ heading                  104392    5   1565  # +ing→head(266844) defer
+ speed                    104382    4   1566
+ health                   104364    4   1567
+ damage                   104244    5   1568
+ held                     104199    4   1569
+ amount                   103780    5   1570
+ manage                   103496    5   1571
+ joke                     103456    3   1572
+ safety                   103444    5   1573
+ cop                      103402    3   1574
+ harder                   103248    5   1575  # +er→hard(242871) defer
+#fbi                      103192    5   1576
+ fancy                    103084    5   1577
+ jail                     102858    3   1578
+ hmm                      102607    2   1579
+ doubt                    102574    3   1580
+ buried                   102492    5   1581  # +ed→bury(14798)
+ cat                      102350    3   1582
+ spoke                    102105    4   1583
+ shop                     101952    3   1584
+ wrote                    101600    3   1585
+ milk                     101589    4   1586
+ ruined                   101248    5   1587  # +ed→ruin(24008)
+ spread                   101164    5   1588
+ sudden                   101048    5   1589
+ career                   101046    4   1590
+ wine                     101044    3   1591
+ super                    100917    4   1592
+ spring                   100736    5   1593
+ south                    100728    3   1594
+#simon                    100660    5   1595
+ plays                    100650    4   1596  # +s→play(233865) defer
+ castle                   100600    5   1597
+ hidden                   100572    5   1598
+ storm                    100572    5   1599
+ slow                     100552    3   1600
+ copy                     100467    4   1601
+ plus                     100242    4   1602
+ air                      100137    2   1603
+ cash                      99952    3   1604
+ barely                    99636    5   1605  # +ly→bare(6720) keep
+ whose                     99616    3   1606
+ among                     99570    4   1607
+ breath                    99528    4   1608
+ push                      99380    3   1609
+ lesson                    99372    5   1610
+ legal                     99140    5   1611
+ growing                   99116    5   1612  # +ing→grow(46010)
+#jason                     99012    5   1613
+#beeping                   98680    5   1614  # +ing→beep(12076) keep
+ points                    98636    5   1615  # +s→point(174205) defer
+ dating                    98580    5   1616  # +ing→date(88407) defer
+ breathe                   98523    4   1617
+ color                     98511    4   1618
+ photo                     98271    4   1619
+#santa                     98128    5   1620
+ likely                    98108    5   1621  # +ly→like(2983027) defer
+ tree                      98034    3   1622
+ games                     97869    4   1623  # +s→game(157501) defer
+ bridge                    97764    4   1624
+ yelling                   97700    5   1625  # +ing→yell(11053) keep
+ foreign                   97480    5   1626
+ murderer                  97452    5   1627  # +er→murder(101133) defer
+ bear                      97348    3   1628
+ beer                      97282    3   1629
+ pocket                    97044    5   1630
+ checked                   96999    4   1631  # +ed→check(176507) defer
+ parts                     96744    5   1632  # +s→part(192248) defer
+ reach                     96442    3   1633
+ older                     96390    4   1634  # +er→old(431911) defer
+ square                    96308    5   1635
+#europe                    96168    5   1636
+ cases                     96092    5   1637  # +s→case(215274) defer
+ winter                    96020    5   1638  # +er→wint(36) keep
+ lie                       95930    2   1639
+ trick                     95811    4   1640
+ cancer                    95740    5   1641
+#dna                       95556    5   1642
+ planned                   95188    5   1643  # +ed→plan(118129) defer
+ emily                     95168    5   1644
+ paying                    95088    4   1645  # +ing→pay(188822) defer
+ bus                       95068    3   1646
+ boring                    94948    5   1647  # +ing→bore(6136) keep
+ search                    94878    3   1648
+ plant                     94396    5   1649
+ knocking                  94308    5   1650  # +ing→knock(46228)
+ silver                    94092    5   1651
+#madame                    93960    5   1652  # homophone of "madam"(48931)
+ toilet                    93868    5   1653
+ event                     93852    5   1654
+#priest                    93812    5   1655
+ invite                    93576    5   1656
+ burning                   93304    5   1657  # +ing→burn(39874)
+#papa                      93285    4   1658
+ onto                      93156    4   1659
+#walter                    93040    5   1660  # +er→walt(7614) keep
+ shoes                     92980    3   1661  # +s→shoe(14489) keep
+ giant                     92908    5   1662
+ pleased                   92632    5   1663  # +ed→pleas(567) keep
+ easier                    92628    4   1664
+ rid                       92484    3   1665
+ knock                     92456    3   1666
+ hurts                     92412    4   1667  # +s→hurt(161421) defer
+ stops                     92344    5   1668  # +s→stop(574016) defer
+#roger                     92304    4   1669
+ repeat                    92144    5   1670
+ photos                    92140    5   1671  # +s→photo(32757)
+ finds                     92076    5   1672  # +s→find(626520) defer
+ grow                      92020    3   1673
+ younger                   91844    5   1674  # +er→young(194810) defer
+#aunt                      91668    3   1675
+#dr                        91647    4   1676  # homophone of "drive"(102436)
+ proper                    91556    5   1677  # +er→prop(2523) keep
+ fat                       91474    3   1678
+ attacked                  91472    5   1679  # +ed→attack(70583) defer
+ knowledge                 91288    5   1680
+ guests                    91220    5   1681  # +s→guest(30128)
+ brown                     91185    4   1682
+ heads                     91050    4   1683  # +s→head(266844) defer
+ moon                      90844    3   1684
+ ashamed                   90492    5   1685  # +ed→ashame(42) keep
+ match                     90446    3   1686
+ guest                     90384    4   1687
+ fixed                     90300    5   1688  # +ed→fix(59349) defer
+ yep                       90192    3   1689
+ pounds                    89932    5   1690  # +s→pound(9235) keep
+ choose                    89706    3   1691
+ mate                      89564    3   1692
+ waited                    89536    5   1693  # +ed→wait(574752) defer
+ balls                     89397    4   1694  # +s→ball(62325) defer
+ attorney                  89380    5   1695
+ foot                      89176    3   1696
+ type                      88978    3   1697
+ grant                     88840    5   1698
+ aware                     88794    4   1699
+ saving                    88784    5   1700  # +ing→save(129390) defer
+ speaks                    88724    5   1701  # +s→speak(150927) defer
+ lift                      88584    4   1702
+ answers                   88464    5   1703  # +s→answer(134088) defer
+ proof                     88290    4   1704
+ race                      88178    3   1705
+ scary                     88140    5   1706
+ cream                     88134    4   1707
+ jacket                    87452    5   1708
+ nuts                      87111    4   1709  # +s→nut(8577) keep
+ sexy                      87096    5   1710
+ birds                     87084    4   1711  # +s→bird(37711)
+ faces                     87084    5   1712  # +s→face(225482) defer
+ fit                       87004    3   1713
+ badly                     87000    5   1714  # +ly→bad(369996) defer
+ pizza                     86708    5   1715
+ clears                    86628    5   1716  # +s→clear(125730) defer
+ bucks                     86526    4   1717  # +s→buck(12711) keep
+ ugly                      86139    4   1718
+#ryan                      85965    4   1719
+ clever                    85716    5   1720
+ dealing                   85424    5   1721  # +ing→deal(174929) defer
+ allow                     85298    3   1722
+ poison                    85292    5   1723
+#nine                      85076    3   1724
+ headed                    85032    5   1725  # +ed→head(266844) defer
+ babies                    84940    5   1726
+ stayed                    84927    4   1727  # +ed→stay(378726) defer
+ ends                      84726    4   1728  # +s→end(237387) defer
+ picking                   84692    5   1729  # +ing→pick(122698) defer
+#jim                       84646    3   1730
+ suit                      84630    3   1731
+ bell                      84598    3   1732
+ sword                     83784    4   1733
+ fucked                    83649    4   1734  # +ed→fuck(260121) defer
+ tiny                      83487    4   1735
+ desk                      83460    4   1736
+ arm                       83452    3   1737
+ kick                      83394    3   1738
+ ways                      83350    3   1739  # +s→way(1000182) defer
+ gas                       83070    3   1740
+ staff                     82191    4   1741
+ lines                     82149    4   1742  # +s→line(132433) defer
+ hole                      81316    3   1743  # ordered brief (slot already claimed), homophone of "whole"(257109)
+ signed                    81222    4   1744  # +ed→sign(92512) defer
+ enter                     81222    4   1745  # +er→ent(423) keep
+ brave                     80970    4   1746
+ lock                      80924    3   1747
+ leg                       80898    3   1748
+ failed                    80637    4   1749  # +ed→fail(19258)
+ flat                      80544    4   1750
+ based                     80487    4   1751  # +ed→base(29547)
+ screw                     80472    4   1752
+ cares                     80331    4   1753  # +s→care(330956) defer
+ weather                   80220    4   1754  # homophone of "whether"(59993)
+ sky                       79972    3   1755
+ soft                      79926    4   1756
+ burn                      79748    3   1757
+ harm                      79722    4   1758
+ style                     79707    4   1759
+ roll                      79582    3   1760
+ spare                     79179    4   1761
+ speech                    79179    4   1762
+ bright                    78723    4   1763
+ paint                     78522    4   1764
+ nose                      78388    3   1765  # homophone of "knows"(181663)
+ post                      78339    4   1766
+ sugar                     78330    4   1767
+ law                       78264    2   1768
+ doors                     78060    4   1769  # +s→door(261118) defer
+ block                     77355    4   1770
+ showing                   77355    4   1771  # +ing→show(347408) defer
+ chest                     77064    4   1772
+ raise                     76898    3   1773
+ pop                       76838    3   1774
+ bomb                      76790    3   1775
+ neck                      76742    3   1776
+ trade                     76680    4   1777
+#ya                        76658    2   1778
+ journey                   76554    4   1779
+ van                       76446    3   1780
+ thoughts                  76308    4   1781  # +s→thought(558542) defer
+#maria                     76266    4   1782
+ theory                    76080    4   1783
+ showed                    76014    3   1784  # +ed→show(347408) defer
+ sooner                    75708    4   1785  # +er→soon(213279) defer
+#larry                     75591    4   1786
+ shame                     75586    3   1787
+ whom                      75470    3   1788
+ bird                      75422    3   1789
+#jerry                     74937    4   1790
+ keys                      74886    3   1791  # +s→key(62153)
+ rain                      74834    3   1792
+ lover                     74526    4   1793
+ bread                     74484    4   1794
+#andy                      74466    4   1795
+#jane                      74396    3   1796
+ age                       74262    2   1797
+ caused                    74058    4   1798  # +ed→cause(121264) defer
+ beach                     73682    3   1799
+#faith                     73630    3   1800
+ beg                       73614    3   1801
+ rent                      73353    4   1802
+ trees                     73200    4   1803  # +s→tree(49017) defer
+ cook                      73062    3   1804
+ nights                    72972    4   1805  # +s→night(556318) defer
+#t                         72881    2   1806
+ runs                      72852    4   1807  # +s→run(244200) defer
+ farm                      72762    4   1808
+ hall                      72708    3   1809
+ main                      72584    3   1810
+ knife                     72394    3   1811
+#alan                      72312    4   1812
+ ruin                      72024    4   1813
+#dick                      71992    3   1814
+ rose                      71884    3   1815
+ buying                    71823    4   1816  # +ing→buy(136137) defer
+ clock                     71721    4   1817
+ ocean                     71715    4   1818
+ hat                       71656    3   1819
+#bleep                     71583    4   1820
+#lisa                      71517    4   1821
+ rights                    71472    4   1822  # +s→right(2576821) defer
+ code                      71422    3   1823
+ note                      71402    3   1824
+#smith                     71397    4   1825
+ bones                     70905    4   1826  # +s→bone(19546)
+ bless                     70761    4   1827
+ crash                     70641    4   1828
+ shows                     70418    3   1829  # +s→show(347408) defer
+#royal                     70344    4   1830  # +al→roy(14370)
+ east                      70218    3   1831
+ tears                     70131    4   1832  # +s→tear(18766)
+ avoid                     70122    4   1833
+ reached                   70074    4   1834  # +ed→reach(48221) defer
+ cup                       70032    3   1835
+ filled                    69957    4   1836  # +ed→fill(30683)
+ tight                     69944    3   1837
+#kelly                     69939    4   1838
+#alice                     69933    4   1839
+ jobs                      69804    4   1840  # +s→job(298911) defer
+ grown                     69798    4   1841
+ lies                      69654    3   1842  # +s→lie(95930) defer
+ nor                       69642    3   1843
+ woods                     69633    4   1844  # +s→wood(20570)
+ scare                     69576    4   1845
+ player                    69261    4   1846  # +er→play(233865) defer
+#laura                     69150    4   1847
+ rule                      69034    3   1848
+#china                     68778    4   1849
+ hired                     68514    4   1850  # +ed→hire(16865)
+ horn                      68148    4   1851
+ pity                      68001    4   1852
+ powers                    67947    4   1853  # +s→power(136611) defer
+ file                      67938    3   1854
+ assume                    67848    4   1855
+ tape                      67808    3   1856
+ vote                      67474    3   1857
+ data                      67434    4   1858
+#jake                      67408    3   1859
+ taught                    67226    3   1860
+ jury                      67167    4   1861
+ walls                     66741    4   1862  # +s→wall(54813) defer
+ cake                      66512    3   1863
+ crew                      66226    3   1864
+ meat                      66100    3   1865  # ordered brief (slot already claimed), homophone of "meet"(247466)
+ lied                      65958    3   1866  # +ed→lie(95930) defer
+ offered                   65949    4   1867  # +ed→offer(60444) defer
+ size                      65682    3   1868  # homophone of "sighs"(117410)
+ switch                    65586    4   1869
+ loud                      65514    3   1870
+ grave                     65493    4   1871
+ sight                     65430    3   1872
+ affair                    65157    4   1873
+ raised                    65136    4   1874  # +ed→raise(38449)
+ image                     65007    4   1875
+ coach                     64942    3   1876
+ watched                   64626    4   1877  # +ed→watch(207949) defer
+ suffer                    64488    4   1878
+#arthur                    64473    4   1879
+ plate                     64398    4   1880
+ serve                     64380    3   1881
+ appear                    64347    4   1882
+#d                         64304    2   1883
+ mercy                     64230    4   1884
+ pack                      64220    3   1885
+ shots                     64197    4   1886  # +s→shot(144772) defer
+#doc                       64146    3   1887
+#lucy                      64098    4   1888
+ trap                      64056    4   1889
+ drove                     63927    4   1890
+ yellow                    63678    4   1891
+ wound                     63432    4   1892
+ teeth                     63230    3   1893
+ courage                   63210    4   1894
+ hunt                      63204    4   1895
+ bro                       62946    3   1896
+ feed                      62818    3   1897  # +ed→fee(8109) keep
+ nurse                     62812    3   1898
+ fake                      62710    3   1899
+#amy                       62386    3   1900
+ key                       62153    2   1901
+ view                      61748    3   1902
+ chair                     61652    3   1903
+ eight                     61400    2   1904
+ fill                      61366    3   1905
+#kim                       60894    3   1906
+ sea                       60812    2   1907  # ordered brief (slot already claimed), homophone of "see"(1781493)
+ shirt                     60366    3   1908
+ dry                       60204    3   1909
+#jeff                      59968    3   1910
+#pray                      59724    3   1911
+ wash                      59414    3   1912
+ heat                      59290    3   1913
+ tea                       59277    2   1914  # homophone of "t"(72881)
+ male                      59096    3   1915
+ base                      59094    3   1916
+ lab                       59008    3   1917
+ dumb                      58458    3   1918
+ threw                     58446    3   1919  # ordered brief (slot already claimed), homophone of "through"(388127)
+ birth                     58334    3   1920
+ noise                     58098    3   1921
+ ours                      57706    3   1922  # +s→our(1191941) defer, homophone of "hours"(151156)
+ ice                       57545    2   1923
+ draw                      57006    3   1924
+ issue                     56280    3   1925
+#y                         55842    2   1926  # homophone of "why"(1722797)
+ shower                    55802    3   1927
+ weak                      55768    3   1928  # ordered brief (slot already claimed), homophone of "week"(159444)
+ pool                      55636    3   1929
+ weight                    55522    3   1930  # ordered brief (slot already claimed), homophone of "wait"(574752)
+ gang                      55444    3   1931
+ bite                      55438    3   1932
+ mayor                     55060    3   1933
+ babe                      55036    3   1934
+ fan                       54744    3   1935
+ fate                      54598    3   1936
+ pig                       53978    3   1937
+ san                       53380    3   1938
+ path                      53362    3   1939
+ sees                      53010    3   1940  # +s→see(1781493) defer
+ nope                      52854    3   1941
+ shake                     52768    3   1942
+ loose                     52712    3   1943
+ snow                      52616    3   1944
+ la                        52546    2   1945
+ lake                      52530    3   1946
+ roof                      52408    3   1947
+ pal                       52326    3   1948
+#pete                      52032    3   1949
+ wet                       51974    3   1950
+ chef                      51508    3   1951
+ dig                       51396    3   1952
+#dave                      51266    3   1953
+ gosh                      50670    3   1954
+ gate                      50616    3   1955
+ outta                     50580    3   1956
+ coat                      50522    3   1957
+ cheese                    50444    3   1958
+ page                      50366    3   1959
+ ears                      50336    3   1960
+#cos                       50232    3   1961
+ hill                      50108    3   1962
+ eggs                      49794    3   1963  # +s→egg(19000)
+#goin                      49746    3   1964
+ mood                      49478    3   1965
+ owner                     49444    3   1966  # +er→own(352542) defer
+ loss                      49250    3   1967
+ rush                      48750    3   1968
+ rough                     48740    3   1969
+ pair                      48586    3   1970
+ bike                      48466    3   1971
+ grew                      48416    3   1972
+#tim                       48394    3   1973
+ tongue                    48002    3   1974
+ liar                      47764    3   1975
+ tour                      47750    3   1976
+ thief                     47740    3   1977
+ lower                     47058    3   1978  # +er→low(41837)
+ shape                     46920    3   1979
+ cheap                     46860    3   1980
+ higher                    46708    3   1981  # +er→high(140078) defer
+ yo                        46233    2   1982
+ suck                      45964    3   1983
+#rome                      45768    3   1984
+ bath                      45732    3   1985
+ site                      45668    3   1986  # homophone of "sight"(32715)
+#m                         45657    2   1987  # homophone of "em"(125033)
+ led                       45612    3   1988  # homophone of "lead"(65756)
+ map                       45452    3   1989
+ rise                      45192    3   1990
+#de                        44903    2   1991  # homophone of "d"(64304)
+ fought                    44340    3   1992
+ meal                      44290    3   1993  # +al→me(6444985) defer
+ chase                     43660    3   1994
+ role                      43626    3   1995  # homophone of "roll"(39791)
+ tall                      43474    3   1996
+ shock                     43434    3   1997
+#phil                      42676    3   1998  # homophone of "fill"(30683)
+ bang                      42654    3   1999
+ butt                      42628    3   2000  # ordered brief (slot already claimed), homophone of "but"(3631462)
+ gay                       42536    2   2001
+ soup                      42404    3   2002
+ sat                       42326    3   2003
+ rat                       42084    3   2004
+ low                       41837    2   2005
+#lee                       38047    2   2006
+ lay                       36984    2   2007
+#c                         36830    2   2008  # homophone of "see"(1781493)
+ due                       35669    2   2009  # ordered brief (slot already claimed), homophone of "do"(4419883)
+ ought                     34342    2   2010
+ oil                       31269    2   2011
+#whoo                      31217    2   2012
+ ugh                       31008    2   2013
+#ho                        29883    2   2014
+#h                         29291    2   2015
+ tie                       28920    2   2016
+ joy                       28200    2   2017
+ add                       27132    2   2018
+#al                        26447    2   2019
+#ed                        26011    2   2020
+ nah                       25962    2   2021
+ ill                       24763    2   2022
+ ate                       24218    2   2023  # homophone of "eight"(61400)
+#da                        23954    2   2024
+#re                        23559    2   2025  # homophone of "ray"(38995)
+#n                         23195    2   2026
+#b                         22813    2   2027  # homophone of "be"(4210868)
+ per                       22472    2   2028
+ odd                       21790    2   2029
+ hm                        21429    2   2030  # homophone of "hmm"(102607)
+
+# ---- Custom user-added words ----
+#brief
+#comment  # +ment→com(3374) keep
+#suffixes
+#defer  # homophone of "differ"(1743)
+#homophone
+#reachable  # +able→reach(48221) defer
+#multiple
+#value
+#omitted  # +ed→omit(284)
+#adding  # +ing→add(27132) defer
+#whitespace

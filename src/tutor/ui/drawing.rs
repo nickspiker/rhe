@@ -1,40 +1,24 @@
 //! Tutor canvas background pattern.
 //!
-//! Vendored from photon's `draw_background_texture`, with two
-//! lightweight seed-mix tweaks that break the original purely-
-//! horizontal stripe noise into a 2D patchwork. Each row still uses
-//! a single hashed RNG that walks left-to-right (mirrored on the
-//! left half), but the seed is XOR-mixed at coarse and fine
-//! horizontal patch boundaries — those mixes also fold in a
-//! row-derived hash, so each (coarse_x, coarse_y) cell gets its own
-//! local "feel". The two scales together give the result a faintly
-//! fractal patch-quilt look without leaving the inner-loop O(1).
+//! Vendored from photon's `draw_background_texture`, with two lightweight seed-mix tweaks that break the original purely- horizontal stripe noise into a 2D patchwork. Each row still uses a single hashed RNG that walks left-to-right (mirrored on the left half), but the seed is XOR-mixed at coarse and fine horizontal patch boundaries — those mixes also fold in a row-derived hash, so each (coarse_x, coarse_y) cell gets its own local "feel". The two scales together give the result a faintly fractal patch-quilt look without leaving the inner-loop O(1).
 //!
-//! Per-pixel cost: photon's two wrapping ops + two divisions + two
-//! comparisons (block-change checks). Sub-millisecond on a typical
-//! tutor window.
+//! Per-pixel cost: photon's two wrapping ops + two divisions + two comparisons (block-change checks). Sub-millisecond on a typical tutor window.
 //!
-//! Sequential only — the tutor redraws on key events, not at 60 fps,
-//! so rayon's not pulling its weight here.
+//! Sequential only — the tutor redraws on key events, not at 60 fps, so rayon's not pulling its weight here.
 
 use super::theme;
 
-/// Coarse-tier patch size. Larger square regions of self-similar
-/// brightness — sets the dominant patchwork scale.
+/// Coarse-tier patch size. Larger square regions of self-similar brightness — sets the dominant patchwork scale.
 const PATCH_COARSE: usize = 64;
-/// Fine-tier patch size. Smaller embedded variation inside each
-/// coarse patch — adds texture detail at a tighter grid.
+/// Fine-tier patch size. Smaller embedded variation inside each coarse patch — adds texture detail at a tighter grid.
 const PATCH_FINE: usize = 16;
 
 /// Photon's signature procedural background.
 ///
 /// * `pixels` — ARGB pixel buffer (0xAARRGGBB).
-/// * `speckle` — animation counter for the bright-pixel sparkle. 0 =
-///   static; increment each frame for a twinkly look.
-/// * `fullscreen` — true draws every pixel; false leaves a 1-pixel
-///   border untouched (lets the squircle window edges paint over).
-/// * `scroll_offset` — shifts which logical row each screen row
-///   maps to. 0 for the tutor (no scrolled content).
+/// * `speckle` — animation counter for the bright-pixel sparkle. 0 = static; increment each frame for a twinkly look.
+/// * `fullscreen` — true draws every pixel; false leaves a 1-pixel border untouched (lets the squircle window edges paint over).
+/// * `scroll_offset` — shifts which logical row each screen row maps to. 0 for the tutor (no scrolled content).
 pub fn draw_background_texture(
     pixels: &mut [u32],
     width: usize,
@@ -68,8 +52,7 @@ pub fn draw_background_texture(
     }
 }
 
-/// Draw a single row of the background texture
-/// This is the core algorithm shared between platforms
+/// Draw a single row of the background texture This is the core algorithm shared between platforms
 #[inline]
 fn draw_background_row(
     row_pixels: &mut [u32],

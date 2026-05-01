@@ -1,19 +1,12 @@
 //! 256-bit bitmask indexed by HID keyboard usage code (0–255).
 //!
-//! Covers the full standard HID keyboard usage page in a fixed 32-byte
-//! value. Operations compile to a handful of `u64` instructions — bitwise
-//! OR/AND/XOR across the four underlying words, no heap, no iteration.
+//! Covers the full standard HID keyboard usage page in a fixed 32-byte value. Operations compile to a handful of `u64` instructions — bitwise OR/AND/XOR across the four underlying words, no heap, no iteration.
 //!
-//! Used by the chord pipeline to represent "which physical keys are part
-//! of this chord" without caring about hand/finger layout. Lookups against
-//! phoneme/brief/digit tables are `HashMap<KeyMask, _>` — `Hash` + `Eq` are
-//! trivially derived from the raw array.
+//! Used by the chord pipeline to represent "which physical keys are part of this chord" without caring about hand/finger layout. Lookups against phoneme/brief/digit tables are `HashMap<KeyMask, _>` — `Hash` + `Eq` are trivially derived from the raw array.
 
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not};
 
-/// Fixed-size 256-bit bitmask. Bit `n` (for `n ∈ 0..256`) corresponds to
-/// HID usage code `n`. Storage layout: `0[0]` holds bits 0–63, `0[3]` holds
-/// bits 192–255.
+/// Fixed-size 256-bit bitmask. Bit `n` (for `n ∈ 0..256`) corresponds to HID usage code `n`. Storage layout: `0[0]` holds bits 0–63, `0[3]` holds bits 192–255.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub struct KeyMask([u64; 4]);
 
@@ -21,8 +14,7 @@ impl KeyMask {
     /// All zeros. `const` so it can initialize `static`/`const` items.
     pub const EMPTY: Self = Self([0; 4]);
 
-    /// Return a new mask with `code` set. `const`-compatible so chord
-    /// literals can be built at compile time: `KeyMask::EMPTY.with(30)`.
+    /// Return a new mask with `code` set. `const`-compatible so chord literals can be built at compile time: `KeyMask::EMPTY.with(30)`.
     pub const fn with(self, code: u8) -> Self {
         let mut raw = self.0;
         let idx = (code >> 6) as usize;

@@ -1,10 +1,8 @@
 //! Auto-generated suffix assignments. Edit and recompile to customize.
 
-/// Suffix briefs — left-hand-only chords (right=0, no word key).
-/// Backspaces trailing space from previous word, appends suffix, re-adds space.
+/// Suffix briefs — left-hand-only chords (right=0, no word key). Backspaces trailing space from previous word, appends suffix, re-adds space.
 ///
-/// Ordered by measured finger effort (fastest → slowest).
-/// Left bits: I=0001 M=0010 R=0100 P=1000
+/// Ordered by measured finger effort (fastest → slowest). Left bits: I=0001 M=0010 R=0100 P=1000
 pub const SUFFIXES: &[(u8, &str)] = &[
     (0b0001, "s"),    //  668ms — index             plural / 3rd person
     (0b0100, "ed"),   //  703ms — ring              past tense

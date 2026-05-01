@@ -1,45 +1,57 @@
 //! English number-form generators for the number-mode suffix feature.
 //!
-//! After a pure-integer cardinal commits in number mode, a left-hand
-//! chord in the subsequent word-not-held state fires a *form* — the
-//! chord's English-suffix meaning gets overridden with a number-form
-//! transform that replaces the emitted digits with the spelled form.
+//! After a pure-integer cardinal commits in number mode, a left-hand chord in the subsequent word-not-held state fires a *form* — the chord's English-suffix meaning gets overridden with a number-form transform that replaces the emitted digits with the spelled form.
 //!
-//! Currently only the ordinal form is implemented. The shape of this
-//! module anticipates adding multiplier / group / prefix forms later
-//! without churn — each form is a single function taking the digit
-//! string and returning the spelled equivalent (or `None` if the
-//! number is outside the supported range, in which case the caller
-//! falls back to the normal English-suffix path).
+//! Currently only the ordinal form is implemented. The shape of this module anticipates adding multiplier / group / prefix forms later without churn — each form is a single function taking the digit string and returning the spelled equivalent (or `None` if the number is outside the supported range, in which case the caller falls back to the normal English-suffix path).
 
-/// Forms a number-mode commit can be transformed into. Each variant
-/// maps to a specific left-hand chord and a generator function
-/// below. Adding a form = one enum variant + one generator + one
-/// entry in `chord_to_form` in the interpreter.
+/// Forms a number-mode commit can be transformed into. Each variant maps to a specific left-hand chord (see `Form::chord_bits` / `Form::from_chord`) and a generator function below. Adding a form = one enum variant + one generator + one row in each chord-mapping match.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Form {
-    /// Spelled cardinal — "42" → "forty-two". Redundant with the
-    /// mod-after-number spelled-digit gesture but faster via L-idx.
+    /// Spelled cardinal — "42" → "forty-two". Redundant with the mod-after-number spelled-digit gesture but faster via L-idx.
     SpelledCardinal,
     /// Ordinal — "42" → "forty-second".
     Ordinal,
-    /// Multiplier — "1" → "once", "2" → "twice", "3" → "thrice",
-    /// higher → "N times".
+    /// Multiplier — "1" → "once", "2" → "twice", "3" → "thrice", higher → "N times".
     Multiplier,
-    /// Group / multiple — "2" → "pair", "3" → "triple", "4" →
-    /// "quadruple". Rare beyond 10.
+    /// Group / multiple — "2" → "pair", "3" → "triple", "4" → "quadruple". Rare beyond 10.
     Group,
-    /// Fraction denominator — "2" → "half", "3" → "third", "4" →
-    /// "quarter", higher → ordinal form ("fifth", "sixth", ...).
+    /// Fraction denominator — "2" → "half", "3" → "third", "4" → "quarter", higher → ordinal form ("fifth", "sixth", ...).
     Fraction,
-    /// Greek/Latin prefix — "1" → "mono", "2" → "bi", "3" → "tri",
-    /// "4" → "tetra", up to "deca" (10). Technical vocabulary.
+    /// Greek/Latin prefix — "1" → "mono", "2" → "bi", "3" → "tri", "4" → "tetra", up to "deca" (10). Technical vocabulary.
     Prefix,
 }
 
-/// Apply a form to a digit string. Returns `None` if the number is
-/// outside the form's supported range (callers should fall back to
-/// the normal English-suffix path).
+impl Form {
+    /// Left-hand bit pattern that triggers this form when pressed in brief-mode (word not held) with armed number context. Right hand and mod must both be empty. Slot ranking mirrors the existing SUFFIXES table's bench-measured effort order: fastest single-finger chords go to the most common forms.
+    pub const fn chord_bits(self) -> u8 {
+        match self {
+            Form::SpelledCardinal => 0b0001, // L-idx  (fastest alone, 668ms)
+            Form::Ordinal => 0b0100,         // L-ring (703ms)
+            Form::Multiplier => 0b1000,      // L-pinky (721ms)
+            Form::Group => 0b0010,           // L-mid  (739ms)
+            Form::Fraction => 0b0110,        // L-mid + L-ring (754ms)
+            Form::Prefix => 0b0011,          // L-idx + L-mid  (843ms)
+        }
+    }
+
+    /// Inverse of `chord_bits`: maps a brief-mode chord (word not held, left-hand only) to a form if it matches one of the form slots. Returns `None` for any chord that isn't a form trigger — caller falls through to the regular brief / English-suffix path.
+    pub fn from_chord(key: crate::layout::chords::ChordKey) -> Option<Self> {
+        if key.right_bits() != 0 || key.has_mod() {
+            return None;
+        }
+        match key.left_bits() {
+            0b0001 => Some(Form::SpelledCardinal),
+            0b0100 => Some(Form::Ordinal),
+            0b1000 => Some(Form::Multiplier),
+            0b0010 => Some(Form::Group),
+            0b0110 => Some(Form::Fraction),
+            0b0011 => Some(Form::Prefix),
+            _ => None,
+        }
+    }
+}
+
+/// Apply a form to a digit string. Returns `None` if the number is outside the form's supported range (callers should fall back to the normal English-suffix path).
 pub fn apply(form: Form, digits: &str) -> Option<String> {
     match form {
         Form::SpelledCardinal => spelled_cardinal(digits),
@@ -51,10 +63,7 @@ pub fn apply(form: Form, digits: &str) -> Option<String> {
     }
 }
 
-/// Spell `n` as an English ordinal. Returns `None` if the number is
-/// larger than what this table covers (v1: 0-999 plus exact thousand
-/// and million). Callers should fall back to the English suffix path
-/// on `None`.
+/// Spell `n` as an English ordinal. Returns `None` if the number is larger than what this table covers (v1: 0-999 plus exact thousand and million). Callers should fall back to the English suffix path on `None`.
 pub fn ordinal(digits: &str) -> Option<String> {
     let n: u64 = digits.parse().ok()?;
     spell_ordinal(n)

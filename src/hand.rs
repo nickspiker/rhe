@@ -1,9 +1,6 @@
 //! Raw key events for the chord pipeline.
 //!
-//! Input backends translate their platform-specific key identifiers into
-//! canonical scancodes (see `src/scan.rs`) and emit `KeyEvent { scan, direction }`.
-//! From that point on, the pipeline never sees hand/finger or OS keycodes
-//! again — everything speaks in scancode-space.
+//! Input backends translate their platform-specific key identifiers into canonical scancodes (see `src/scan.rs`) and emit `KeyEvent { scan, direction }`. From that point on, the pipeline never sees hand/finger or OS keycodes again — everything speaks in scancode-space.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyDirection {

@@ -1,7 +1,7 @@
 //! Word-to-phoneme lookup from CMU dict.
 
-use crate::preferences::chord_map::Phoneme;
-use crate::table_gen;
+use crate::layout::chords::Phoneme;
+use crate::phoneme_dict;
 
 /// Maps an English word to its phoneme sequence (for the tutor).
 pub struct WordLookup {
@@ -11,7 +11,7 @@ pub struct WordLookup {
 impl WordLookup {
     pub fn new(cmudict_text: &str) -> Self {
         Self {
-            word_to_phonemes: table_gen::parse_cmudict(cmudict_text),
+            word_to_phonemes: phoneme_dict::parse_cmudict(cmudict_text),
         }
     }
 

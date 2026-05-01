@@ -1,16 +1,10 @@
 //! Linux text output via uinput + libxkbcommon reverse-mapping.
 //!
-//! Creates a dedicated virtual keyboard for emitting rhe's chord output,
-//! and maps Rust `char`s back to the scancode+modifier sequences that will
-//! produce them *under the user's active xkb layout*. So a Dvorak user
-//! gets proper Dvorak output; a Colemak user gets Colemak; etc.
+//! Creates a dedicated virtual keyboard for emitting rhe's chord output, and maps Rust `char`s back to the scancode+modifier sequences that will produce them *under the user's active xkb layout*. So a Dvorak user gets proper Dvorak output; a Colemak user gets Colemak; etc.
 //!
-//! Characters not representable in the active layout (IPA, emoji, etc.)
-//! fall back to `Ctrl+Shift+U <hex> Enter` — GTK/Qt/IBus unicode input —
-//! which works in most modern GUI apps.
+//! Characters not representable in the active layout (IPA, emoji, etc.) fall back to `Ctrl+Shift+U <hex> Enter` — GTK/Qt/IBus unicode input — which works in most modern GUI apps.
 //!
-//! The output virtual keyboard is created AFTER the evdev backend has
-//! scanned for real keyboards, so it won't be self-grabbed.
+//! The output virtual keyboard is created AFTER the evdev backend has scanned for real keyboards, so it won't be self-grabbed.
 
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -66,13 +60,9 @@ struct InputEvent {
 
 pub struct LinuxOutput {
     fd: RawFd,
-    /// char → (kernel scancode, modifier mask). Produces the character
-    /// when the modifiers are held and the key is tapped.
+    /// char → (kernel scancode, modifier mask). Produces the character when the modifiers are held and the key is tapped.
     reverse_map: HashMap<char, (u16, u8)>,
-    /// Whether to emit `Ctrl+Shift+U <hex> Enter` for chars outside the
-    /// reverse map. Enabled by default for GTK/Qt apps; set
-    /// `RHE_UNICODE_FALLBACK=off` if output goes to a terminal (shells
-    /// interpret Ctrl+U as "kill line" and the hex digits land literally).
+    /// Whether to emit `Ctrl+Shift+U <hex> Enter` for chars outside the reverse map. Enabled by default for GTK/Qt apps; set `RHE_UNICODE_FALLBACK=off` if output goes to a terminal (shells interpret Ctrl+U as "kill line" and the hex digits land literally).
     unicode_fallback: bool,
 }
 
@@ -124,8 +114,7 @@ impl LinuxOutput {
         self.emit_key(code, 0);
     }
 
-    /// Emit a single char via scancode synthesis (reverse map) or via
-    /// Ctrl+Shift+U <hex> Enter fallback for chars outside the keymap.
+    /// Emit a single char via scancode synthesis (reverse map) or via Ctrl+Shift+U <hex> Enter fallback for chars outside the keymap.
     fn emit_char(&self, c: char) {
         if let Some(&(code, mods)) = self.reverse_map.get(&c) {
             if mods & MOD_SHIFT != 0 {
@@ -147,8 +136,7 @@ impl LinuxOutput {
         // else: no keymap entry and no fallback — char silently dropped.
     }
 
-    /// GTK/Qt/IBus unicode input: Ctrl+Shift+U (release), then hex digits,
-    /// then Enter to commit. Works in most modern GUI apps.
+    /// GTK/Qt/IBus unicode input: Ctrl+Shift+U (release), then hex digits, then Enter to commit. Works in most modern GUI apps.
     fn unicode_fallback_emit(&self, c: char) {
         let codepoint = c as u32;
         // Start: Ctrl+Shift held, tap U, release Shift+Ctrl.
@@ -190,8 +178,7 @@ impl super::TextOutput for LinuxOutput {
     }
 }
 
-/// Open `/dev/uinput` and create a virtual keyboard advertising all the
-/// scancodes we'll ever emit. Returns the fd on success.
+/// Open `/dev/uinput` and create a virtual keyboard advertising all the scancodes we'll ever emit. Returns the fd on success.
 fn open_uinput() -> Result<RawFd, String> {
     let path = CString::new("/dev/uinput").unwrap();
     let fd = unsafe { libc::open(path.as_ptr(), libc::O_WRONLY | libc::O_NONBLOCK) };
@@ -261,14 +248,10 @@ fn write_event(fd: RawFd, type_: u16, code: u16, value: i32) {
     }
 }
 
-/// Build `char → (kernel scancode, mod mask)` by walking every keycode in
-/// the user's active xkb keymap and asking what character each level
-/// produces. Level 0 = base, level 1 = shift, level 2 = altgr, level 3 =
-/// shift+altgr. We only keep the lowest-modifier mapping for each char.
-/// Best-effort detection of the system's active xkb layout. Order:
-///   1. $XKB_DEFAULT_LAYOUT env var (libxkbcommon reads this natively).
-///   2. `localectl status` output (systemd, works on most modern distros).
-///   3. Compile-time defaults (usually US QWERTY — wrong for Dvorak users).
+/// Build `char → (kernel scancode, mod mask)` by walking every keycode in the user's active xkb keymap and asking what character each level produces. Level 0 = base, level 1 = shift, level 2 = altgr, level 3 = shift+altgr. We only keep the lowest-modifier mapping for each char. Best-effort detection of the system's active xkb layout. Order:
+/// 1. $XKB_DEFAULT_LAYOUT env var (libxkbcommon reads this natively).
+/// 2. `localectl status` output (systemd, works on most modern distros).
+/// 3. Compile-time defaults (usually US QWERTY — wrong for Dvorak users).
 fn detect_layout() -> (String, String, String) {
     if std::env::var("XKB_DEFAULT_LAYOUT").is_ok() {
         // libxkbcommon will pick up env vars when we pass empty strings.

@@ -1,18 +1,38 @@
 //! Builds phoneme-sequence-to-word dictionary from CMU dict and frequency data.
 
-use crate::preferences::chord_map::Phoneme;
+use crate::layout::chords::Phoneme;
 use std::collections::HashMap;
 
-/// Phoneme dictionary: maps a sequence of phonemes → English word.
-/// Built from CMU dict. Homophones resolve to most frequent word.
+/// Phoneme dictionary: maps a sequence of phonemes → English word. Built from CMU dict. Homophones resolve to most frequent word.
 pub struct PhonemeDictionary {
     entries: HashMap<Vec<Phoneme>, String>,
+}
+
+/// Walk CMU dict text, yielding `(lowercase_word, phonemes)` for every well-formed entry. Skips comment lines (`;;;`), strips variant markers (`WORD(2)` → `word`), drops stress digits from each phoneme, and filters entries that contain no recognised phonemes. Both consumers below build over this single iterator so the parsing rules live in exactly one place.
+fn iter_entries(cmudict_text: &str) -> impl Iterator<Item = (String, Vec<Phoneme>)> + '_ {
+    cmudict_text.lines().filter_map(|line| {
+        if line.starts_with(";;;") {
+            return None;
+        }
+        let mut parts = line.split_whitespace();
+        let raw_word = parts.next()?;
+        let word = raw_word.split('(').next().unwrap().to_lowercase();
+        let phonemes: Vec<Phoneme> = parts
+            .filter_map(|p| {
+                let clean = p.trim_end_matches(|c: char| c.is_ascii_digit());
+                Phoneme::from_arpabet(clean)
+            })
+            .collect();
+        if phonemes.is_empty() {
+            return None;
+        }
+        Some((word, phonemes))
+    })
 }
 
 impl PhonemeDictionary {
     /// Build from CMU dict text and frequency data.
     pub fn build(cmudict_text: &str, freq_text: &str) -> Self {
-        // Parse word frequencies
         let mut freq: HashMap<String, u64> = HashMap::new();
         for line in freq_text.lines() {
             let mut parts = line.split_whitespace();
@@ -23,33 +43,9 @@ impl PhonemeDictionary {
             }
         }
 
+        // For each phoneme sequence, keep the highest-frequency word.
         let mut entries: HashMap<Vec<Phoneme>, (String, u64)> = HashMap::new();
-
-        for line in cmudict_text.lines() {
-            if line.starts_with(";;;") {
-                continue;
-            }
-            let mut parts = line.split_whitespace();
-            let Some(raw_word) = parts.next() else {
-                continue;
-            };
-
-            // Strip variant markers like WORD(2)
-            let word = raw_word.split('(').next().unwrap().to_lowercase();
-
-            // Parse phonemes, stripping stress digits
-            let phonemes: Vec<Phoneme> = parts
-                .filter_map(|p| {
-                    let clean = p.trim_end_matches(|c: char| c.is_ascii_digit());
-                    Phoneme::from_arpabet(clean)
-                })
-                .collect();
-
-            if phonemes.is_empty() {
-                continue;
-            }
-
-            // Keep highest-frequency word for each phoneme sequence
+        for (word, phonemes) in iter_entries(cmudict_text) {
             let word_freq = freq.get(&word).copied().unwrap_or(0);
             entries
                 .entry(phonemes)
@@ -59,14 +55,11 @@ impl PhonemeDictionary {
                         *existing_freq = word_freq;
                     }
                 })
-                .or_insert((word, word_freq));
+                .or_insert_with(|| (word, word_freq));
         }
 
-        let dict: HashMap<Vec<Phoneme>, String> = entries
-            .into_iter()
-            .map(|(k, (word, _))| (k, word))
-            .collect();
-
+        let dict: HashMap<Vec<Phoneme>, String> =
+            entries.into_iter().map(|(k, (word, _))| (k, word)).collect();
         Self { entries: dict }
     }
 
@@ -76,30 +69,11 @@ impl PhonemeDictionary {
     }
 }
 
-/// Parse CMU dict text and return word → phoneme vec mapping.
-/// Useful for looking up specific words.
+/// Parse CMU dict text and return word → phoneme vec mapping. Useful for looking up specific words.
 pub fn parse_cmudict(cmudict_text: &str) -> HashMap<String, Vec<Phoneme>> {
     let mut dict: HashMap<String, Vec<Phoneme>> = HashMap::new();
-    for line in cmudict_text.lines() {
-        if line.starts_with(";;;") {
-            continue;
-        }
-        let mut parts = line.split_whitespace();
-        let Some(raw_word) = parts.next() else {
-            continue;
-        };
-        let word = raw_word.split('(').next().unwrap().to_lowercase();
-
-        let phonemes: Vec<Phoneme> = parts
-            .filter_map(|p| {
-                let clean = p.trim_end_matches(|c: char| c.is_ascii_digit());
-                Phoneme::from_arpabet(clean)
-            })
-            .collect();
-
-        if !phonemes.is_empty() {
-            dict.entry(word).or_insert(phonemes);
-        }
+    for (word, phonemes) in iter_entries(cmudict_text) {
+        dict.entry(word).or_insert(phonemes);
     }
     dict
 }

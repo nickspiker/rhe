@@ -1,9 +1,6 @@
 //! Windows text output via SendInput with KEYEVENTF_UNICODE.
 //!
-//! Sends Unicode codepoints directly so the OS handles whatever keyboard
-//! layout is active — no per-layout reverse map needed. Surrogate pairs
-//! (codepoints above U+FFFF) get split into two UTF-16 code units, each
-//! sent as a separate keystroke pair. Backspace uses VK_BACK.
+//! Sends Unicode codepoints directly so the OS handles whatever keyboard layout is active — no per-layout reverse map needed. Surrogate pairs (codepoints above U+FFFF) get split into two UTF-16 code units, each sent as a separate keystroke pair. Backspace uses VK_BACK.
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, SendInput,

@@ -17,9 +17,7 @@ pub mod windows;
 
 /// No-op output backend for platforms where text injection isn't wired up.
 ///
-/// On Linux, uinput routes through the user's xkb layout (so injected
-/// scancodes get re-interpreted by Dvorak/etc). Until we add xkb
-/// reverse-mapping or an IME path, the tutor runs without emitting text.
+/// On Linux, uinput routes through the user's xkb layout (so injected scancodes get re-interpreted by Dvorak/etc). Until we add xkb reverse-mapping or an IME path, the tutor runs without emitting text.
 pub struct NullOutput;
 
 impl NullOutput {

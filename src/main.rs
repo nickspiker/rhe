@@ -1,5 +1,6 @@
-//! CLI entry point and subcommand dispatch.
+//! Tray-app entry point.
 
+mod briefs;
 mod crypto;
 mod data;
 mod hand;
@@ -7,10 +8,10 @@ mod input;
 mod interpreter;
 mod key_mask;
 mod output;
-mod preferences;
+mod phoneme_dict;
+mod layout;
 mod scan;
 mod state_machine;
-mod table_gen;
 mod tray;
 mod tutor;
 mod word_lookup;
@@ -21,233 +22,24 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-
-    match args.get(1).map(|s| s.as_str()) {
-        None | Some("run") => run(),
-        Some("map") => show_map(),
-        Some("briefs") => show_briefs(),
-        Some("listen") => listen(),
-        Some("rollover") => rollover_test(),
-        Some("verify") => verify(),
-        Some("-h") | Some("--help") | Some("help") => show_usage(),
-        Some(other) => {
-            eprintln!("rhe: unknown subcommand `{other}`");
-            eprintln!();
-            show_usage();
-            std::process::exit(2);
-        }
-    }
-}
-
-/// Self-verify the binary's Ed25519 signature. Used by install scripts
-/// to confirm a downloaded binary wasn't tampered with — they invoke
-/// `rhe verify` and only proceed to install if the exit code is 0.
-fn verify() {
+    // Self-verification is informational, not gating: the binary always runs.
+    // Tell the user which state they're in so they can act on it if they care.
     match crypto::self_verify::verify_binary_hash() {
-        Ok(sig) => {
-            println!("✓ Signature valid");
-            println!("  {}", sig);
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            eprintln!(
+                "rhe: unsigned build (cargo install or local) — integrity not cryptographically verified."
+            );
         }
         Err(e) => {
-            eprintln!("✗ Signature verification FAILED: {}", e);
-            std::process::exit(1);
+            eprintln!(
+                "rhe: signature check failed — {} (binary appears modified or corrupted; continuing anyway).",
+                e
+            );
         }
     }
-}
 
-fn show_usage() {
-    println!("rhe v{}", env!("CARGO_PKG_VERSION"));
-    println!();
-    println!("usage:");
-    println!("  rhe           — menu bar app + full engine (default)");
-    println!("                  open the tutor from the tray menu");
-    println!("  rhe map       — show phoneme-to-chord mapping");
-    println!("  rhe briefs    — show word brief assignments");
-    println!("  rhe listen    — show raw key events + chords");
-    println!("  rhe rollover  — test simultaneous key count");
-    println!("  rhe verify    — verify this binary's Ed25519 signature");
-}
-
-fn show_map() {
-    let finger = ["I", "M", "R", "P"];
-    let combo_label = |bits: u8| -> String {
-        if bits == 0 {
-            return "-".to_string();
-        }
-        (0..4)
-            .filter(|&i| bits & (1 << i) != 0)
-            .map(|i| finger[i])
-            .collect::<Vec<_>>()
-            .join("+")
-    };
-
-    println!("=== CONSONANTS (right hand) ===\n");
-    println!("{:<10} {:<5} {:<6} {}", "Fingers", "⌘", "IPA", "Phoneme");
-    println!("{}", "-".repeat(35));
-
-    use crate::preferences::chord_map::Phoneme;
-    let consonants = [
-        Phoneme::T,
-        Phoneme::S,
-        Phoneme::K,
-        Phoneme::P,
-        Phoneme::N,
-        Phoneme::R,
-        Phoneme::L,
-        Phoneme::H,
-        Phoneme::F,
-        Phoneme::W,
-        Phoneme::Th,
-        Phoneme::Sh,
-        Phoneme::Ch,
-        Phoneme::Ng,
-        Phoneme::Y,
-        Phoneme::D,
-        Phoneme::Z,
-        Phoneme::G,
-        Phoneme::B,
-        Phoneme::M,
-        Phoneme::Dh,
-        Phoneme::V,
-        Phoneme::Zh,
-        Phoneme::Jh,
-    ];
-
-    for p in consonants {
-        let key = p.chord_key();
-        let mod_str = if key.has_mod() { "⌘" } else { "" };
-        println!(
-            "{:<10} {:<5} {:<6} {:?}",
-            combo_label(key.right_bits()),
-            mod_str,
-            p.to_ipa(),
-            p
-        );
-    }
-
-    println!("\n=== VOWELS (left hand) ===\n");
-    println!("{:<10} {:<6} {}", "Fingers", "IPA", "Example");
-    println!("{}", "-".repeat(35));
-
-    let vowels = [
-        (Phoneme::Ah, "but/about"),
-        (Phoneme::Ih, "sit"),
-        (Phoneme::Eh, "bed"),
-        (Phoneme::Ae, "cat"),
-        (Phoneme::Iy, "see"),
-        (Phoneme::Aa, "father"),
-        (Phoneme::Ey, "say"),
-        (Phoneme::Er, "bird"),
-        (Phoneme::Ay, "my"),
-        (Phoneme::Ow, "go"),
-        (Phoneme::Ao, "thought"),
-        (Phoneme::Uw, "blue"),
-        (Phoneme::Aw, "cow"),
-        (Phoneme::Uh, "book"),
-        (Phoneme::Oy, "boy"),
-    ];
-
-    for (p, example) in vowels {
-        let key = p.chord_key();
-        println!(
-            "{:<10} {:<6} {}",
-            combo_label(key.left_bits()),
-            p.to_ipa(),
-            example
-        );
-    }
-
-    // 9-bit chord space (4R + 4L + mod) = 512 slots, 39 phonemes assigned.
-    println!("\n39 phonemes mapped. {} slots free for briefs.", 512 - 39);
-}
-
-fn show_briefs() {
-    let brief_table = crate::preferences::briefs::load_briefs();
-
-    let finger = ["I", "M", "R", "P"];
-    let combo_label = |bits: u8| -> String {
-        if bits == 0 {
-            return "-".to_string();
-        }
-        (0..4)
-            .filter(|&i| bits & (1 << i) != 0)
-            .map(|i| finger[i])
-            .collect::<Vec<_>>()
-            .join("+")
-    };
-
-    println!("\n=== BRIEFS (both-hands combos) ===\n");
-    println!("{:<10} {:<10} {:<5} {}", "Right", "Left", "⌘", "Word");
-    println!("{}", "-".repeat(40));
-
-    let mut entries: Vec<_> = brief_table
-        .iter()
-        .filter(|(key, _, _)| key.right_bits() != 0 && key.left_bits() != 0)
-        .collect();
-    entries.sort_by(|a, b| a.2.cmp(b.2));
-    let mut count = 0;
-    for (key, _first_down, word) in entries {
-        let right = key.right_bits();
-        let left = key.left_bits();
-        let mod_str = if key.has_mod() { "⌘" } else { "" };
-        println!(
-            "{:<10} {:<10} {:<5} {}",
-            combo_label(right),
-            combo_label(left),
-            mod_str,
-            word.trim()
-        );
-        count += 1;
-        if count >= 50 {
-            break;
-        }
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn listen() {
-    println!("rhe listen — press home row keys, ctrl-C to quit");
-    println!("right hand = consonants | left hand = vowels | ⌘ = mod | space = word");
-    println!();
-
-    let phonemes = crate::preferences::chord_map::PhonemeTable::new();
-    let mut input =
-        input::rdev_backend::RdevInput::start_listen().expect("failed to start key capture");
-    let mut sm = state_machine::StateMachine::new();
-
-    loop {
-        let Some(event) = input.next_event() else {
-            break;
-        };
-        println!("  key: {:?}", event);
-
-        for sm_event in sm.feed(event) {
-            match &sm_event {
-                state_machine::Event::Chord { key, .. } => {
-                    let phoneme = phonemes.lookup(*key);
-                    let label = phoneme.map(|p| p.to_ipa()).unwrap_or("?");
-                    println!(
-                        "  >>> CHORD R:{:04b} L:{:04b} mod={} → {}",
-                        key.right_bits(),
-                        key.left_bits(),
-                        key.has_mod(),
-                        label
-                    );
-                }
-                state_machine::Event::SpaceUp => println!("  >>> SPACE UP"),
-                state_machine::Event::Backspace => println!("  >>> BACKSPACE"),
-                state_machine::Event::ModTap => println!("  >>> MOD TAP"),
-                state_machine::Event::UndoPhoneme => println!("  >>> UNDO PHONEME"),
-            }
-        }
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn listen() {
-    eprintln!("rhe listen: not yet supported on this platform.");
-    eprintln!("use `rhe tutor` to see chord recognition in action.");
+    run();
 }
 
 /// Full engine with menu bar app.
@@ -275,9 +67,9 @@ fn run() {
         let cmudict = data::load_cmudict();
         let freq = data::load_word_freq();
 
-        let phoneme_table = crate::preferences::chord_map::PhonemeTable::new();
-        let dictionary = table_gen::PhonemeDictionary::build(&cmudict, &freq);
-        let brief_table = crate::preferences::briefs::load_briefs();
+        let phoneme_table = crate::layout::chords::PhonemeTable::new();
+        let dictionary = phoneme_dict::PhonemeDictionary::build(&cmudict, &freq);
+        let brief_table = crate::briefs::load_briefs();
 
         let mut interp = interpreter::Interpreter::with_fallback_and_modes(
             phoneme_table,
@@ -313,7 +105,9 @@ fn run() {
 
             for sm_event in sm.feed(event) {
                 match &sm_event {
-                    state_machine::Event::Chord { key, first_down, .. } => {
+                    state_machine::Event::Chord {
+                        key, first_down, ..
+                    } => {
                         eprintln!(
                             "  chord: R:{:04b} L:{:04b} mod={}",
                             key.right_bits(),
@@ -377,9 +171,7 @@ fn run() {
     tray::run_tray(event_loop, enabled, quit, fallback, mode_flags);
 }
 
-/// Full engine on Linux — evdev grab + uinput output + tray menu.
-/// Engine runs in a background thread; the tray event loop owns the main
-/// thread (tray-icon's DBus/StatusNotifierItem machinery requires that).
+/// Full engine on Linux — evdev grab + uinput output + tray menu. Engine runs in a background thread; the tray event loop owns the main thread (tray-icon's DBus/StatusNotifierItem machinery requires that).
 #[cfg(target_os = "linux")]
 fn run() {
     crate::tutor::log::init();
@@ -409,9 +201,9 @@ fn run() {
         let cmudict = data::load_cmudict();
         let freq = data::load_word_freq();
 
-        let phoneme_table = crate::preferences::chord_map::PhonemeTable::new();
-        let dictionary = table_gen::PhonemeDictionary::build(&cmudict, &freq);
-        let brief_table = crate::preferences::briefs::load_briefs();
+        let phoneme_table = crate::layout::chords::PhonemeTable::new();
+        let dictionary = phoneme_dict::PhonemeDictionary::build(&cmudict, &freq);
+        let brief_table = crate::briefs::load_briefs();
 
         let mut interp = interpreter::Interpreter::with_fallback_and_modes(
             phoneme_table,
@@ -455,7 +247,9 @@ fn run() {
 
             for sm_event in sm.feed(event) {
                 match &sm_event {
-                    state_machine::Event::Chord { key, first_down, .. } => tlog!(
+                    state_machine::Event::Chord {
+                        key, first_down, ..
+                    } => tlog!(
                         "engine chord: R:{:04b} L:{:04b} mod={} first_down={:?}",
                         key.right_bits(),
                         key.left_bits(),
@@ -526,9 +320,9 @@ fn run() {
         let cmudict = data::load_cmudict();
         let freq = data::load_word_freq();
 
-        let phoneme_table = crate::preferences::chord_map::PhonemeTable::new();
-        let dictionary = table_gen::PhonemeDictionary::build(&cmudict, &freq);
-        let brief_table = crate::preferences::briefs::load_briefs();
+        let phoneme_table = crate::layout::chords::PhonemeTable::new();
+        let dictionary = phoneme_dict::PhonemeDictionary::build(&cmudict, &freq);
+        let brief_table = crate::briefs::load_briefs();
 
         let mut interp = interpreter::Interpreter::with_fallback_and_modes(
             phoneme_table,
@@ -564,7 +358,9 @@ fn run() {
 
             for sm_event in sm.feed(event) {
                 match &sm_event {
-                    state_machine::Event::Chord { key, first_down, .. } => tlog!(
+                    state_machine::Event::Chord {
+                        key, first_down, ..
+                    } => tlog!(
                         "engine chord: R:{:04b} L:{:04b} mod={} first_down={:?}",
                         key.right_bits(),
                         key.left_bits(),
@@ -612,60 +408,3 @@ fn run() {
     eprintln!("use `rhe tutor` to practice chords.");
 }
 
-#[cfg(target_os = "macos")]
-fn rollover_test() {
-    use hand::KeyDirection;
-    use input::HidEvent;
-    use input::iohid_backend::IoHidInput;
-
-    println!("rhe rollover test — press as many home row keys as possible");
-    println!("shows how many keys register simultaneously. Esc to quit.");
-    println!();
-
-    let enabled = Arc::new(AtomicBool::new(true));
-    let input = IoHidInput::start_grab(enabled, true).expect("failed to start key capture");
-
-    let mut held: Vec<&str> = Vec::new();
-    let mut max_held: usize = 0;
-
-    loop {
-        let event = match input.rx.recv() {
-            Ok(HidEvent::Quit) => break,
-            Ok(HidEvent::Key(ev)) => ev,
-            Err(_) => break,
-        };
-
-        let name = scan::label(event.scan);
-        match event.direction {
-            KeyDirection::Down => {
-                if !held.contains(&name) {
-                    held.push(name);
-                }
-            }
-            KeyDirection::Up => {
-                held.retain(|&n| n != name);
-            }
-        }
-
-        if held.len() > max_held {
-            max_held = held.len();
-        }
-
-        // Clear line and print current state
-        print!(
-            "\r\x1b[K  held: {} (max: {})  [{}]",
-            held.len(),
-            max_held,
-            held.join(" + ")
-        );
-        use std::io::Write;
-        std::io::stdout().flush().ok();
-    }
-
-    println!("\n\nMax simultaneous keys: {}", max_held);
-}
-
-#[cfg(not(target_os = "macos"))]
-fn rollover_test() {
-    eprintln!("rhe rollover: not yet supported on this platform.");
-}

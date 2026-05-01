@@ -14,6 +14,7 @@ categories = ["command-line-utilities"]
 exclude = [
     "data/en_freq.txt",
     "data/cmudict.dict",
+    "data/brown_corpus.txt.zst",
     "data/*.py",
     "tutor_debug.log",
     "target/*",

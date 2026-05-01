@@ -1,11 +1,8 @@
 //! CGEventTap-based keyboard input for macOS.
 //!
-//! Selective key suppression — only home-row keys are grabbed, everything
-//! else (media keys, F-keys, arrows, etc.) passes through natively.
-//! No IOHIDManager seize needed. Key repeats detected via kCGKeyRepeat.
+//! Selective key suppression — only home-row keys are grabbed, everything else (media keys, F-keys, arrows, etc.) passes through natively. No IOHIDManager seize needed. Key repeats detected via kCGKeyRepeat.
 //!
-//! Requires Accessibility permission (System Settings → Privacy → Accessibility)
-//! or Input Monitoring.
+//! Requires Accessibility permission (System Settings → Privacy → Accessibility) or Input Monitoring.
 
 use crate::hand::{KeyDirection, KeyEvent};
 use crate::input::HidEvent;
@@ -92,13 +89,12 @@ mod ffi {
     }
 }
 
-/// macOS virtual keycode → rhe scan code (only for our keys).
-/// Returns None for keys we don't care about (they pass through).
+/// macOS virtual keycode → rhe scan code (only for our keys). Returns None for keys we don't care about (they pass through).
 fn vk_to_scan(vk: u16) -> Option<u8> {
     use crate::scan;
     // Use the layout module to map — virtual keycodes are positional
     // (QWERTY-based regardless of OS layout).
-    crate::preferences::layout::vk_to_role(vk)
+    crate::layout::keyboard::vk_to_role(vk)
 }
 
 /// Is this virtual keycode the caps lock key?

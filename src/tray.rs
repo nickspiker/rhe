@@ -1,20 +1,8 @@
 //! Cross-platform tray icon + right-click menu + on-demand tutor window.
 //!
-//! macOS gets its native menu bar icon via `tray-icon` (which wraps
-//! `NSStatusItem`); tray events flow naturally through the NSApp
-//! event loop that winit already owns on the main thread.
+//! macOS gets its native menu bar icon via `tray-icon` (which wraps `NSStatusItem`); tray events flow naturally through the NSApp event loop that winit already owns on the main thread.
 //!
-//! Linux gets a StatusNotifierItem registered via DBus — works out of
-//! the box on KDE, XFCE, Cinnamon, MATE; on GNOME the user needs
-//! `gnome-shell-extension-appindicator` installed and enabled. The
-//! icon crate requires `gtk::init` + a running `gtk::main` loop for
-//! menu callbacks to fire, and winit doesn't pump gtk. So on Linux we
-//! spawn a dedicated gtk thread that owns the tray + menu items and
-//! runs `gtk::main()`; the main thread keeps running winit for the
-//! tutor window. Menu clicks flow via `tray-icon`'s `MenuEvent`
-//! receiver → `EventLoopProxy` → winit `UserEvent`; menu-item labels
-//! and icon state are kept in sync by a glib timeout on the gtk
-//! thread that polls the shared atomics.
+//! Linux gets a StatusNotifierItem registered via DBus — works out of the box on KDE, XFCE, Cinnamon, MATE; on GNOME the user needs `gnome-shell-extension-appindicator` installed and enabled. The icon crate requires `gtk::init` + a running `gtk::main` loop for menu callbacks to fire, and winit doesn't pump gtk. So on Linux we spawn a dedicated gtk thread that owns the tray + menu items and runs `gtk::main()`; the main thread keeps running winit for the tutor window. Menu clicks flow via `tray-icon`'s `MenuEvent` receiver → `EventLoopProxy` → winit `UserEvent`; menu-item labels and icon state are kept in sync by a glib timeout on the gtk thread that polls the shared atomics.
 
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -28,7 +16,7 @@ use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 use crate::hand::KeyEvent as RheKeyEvent;
 use crate::interpreter::FallbackMode;
-use crate::preferences::chord_map::{BriefTable, PhonemeTable};
+use crate::layout::chords::{BriefTable, PhonemeTable};
 use crate::tutor::drill::{TutorState, build_practice, cell_label, key_state_to_mask};
 use crate::tutor::ui::compositor::{
     HIT_CLOSE_BUTTON, HIT_MAXIMIZE_BUTTON, HIT_MINIMIZE_BUTTON, HIT_NONE, TutorApp,
@@ -52,20 +40,13 @@ fn hover_delta(hit: u8) -> u32 {
 }
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
-/// Rendered tray-icon bitmap dimensions. 44 = 2× the conventional
-/// 22-px Linux SNI / 22-pt macOS NSStatusItem size, so retina /
-/// HiDPI displays get an exact pixel match and 1× displays
-/// downscale cleanly. Tray-icon 0.22 takes a single bitmap; the
-/// OS handles further scaling.
+/// Rendered tray-icon bitmap dimensions. 44 = 2× the conventional 22-px Linux SNI / 22-pt macOS NSStatusItem size, so retina / HiDPI displays get an exact pixel match and 1× displays downscale cleanly. Tray-icon 0.22 takes a single bitmap; the OS handles further scaling.
 const ICON_SIZE: u32 = 44;
 
 /// Logo embedded at compile time. 1024×1024 RGB PNG.
 const LOGO_PNG_BYTES: &[u8] = include_bytes!("../logo.png");
 
-/// Decode and scale-down logo.png to a square RGB buffer of `diameter`×
-/// `diameter`. Cached after the first call. Nearest-neighbour scaling —
-/// fine for tray-icon sizes where per-pixel sharpness matters more than
-/// filter fidelity.
+/// Decode and scale-down logo.png to a square RGB buffer of `diameter`× `diameter`. Cached after the first call. Nearest-neighbour scaling — fine for tray-icon sizes where per-pixel sharpness matters more than filter fidelity.
 fn scaled_logo_rgb(diameter: usize) -> Vec<u8> {
     use std::sync::OnceLock;
     static DECODED: OnceLock<(Vec<u8>, usize, usize)> = OnceLock::new();
@@ -112,22 +93,9 @@ fn scaled_logo_rgb(diameter: usize) -> Vec<u8> {
 
 use crate::tutor::ui::layout::TutorLayout;
 
-/// Press marker on a chord cell — uses photon's anti-aliased
-/// `draw_black_circle` / `draw_white_circle` so the dot reads
-/// against any underlying fill:
-///   - **bright cell** (target / lit) → subtract white → fades to
-///     black at centre with smooth AA edges.
-///   - **dark cell** (idle / wrong) → add white → fades to white at
-///     centre with smooth AA edges.
-/// Press-indicator dot. The drawing helpers
-/// (`draw_black_circle`/`draw_white_circle`) require:
-///   `radius ≥ 1`, `cx ± radius ∈ [0, buf_w)`, `cy ± radius ∈ [0, buf_h)`.
-/// This function is the validation boundary: it accepts arbitrary
-/// layout-derived coordinates and returns early if the circle would
-/// extend past any window edge, since the helpers cast `cx + dx`
-/// straight to `usize` and would otherwise either panic on
-/// `pixels[idx]` (y out of range) or silently bleed across rows
-/// (negative or oversized x wrapping during the `as usize` cast).
+/// Press marker on a chord cell — uses photon's anti-aliased `draw_black_circle` / `draw_white_circle` so the dot reads against any underlying fill:
+/// - **bright cell** (target / lit) → subtract white → fades to black at centre with smooth AA edges.
+/// - **dark cell** (idle / wrong) → add white → fades to white at centre with smooth AA edges. Press-indicator dot. The drawing helpers (`draw_black_circle`/`draw_white_circle`) require: `radius ≥ 1`, `cx ± radius ∈ [0, buf_w)`, `cy ± radius ∈ [0, buf_h)`. This function is the validation boundary: it accepts arbitrary layout-derived coordinates and returns early if the circle would extend past any window edge, since the helpers cast `cx + dx` straight to `usize` and would otherwise either panic on `pixels[idx]` (y out of range) or silently bleed across rows (negative or oversized x wrapping during the `as usize` cast).
 fn press_circle(
     pixels: &mut [u32],
     buf_w: usize,
@@ -164,17 +132,9 @@ fn press_circle(
     }
 }
 
-/// Pill-shaped press indicator for the wide mod / word bars. Same
-/// vertical diameter as `press_circle`'s circle (= 2*radius), just
-/// elongated horizontally so the shape sits at a uniform distance
-/// from every edge of the cell. Top/bottom margin is `cell_h/2 -
-/// radius`; left/right margin is the same — gives the press dot the
-/// same border feel on a wide cell as on a square one.
+/// Pill-shaped press indicator for the wide mod / word bars. Same vertical diameter as `press_circle`'s circle (= 2*radius), just elongated horizontally so the shape sits at a uniform distance from every edge of the cell. Top/bottom margin is `cell_h/2 - radius`; left/right margin is the same — gives the press dot the same border feel on a wide cell as on a square one.
 ///
-/// Validation boundary identical to `press_circle`: the pill
-/// helpers assume the bounding box `[cx ± pill_w/2] × [cy ± pill_h/2]`
-/// fits entirely within `[0, buf_w) × [0, buf_h)`. This function
-/// returns early if any edge would spill out.
+/// Validation boundary identical to `press_circle`: the pill helpers assume the bounding box `[cx ± pill_w/2] × [cy ± pill_h/2]` fits entirely within `[0, buf_w) × [0, buf_h)`. This function returns early if any edge would spill out.
 fn press_pill(
     pixels: &mut [u32],
     buf_w: usize,
@@ -239,12 +199,7 @@ fn finger_cell_fill(cell_idx: usize, is_target: bool, is_primary: bool) -> u32 {
     }
 }
 
-/// Pill-shaped cell via the compositor's draw_button. Square: width =
-/// height = `cell_d`. `pressed` swaps the bevel highlight/shadow so
-/// the cell reads as pushed-in instead of raised — mirrors the
-/// physical key state for live feedback. Photon-style fixed bevel
-/// constants (no per-fill arithmetic): same two colours every cell,
-/// just swapped on press.
+/// Pill-shaped cell via the compositor's draw_button. Square: width = height = `cell_d`. `pressed` swaps the bevel highlight/shadow so the cell reads as pushed-in instead of raised — mirrors the physical key state for live feedback. Photon-style fixed bevel constants (no per-fill arithmetic): same two colours every cell, just swapped on press.
 fn cell(
     pixels: &mut [u32],
     hit: &mut [u8],
@@ -281,9 +236,7 @@ fn cell(
     );
 }
 
-/// Pill-shaped cell, allowing distinct width/height (used for the
-/// thumb / mod cell which is rendered wider). `pressed` flips the
-/// bevels same as `cell`.
+/// Pill-shaped cell, allowing distinct width/height (used for the thumb / mod cell which is rendered wider). `pressed` flips the bevels same as `cell`.
 fn cell_wide(
     pixels: &mut [u32],
     hit: &mut [u8],
@@ -321,10 +274,7 @@ fn cell_wide(
     );
 }
 
-/// Render the tray icon: ring around a scaled-down logo.png via the
-/// compositor's `draw_avatar` in straight-alpha mode (so the outer AA
-/// fringe carries real alpha and the icon fades to transparent
-/// outside the ring instead of leaving an opaque half-bright ring).
+/// Render the tray icon: ring around a scaled-down logo.png via the compositor's `draw_avatar` in straight-alpha mode (so the outer AA fringe carries real alpha and the icon fades to transparent outside the ring instead of leaving an opaque half-bright ring).
 fn make_tray_icon(size: u32, online: bool) -> Icon {
     use crate::tutor::ui::compositor::TutorApp;
 
@@ -376,17 +326,11 @@ fn make_tray_icon(size: u32, online: bool) -> Icon {
 /// Events that wake the winit event loop.
 #[derive(Debug, Clone)]
 pub enum TrayEvent {
-    /// The engine thread toggled the `enabled` flag (via caps tap).
-    /// The tray icon + check item need refreshing. On Linux the gtk
-    /// thread's glib timeout notices this via atomics directly, so
-    /// this variant is just a no-op wake for the winit thread.
+    /// The engine thread toggled the `enabled` flag (via caps tap). The tray icon + check item need refreshing. On Linux the gtk thread's glib timeout notices this via atomics directly, so this variant is just a no-op wake for the winit thread.
     StateChanged,
     /// A menu item was clicked.
     Menu(MenuId),
-    /// The engine thread observed a key event. Forwarded to the tutor
-    /// window if it's open so the drill state machine can advance.
-    /// Sent unconditionally — the tray drops it on the floor when no
-    /// tutor window exists.
+    /// The engine thread observed a key event. Forwarded to the tutor window if it's open so the drill state machine can advance. Sent unconditionally — the tray drops it on the floor when no tutor window exists.
     DrillKey(RheKeyEvent),
 }
 
@@ -418,9 +362,7 @@ fn circle_icon(r: u8, g: u8, b: u8, a: u8) -> Icon {
     Icon::from_rgba(rgba, ICON_SIZE, ICON_SIZE).expect("failed to create icon")
 }
 
-/// Build the event loop + proxy before spawning the engine. The caller
-/// gives the proxy to any thread that wants to notify the tray of state
-/// changes (primarily the evdev reader on Linux / HID callback on macOS).
+/// Build the event loop + proxy before spawning the engine. The caller gives the proxy to any thread that wants to notify the tray of state changes (primarily the evdev reader on Linux / HID callback on macOS).
 pub fn build() -> (EventLoop<TrayEvent>, TrayProxy) {
     let event_loop = EventLoop::<TrayEvent>::with_user_event()
         .build()
@@ -429,10 +371,7 @@ pub fn build() -> (EventLoop<TrayEvent>, TrayProxy) {
     (event_loop, proxy)
 }
 
-/// Menu IDs exposed to the winit thread so it can dispatch clicks back
-/// to the right action without holding the `MenuItem`s directly (which
-/// would be a problem on Linux, where the items must live on the gtk
-/// thread).
+/// Menu IDs exposed to the winit thread so it can dispatch clicks back to the right action without holding the `MenuItem`s directly (which would be a problem on Linux, where the items must live on the gtk thread).
 #[derive(Clone)]
 struct TrayIds {
     tutor: MenuId,
@@ -447,10 +386,7 @@ struct TrayApp {
     enabled: Arc<AtomicBool>,
     quit: Arc<AtomicBool>,
     fallback: Arc<AtomicU8>,
-    /// Bitfield mirroring the live Interpreter's sub-mode (number /
-    /// future symbol etc.). Cloned from the engine thread so the
-    /// tutor's adaptive cell labels match what the next press would
-    /// actually emit. See `interpreter::MODE_FLAG_*`.
+    /// Bitfield mirroring the live Interpreter's sub-mode (number / future symbol etc.). Cloned from the engine thread so the tutor's adaptive cell labels match what the next press would actually emit. See `interpreter::MODE_FLAG_*`.
     mode_flags: Arc<AtomicU8>,
     ids: TrayIds,
 
@@ -475,26 +411,17 @@ struct TrayApp {
     tutor_word_lookup: Option<WordLookup>,
     tutor_brief_table: Option<BriefTable>,
 
-    /// User zoom multiplier applied on top of span-derived sizes.
-    /// Adjusted live by Ctrl+scroll; 1.0 is the default.
+    /// User zoom multiplier applied on top of span-derived sizes. Adjusted live by Ctrl+scroll; 1.0 is the default.
     tutor_ru: f32,
-    /// While `Some(deadline)` and `now < deadline`, the top-left
-    /// zoom-percentage hint renders. Bumped on every ru change to
-    /// `now + 1s`. about_to_wait schedules a `WaitUntil(deadline)`
-    /// so the hint auto-fades without further user input.
+    /// While `Some(deadline)` and `now < deadline`, the top-left zoom-percentage hint renders. Bumped on every ru change to `now + 1s`. about_to_wait schedules a `WaitUntil(deadline)` so the hint auto-fades without further user input.
     tutor_zoom_hint_until: Option<std::time::Instant>,
-    /// Last observed modifier state for the tutor window. Updated on
-    /// every ModifiersChanged event so MouseWheel can consult it.
+    /// Last observed modifier state for the tutor window. Updated on every ModifiersChanged event so MouseWheel can consult it.
     tutor_mods: ModifiersState,
     /// Last cursor position inside the tutor window, in physical px.
     tutor_cursor: PhysicalPosition<f64>,
-    /// Hit-test map, one byte per pixel. Photon's draw_* fns populate
-    /// this with HIT_* constants; we consult it on click to dispatch
-    /// to the right action.
+    /// Hit-test map, one byte per pixel. Photon's draw_* fns populate this with HIT_* constants; we consult it on click to dispatch to the right action.
     tutor_hit_test: Vec<u8>,
-    /// Textbox alpha mask (0 = outside textbox, 255 = inside, AA edge
-    /// values in between). Populated by draw_textbox, consumed by
-    /// apply_textbox_glow. Sized to pixels.len().
+    /// Textbox alpha mask (0 = outside textbox, 255 = inside, AA edge values in between). Populated by draw_textbox, consumed by apply_textbox_glow. Sized to pixels.len().
     tutor_textbox_mask: Vec<u8>,
 
     // Debug toggles (photon parity): Ctrl+D counters, Ctrl+H hitmap
@@ -504,9 +431,7 @@ struct TrayApp {
     tutor_show_textbox_mask: bool,
     tutor_debug_hit_colours: Vec<(u8, u8, u8)>,
     tutor_debug_colour_seed: u32,
-    /// Manual Ctrl tracking derived from KeyboardInput events. Used as
-    /// a fallback when winit's ModifiersChanged doesn't fire on some
-    /// Wayland compositors (or before the window has keyboard focus).
+    /// Manual Ctrl tracking derived from KeyboardInput events. Used as a fallback when winit's ModifiersChanged doesn't fire on some Wayland compositors (or before the window has keyboard focus).
     tutor_ctrl_held: bool,
 
     /// Currently hovered chrome button (for hover fill effect).
@@ -636,7 +561,7 @@ impl TrayApp {
         if self.tutor_state.is_none() {
             let cmudict = crate::data::load_cmudict();
             let lookup = WordLookup::new(&cmudict);
-            let brief_table = crate::preferences::briefs::load_briefs();
+            let brief_table = crate::briefs::load_briefs();
 
             let stream = SentenceStream::new();
             let initial = stream.initial();
@@ -665,17 +590,13 @@ impl TrayApp {
         self.tutor_zoom_hint_until = None;
     }
 
-    /// Show the top-left zoom-percentage hint and arm a 1-second
-    /// auto-fade. Called from every ru-changing site (Ctrl+= / Ctrl+- /
-    /// Ctrl+0 / Ctrl+scroll).
+    /// Show the top-left zoom-percentage hint and arm a 1-second auto-fade. Called from every ru-changing site (Ctrl+= / Ctrl+- / Ctrl+0 / Ctrl+scroll).
     fn bump_zoom_hint(&mut self) {
         self.tutor_zoom_hint_until =
             Some(std::time::Instant::now() + std::time::Duration::from_millis(1000));
     }
 
-    /// On wraparound, swap the drill to the next prefetched wiki batch
-    /// if one is ready. Otherwise just clear the flag — the same batch
-    /// loops, and the next wrap retries the prefetch.
+    /// On wraparound, swap the drill to the next prefetched wiki batch if one is ready. Otherwise just clear the flag — the same batch loops, and the next wrap retries the prefetch.
     fn maybe_swap_practice(&mut self) {
         let Some(state) = self.tutor_state.as_mut() else {
             return;
@@ -1611,9 +1532,7 @@ impl TrayApp {
         let _ = buf.present();
     }
 
-    /// Photon-parity resize-edge detection. Returns Some(direction) if
-    /// the cursor is inside the `span/32` border strip on any side or
-    /// corner of the window. Mirrors photon's `get_resize_edge`.
+    /// Photon-parity resize-edge detection. Returns Some(direction) if the cursor is inside the `span/32` border strip on any side or corner of the window. Mirrors photon's `get_resize_edge`.
     fn resize_edge_at_cursor(&self) -> Option<ResizeDirection> {
         // Chrome buttons take priority — no resize over close/max/min.
         let hit = self.hit_at_cursor();
@@ -1651,8 +1570,7 @@ impl TrayApp {
         Some(dir)
     }
 
-    /// Compute and apply the new window size/position from the current
-    /// cursor vs the drag start point. Ported from Photon's apply_resize.
+    /// Compute and apply the new window size/position from the current cursor vs the drag start point. Ported from Photon's apply_resize.
     fn apply_resize(&self) {
         let Some(window) = self.tutor_window.as_ref() else {
             return;
@@ -1714,10 +1632,7 @@ impl TrayApp {
         let _ = window.request_inner_size(PhysicalSize::new(nw, nh));
     }
 
-    /// macOS: poll mouse position and button state directly from AppKit.
-    /// winit stops delivering CursorMoved when the cursor leaves the
-    /// window during a drag, so we query NSEvent directly.
-    /// Returns true if the drag ended (caller should request redraw).
+    /// macOS: poll mouse position and button state directly from AppKit. winit stops delivering CursorMoved when the cursor leaves the window during a drag, so we query NSEvent directly. Returns true if the drag ended (caller should request redraw).
     #[cfg(target_os = "macos")]
     fn poll_macos_drag(&mut self) -> bool {
         use std::ffi::{c_char, c_void};
@@ -1897,8 +1812,7 @@ impl TrayApp {
         }
     }
 
-    /// Read the hit-test map at the current cursor position. Returns 0
-    /// (HIT_NONE) when cursor is out of bounds.
+    /// Read the hit-test map at the current cursor position. Returns 0 (HIT_NONE) when cursor is out of bounds.
     fn hit_at_cursor(&self) -> u8 {
         let Some(window) = self.tutor_window.as_ref() else {
             return HIT_NONE;
@@ -1923,7 +1837,7 @@ impl TrayApp {
             if self.tutor_word_lookup.is_none() {
                 let cmudict = crate::data::load_cmudict();
                 self.tutor_word_lookup = Some(WordLookup::new(&cmudict));
-                self.tutor_brief_table = Some(crate::preferences::briefs::load_briefs());
+                self.tutor_brief_table = Some(crate::briefs::load_briefs());
             }
             if let (Some(lookup), Some(briefs)) = (
                 self.tutor_word_lookup.as_ref(),
@@ -1945,7 +1859,7 @@ impl TrayApp {
             if self.tutor_word_lookup.is_none() {
                 let cmudict = crate::data::load_cmudict();
                 self.tutor_word_lookup = Some(WordLookup::new(&cmudict));
-                self.tutor_brief_table = Some(crate::preferences::briefs::load_briefs());
+                self.tutor_brief_table = Some(crate::briefs::load_briefs());
             }
             if let (Some(lookup), Some(briefs)) = (
                 self.tutor_word_lookup.as_ref(),
@@ -2255,9 +2169,7 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
     }
 }
 
-/// Forwarder thread: pipe `tray-icon`'s internal menu-click channel
-/// into the winit event loop. Runs on any platform — the menu-event
-/// receiver itself is thread-agnostic.
+/// Forwarder thread: pipe `tray-icon`'s internal menu-click channel into the winit event loop. Runs on any platform — the menu-event receiver itself is thread-agnostic.
 fn spawn_menu_forwarder(proxy: TrayProxy) {
     std::thread::spawn(move || {
         let rx = MenuEvent::receiver();
@@ -2427,11 +2339,9 @@ fn spawn_linux_tray_thread(
     });
 }
 
-/// Run the tray event loop on the main thread. Blocks until `quit` is set
-/// or the menu's Quit item fires.
+/// Run the tray event loop on the main thread. Blocks until `quit` is set or the menu's Quit item fires.
 ///
-/// `fallback` is the shared `AtomicU8` the interpreter reads each time it
-/// hits the fallback branch — the Fallback submenu writes to it directly.
+/// `fallback` is the shared `AtomicU8` the interpreter reads each time it hits the fallback branch — the Fallback submenu writes to it directly.
 pub fn run_tray(
     event_loop: EventLoop<TrayEvent>,
     enabled: Arc<AtomicBool>,

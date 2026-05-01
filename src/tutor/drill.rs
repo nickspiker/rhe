@@ -1,18 +1,12 @@
 //! Renderer-agnostic drill machinery for the tutor.
 //!
-//! Owns the data types (`Target`, `Step`, `KeyState`, `Practice`,
-//! `TutorState`), the dictionary-driven builders that turn a sentence
-//! into a chord-step sequence, and the state machine that drives a
-//! drill forward from raw key events. Knows nothing about ratatui or
-//! winit — both renderers (the legacy terminal tutor and the new GUI
-//! tutor window) call into the same `TutorState`.
+//! Owns the data types (`Target`, `Step`, `KeyState`, `Practice`, `TutorState`), the dictionary-driven builders that turn a sentence into a chord-step sequence, and the state machine that drives a drill forward from raw key events. Knows nothing about ratatui or winit — both renderers (the legacy terminal tutor and the new GUI tutor window) call into the same `TutorState`.
 //!
-//! Lifted out of `tutor.rs` during Phase C so the GUI window in
-//! `tray.rs` can plug into the drill without dragging in ratatui.
+//! Lifted out of `tutor.rs` during Phase C so the GUI window in `tray.rs` can plug into the drill without dragging in ratatui.
 
 use crate::hand::{KeyDirection, KeyEvent as RheKeyEvent};
 use crate::key_mask::KeyMask;
-use crate::preferences::chord_map::{BriefTable, ChordKey, Phoneme, PhonemeTable};
+use crate::layout::chords::{BriefTable, ChordKey, Phoneme, PhonemeTable};
 use crate::scan;
 use crate::word_lookup::WordLookup;
 
@@ -26,8 +20,7 @@ pub struct Target {
     pub right: u8,
     pub left: u8,
     pub word: bool,
-    /// Set of scancodes any of which is an acceptable lead finger for
-    /// this ordered brief. Empty mask = no ordering constraint.
+    /// Set of scancodes any of which is an acceptable lead finger for this ordered brief. Empty mask = no ordering constraint.
     pub accepted_leads: KeyMask,
 }
 
@@ -67,18 +60,11 @@ impl Target {
 pub struct Step {
     pub target: Target,
     pub phoneme: Option<Phoneme>,
-    /// Commit step — matches on word release (phoneme mode) or on
-    /// all-off (brief mode). Any finger press during this step
-    /// triggers the "finger during commit" reset (except for bounces
-    /// of keys already in the prior chord).
+    /// Commit step — matches on word release (phoneme mode) or on all-off (brief mode). Any finger press during this step triggers the "finger during commit" reset (except for bounces of keys already in the prior chord).
     pub space_only: bool,
-    /// Match on `Event::ModTap` instead of a chord. Used for number-
-    /// mode entry (first tap of the sequence) and for the decimal
-    /// point within a number sequence.
+    /// Match on `Event::ModTap` instead of a chord. Used for number- mode entry (first tap of the sequence) and for the decimal point within a number sequence.
     pub mod_tap_only: bool,
-    /// Hint text for the tutor's word-detail line — the one character
-    /// this number-mode step emits ('3', '.', '+', etc.). None for
-    /// non-number steps.
+    /// Hint text for the tutor's word-detail line — the one character this number-mode step emits ('3', '.', '+', etc.). None for non-number steps.
     pub number_glyph: Option<String>,
 }
 
@@ -101,8 +87,7 @@ pub enum WordMode {
 
 #[derive(Default, Clone)]
 pub struct KeyState {
-    /// [pinky, ring, middle, index, inner-index]. Only inner-index is
-    /// reachable in number mode; zero in every other path.
+    /// [pinky, ring, middle, index, inner-index]. Only inner-index is reachable in number mode; zero in every other path.
     pub left: [bool; 5],
     /// [index, middle, ring, pinky, thumb, inner-index].
     pub right: [bool; 6],
@@ -134,9 +119,7 @@ pub struct Practice {
     pub word_idx: usize,
     pub step_idx: usize,
     pub mode: WordMode,
-    /// Set the instant we wrap past the last sentence; the live tutor
-    /// loop watches this to swap in a freshly-prefetched Wikipedia
-    /// article.
+    /// Set the instant we wrap past the last sentence; the live tutor loop watches this to swap in a freshly-prefetched Wikipedia article.
     pub wrapped: bool,
 }
 
@@ -230,8 +213,7 @@ impl Practice {
 
 // ─── Build practice steps ───
 
-/// Curated drill lines used by `rhe test`. Reproducible, offline,
-/// short enough to cycle thru while iterating on chord designs.
+/// Curated drill lines used by `rhe test`. Reproducible, offline, short enough to cycle thru while iterating on chord designs.
 pub const TEST_SENTENCES: &[&str] = &[
     "the answer is 42 four times ten plus two",
     "pi is about 3.14159 ish today",
@@ -271,23 +253,15 @@ pub const TEST_SENTENCES: &[&str] = &[
     "we will meet for a piece of meat tonight",
 ];
 
-/// Brown Corpus (40k sentences of American English) compressed with
-/// zstd. One sentence per line. Decompressed on first use as the
-/// offline fallback when Wikipedia is unreachable, or when the user
-/// selects the "Brown Corpus" tutor text source.
-static BROWN_ZSTD: &[u8] = include_bytes!("../../assets/brown_corpus.txt.zst");
-
-/// Decompress and return the Brown Corpus lines.
+/// Brown Corpus (40k sentences of American English): one sentence per line, zstd-compressed in `data/brown_corpus.txt.zst` and resolved through `crate::data` (cache → checkout → GitHub raw). Decompressed on each call; called once when the user selects the "Brown Corpus" tutor text source.
 pub fn brown_corpus_lines() -> Vec<String> {
-    let decompressed = zstd::decode_all(BROWN_ZSTD).unwrap_or_default();
+    let compressed = crate::data::load_brown_corpus_zstd();
+    let decompressed = zstd::decode_all(compressed.as_slice()).unwrap_or_default();
     let text = String::from_utf8_lossy(&decompressed);
     text.lines().map(|l| l.to_string()).collect()
 }
 
-/// Map a single number-mode character ('0'..='9' and the symbols on
-/// the same chord positions) to its right/left finger bits and a
-/// flag indicating whether the symbol requires the mod (right
-/// thumb) chord variant.
+/// Map a single number-mode character ('0'..='9' and the symbols on the same chord positions) to its right/left finger bits and a flag indicating whether the symbol requires the mod (right thumb) chord variant.
 pub fn number_char_target(c: char) -> Option<(u8, u8, bool)> {
     let (pos, is_symbol) = match c {
         '0' => (0, false),
@@ -328,8 +302,7 @@ pub fn number_char_target(c: char) -> Option<(u8, u8, bool)> {
     Some((right, left, is_symbol))
 }
 
-/// Build number-mode steps for spelled digit words ("zero" through
-/// "nine"). Generates: mod-tap entry → finger+mod chord → commit.
+/// Build number-mode steps for spelled digit words ("zero" through "nine"). Generates: mod-tap entry → finger+mod chord → commit.
 pub fn build_digit_word_steps(word: &str) -> Option<Vec<Step>> {
     let lower = word.to_lowercase();
     let scan_code = match lower.as_str() {
@@ -417,23 +390,9 @@ pub fn build_digit_word_steps(word: &str) -> Option<Vec<Step>> {
     Some(steps)
 }
 
-/// Form-chord left-hand bit patterns. Mirrors `chord_to_form` in
-/// the interpreter: pressing one of these left-hand chords (with no
-/// word held) after a digit run transforms the just-emitted integer.
-const FORM_SPELLED_CARDINAL: u8 = 0b0001; // L_IDX
-const FORM_ORDINAL: u8 = 0b0100; // L_RING
-const FORM_MULTIPLIER: u8 = 0b1000; // L_PINKY
-const FORM_GROUP: u8 = 0b0010; // L_MID
-const FORM_FRACTION: u8 = 0b0110; // L_MID + L_RING
-const FORM_PREFIX: u8 = 0b0011; // L_IDX + L_MID
-
-/// Reverse-lookup: given a word like "nineteen" / "twentieth" /
-/// "twice" / "half", return `(integer, form_left_bits)` such that
-/// applying that form to the integer produces the word. Built once,
-/// cached. Lower-priority forms inserted first so higher-priority
-/// (more specific) forms override on overlap.
+/// Reverse-lookup: given a word like "nineteen" / "twentieth" / "twice" / "half", return `(integer, form_left_bits)` such that applying that form to the integer produces the word. Built once, cached. Lower-priority forms inserted first so higher-priority (more specific) forms override on overlap.
 fn lookup_form(word: &str) -> Option<(u64, u8)> {
-    use crate::preferences::number_forms as f;
+    use crate::layout::number_forms::{self as f, Form};
     use std::collections::HashMap;
     use std::sync::OnceLock;
 
@@ -448,31 +407,31 @@ fn lookup_form(word: &str) -> Option<(u64, u8)> {
         for n in 0u64..=1000 {
             let s = n.to_string();
             if let Some(w) = f::spelled_cardinal(&s) {
-                m.insert(w, (n, FORM_SPELLED_CARDINAL));
+                m.insert(w, (n, Form::SpelledCardinal.chord_bits()));
             }
         }
         for n in 0u64..=1000 {
             let s = n.to_string();
             if let Some(w) = f::ordinal(&s) {
-                m.insert(w, (n, FORM_ORDINAL));
+                m.insert(w, (n, Form::Ordinal.chord_bits()));
             }
         }
         for n in 1u64..=99 {
             let s = n.to_string();
             if let Some(w) = f::multiplier(&s) {
-                m.insert(w, (n, FORM_MULTIPLIER));
+                m.insert(w, (n, Form::Multiplier.chord_bits()));
             }
         }
         for n in 1u64..=10 {
             let s = n.to_string();
             if let Some(w) = f::group(&s) {
-                m.insert(w, (n, FORM_GROUP));
+                m.insert(w, (n, Form::Group.chord_bits()));
             }
         }
         for n in 1u64..=10 {
             let s = n.to_string();
             if let Some(w) = f::prefix(&s) {
-                m.insert(w, (n, FORM_PREFIX));
+                m.insert(w, (n, Form::Prefix.chord_bits()));
             }
         }
         // Fraction limited to 2..=4 ("half", "third", "quarter") so
@@ -482,7 +441,7 @@ fn lookup_form(word: &str) -> Option<(u64, u8)> {
         for n in 2u64..=4 {
             let s = n.to_string();
             if let Some(w) = f::fraction(&s) {
-                m.insert(w, (n, FORM_FRACTION));
+                m.insert(w, (n, Form::Fraction.chord_bits()));
             }
         }
         m
@@ -490,22 +449,15 @@ fn lookup_form(word: &str) -> Option<(u64, u8)> {
     table.get(word).copied()
 }
 
-/// Build drill steps for a spelled-form number word like "nineteen",
-/// "twentieth", "half", "twice", "tri", etc. Returns `None` if the
-/// word doesn't match any cardinal/ordinal/multiplier/group/fraction/
-/// prefix form for n in 0..=1000.
+/// Build drill steps for a spelled-form number word like "nineteen", "twentieth", "half", "twice", "tri", etc. Returns `None` if the word doesn't match any cardinal/ordinal/multiplier/group/fraction/ prefix form for n in 0..=1000.
 ///
 /// Step sequence mirrors what the engine actually accepts:
-///   1. `+word+mod` — mod-tap entry
-///   2. `-mod` (word held) — confirm number-mode entry
-///   3. for each digit of the underlying integer:
-///        a. `+digit` (target finger, word held)
-///        b. `-digit` (back to word_only)
-///   4. all-off — release word; engine emits the integer + a space
-///        and arms `has_number_context`
-///   5. form chord (left-hand only, no word) — engine sees number
-///        context and replaces the integer with the spelled form
-///   6. all-off — release form fingers
+/// 1. `+word+mod` — mod-tap entry
+/// 2. `-mod` (word held) — confirm number-mode entry
+/// 3. for each digit of the underlying integer: a. `+digit` (target finger, word held) b. `-digit` (back to word_only)
+/// 4. all-off — release word; engine emits the integer + a space and arms `has_number_context`
+/// 5. form chord (left-hand only, no word) — engine sees number context and replaces the integer with the spelled form
+/// 6. all-off — release form fingers
 pub fn build_spelled_form_steps(word: &str) -> Option<Vec<Step>> {
     let (n, form_left) = lookup_form(word)?;
     let digits: String = n.to_string();
@@ -586,8 +538,7 @@ pub fn build_spelled_form_steps(word: &str) -> Option<Vec<Step>> {
     Some(steps)
 }
 
-/// Build the per-step drill sequence for a number/symbol "word".
-/// Structure: mod-tap entry + one step per character + commit.
+/// Build the per-step drill sequence for a number/symbol "word". Structure: mod-tap entry + one step per character + commit.
 pub fn build_number_steps(word: &str) -> Option<Vec<Step>> {
     if !word.chars().any(|c| c.is_ascii_digit()) {
         return None;
@@ -692,9 +643,7 @@ pub fn build_number_steps(word: &str) -> Option<Vec<Step>> {
     Some(steps)
 }
 
-/// Compile a list of drill text into a `Practice`. Splits each line
-/// into 8-word chunks (sentences in the practice sense) and builds
-/// phoneme/brief/suffix/number step paths per word.
+/// Compile a list of drill text into a `Practice`. Splits each line into 8-word chunks (sentences in the practice sense) and builds phoneme/brief/suffix/number step paths per word.
 pub fn build_practice(
     lookup: &WordLookup,
     brief_table: &BriefTable,
@@ -836,7 +785,7 @@ pub fn build_practice(
                 };
 
                 let (suffix_steps, suffix_label) = {
-                    use crate::preferences::suffixes_data::SUFFIXES;
+                    use crate::layout::suffixes::SUFFIXES;
                     let phoneme_count =
                         phoneme_steps.iter().filter(|s| s.phoneme.is_some()).count();
                     let mut found = (None, None);
@@ -970,16 +919,9 @@ pub fn build_practice(
 
 // ─── Drill state machine ───
 
-/// Renderer-agnostic drill driver. Wraps the loop body that used to
-/// live inline in `run_tutor`: feed it raw key events with `tick()`,
-/// then read `practice.current_word()` / `current_step()` / `key_state`
-/// to render whatever frontend you like.
+/// Renderer-agnostic drill driver. Wraps the loop body that used to live inline in `run_tutor`: feed it raw key events with `tick()`, then read `practice.current_word()` / `current_step()` / `key_state` to render whatever frontend you like.
 ///
-/// Owns a private `StateMachine` so it can spot `ModTap` events and
-/// advance number-mode entry steps. This is independent of the engine
-/// thread's interpreter — the drill matches what the user *should* be
-/// chording, while the engine still types the *actual* text into the
-/// focused app.
+/// Owns a private `StateMachine` so it can spot `ModTap` events and advance number-mode entry steps. This is independent of the engine thread's interpreter — the drill matches what the user *should* be chording, while the engine still types the *actual* text into the focused app.
 pub struct TutorState {
     pub practice: Practice,
     pub key_state: KeyState,
@@ -1104,10 +1046,7 @@ impl TutorState {
                 && rhe_event.direction == KeyDirection::Up
                 && self.practice.mode == WordMode::Number
                 && self.practice.step_idx > 0
-                && self
-                    .practice
-                    .current_target()
-                    .map_or(false, |t| t.word)
+                && self.practice.current_target().map_or(false, |t| t.word)
             {
                 // Number-mode botch: user released word while a
                 // mid-sequence step still required word held. Without
@@ -1367,7 +1306,9 @@ impl TutorState {
         } else if self.practice.step_idx != prev_step_idx {
             crate::tlog!(
                 "  → step {} → {} (mode={:?})",
-                prev_step_idx, self.practice.step_idx, self.practice.mode,
+                prev_step_idx,
+                self.practice.step_idx,
+                self.practice.mode,
             );
         }
     }
@@ -1375,8 +1316,7 @@ impl TutorState {
 
 // ─── Adaptive cell labels ───
 
-/// Build a `KeyMask` from a `KeyState` for adaptive-label lookups.
-/// Mirrors the bit ordering used by the rest of the drill machinery.
+/// Build a `KeyMask` from a `KeyState` for adaptive-label lookups. Mirrors the bit ordering used by the rest of the drill machinery.
 pub fn key_state_to_mask(state: &KeyState) -> KeyMask {
     let mut m = KeyMask::EMPTY;
     const L_SCANS: [u8; 4] = [scan::L_IDX, scan::L_MID, scan::L_RING, scan::L_PINKY];
@@ -1403,13 +1343,9 @@ pub fn key_state_to_mask(state: &KeyState) -> KeyMask {
     m
 }
 
-/// Short label for a number-form transform chord. Stub set picked
-/// to fit a 9-char cell — each abbreviates the form's output:
-/// `spell` ("five"), `tuple` ("quintuple"), `pre` ("penta"),
-/// `ord` ("fifth"), `frac` ("half"/"third"), `mul` ("once"/"twice").
-/// Refine once the labels are visible alongside real numbers.
-pub fn form_label(form: crate::preferences::number_forms::Form) -> &'static str {
-    use crate::preferences::number_forms::Form;
+/// Short label for a number-form transform chord. Stub set picked to fit a 9-char cell — each abbreviates the form's output: `spell` ("five"), `tuple` ("quintuple"), `pre` ("penta"), `ord` ("fifth"), `frac` ("half"/"third"), `mul` ("once"/"twice"). Refine once the labels are visible alongside real numbers.
+pub fn form_label(form: crate::layout::number_forms::Form) -> &'static str {
+    use crate::layout::number_forms::Form;
     match form {
         Form::SpelledCardinal => "spell",
         Form::Group => "tuple",
@@ -1420,20 +1356,12 @@ pub fn form_label(form: crate::preferences::number_forms::Form) -> &'static str 
     }
 }
 
-/// Predict what `cell_scan` would emit if added to the currently-held
-/// chord, for adaptive on-cell labels.
+/// Predict what `cell_scan` would emit if added to the currently-held chord, for adaptive on-cell labels.
 ///
-/// - `held_word` selects between phoneme mode (word held) and brief
-///   mode (word released). In phoneme mode each hand fires
-///   independently, so the candidate chord only includes the cell's
-///   own hand bits.
-/// - `user_first_down` lets ordered briefs resolve to the right word
-///   when the user is mid-roll. When nothing is held the cell itself
-///   becomes the hypothetical lead.
+/// - `held_word` selects between phoneme mode (word held) and brief mode (word released). In phoneme mode each hand fires independently, so the candidate chord only includes the cell's own hand bits.
+/// - `user_first_down` lets ordered briefs resolve to the right word when the user is mid-roll. When nothing is held the cell itself becomes the hypothetical lead.
 /// - `in_number_mode` swaps the lookup to digit/symbol tables.
-/// - `has_number_context` shifts brief-mode L-hand cells to number-
-///   form labels (the same chords' alternate meaning when a pure-
-///   integer is sitting one slot back, ready to be transformed).
+/// - `has_number_context` shifts brief-mode L-hand cells to number- form labels (the same chords' alternate meaning when a pure- integer is sitting one slot back, ready to be transformed).
 pub fn cell_label(
     cell_scan: u8,
     held_mask: KeyMask,
@@ -1453,9 +1381,9 @@ pub fn cell_label(
         }
         let chord = ChordKey::from_mask(candidate);
         let c = if mod_held {
-            crate::preferences::number_data::chord_to_symbol(chord)
+            crate::layout::numbers::chord_to_symbol(chord)
         } else {
-            crate::preferences::number_data::chord_to_digit(chord)
+            crate::layout::numbers::chord_to_digit(chord)
         };
         return c.map(|ch| ch.to_string()).unwrap_or_default();
     }
@@ -1488,7 +1416,7 @@ pub fn cell_label(
     // would transform the just-emitted integer, not append a suffix.
     // Show the form abbreviation instead of the brief lookup.
     if !held_word && has_number_context {
-        if let Some(form) = crate::interpreter::chord_to_form(chord) {
+        if let Some(form) = crate::layout::number_forms::Form::from_chord(chord) {
             return form_label(form).to_string();
         }
     }
@@ -1533,39 +1461,45 @@ pub fn update_key_state(state: &mut KeyState, event: &RheKeyEvent) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layout::number_forms::Form;
 
     #[test]
     fn spelled_form_cardinals() {
-        // Single-token cardinals should resolve to SpelledCardinal.
-        assert_eq!(lookup_form("ten"), Some((10, FORM_SPELLED_CARDINAL)));
-        assert_eq!(lookup_form("nineteen"), Some((19, FORM_SPELLED_CARDINAL)));
-        assert_eq!(lookup_form("twenty"), Some((20, FORM_SPELLED_CARDINAL)));
-        assert_eq!(lookup_form("twenty-one"), Some((21, FORM_SPELLED_CARDINAL)));
-        assert_eq!(lookup_form("ninety-nine"), Some((99, FORM_SPELLED_CARDINAL)));
+        let bits = Form::SpelledCardinal.chord_bits();
+        assert_eq!(lookup_form("ten"), Some((10, bits)));
+        assert_eq!(lookup_form("nineteen"), Some((19, bits)));
+        assert_eq!(lookup_form("twenty"), Some((20, bits)));
+        assert_eq!(lookup_form("twenty-one"), Some((21, bits)));
+        assert_eq!(lookup_form("ninety-nine"), Some((99, bits)));
     }
 
     #[test]
     fn spelled_form_ordinals() {
-        assert_eq!(lookup_form("first"), Some((1, FORM_ORDINAL)));
-        assert_eq!(lookup_form("nineteenth"), Some((19, FORM_ORDINAL)));
-        assert_eq!(lookup_form("twentieth"), Some((20, FORM_ORDINAL)));
-        assert_eq!(lookup_form("thousandth"), Some((1000, FORM_ORDINAL)));
+        let bits = Form::Ordinal.chord_bits();
+        assert_eq!(lookup_form("first"), Some((1, bits)));
+        assert_eq!(lookup_form("nineteenth"), Some((19, bits)));
+        assert_eq!(lookup_form("twentieth"), Some((20, bits)));
+        assert_eq!(lookup_form("thousandth"), Some((1000, bits)));
     }
 
     #[test]
     fn spelled_form_specifics_override_default() {
         // "twice" / "thrice" → multiplier, not cardinal.
-        assert_eq!(lookup_form("twice"), Some((2, FORM_MULTIPLIER)));
-        assert_eq!(lookup_form("thrice"), Some((3, FORM_MULTIPLIER)));
+        let mult = Form::Multiplier.chord_bits();
+        assert_eq!(lookup_form("twice"), Some((2, mult)));
+        assert_eq!(lookup_form("thrice"), Some((3, mult)));
         // "half" / "third" / "quarter" → fraction.
-        assert_eq!(lookup_form("half"), Some((2, FORM_FRACTION)));
-        assert_eq!(lookup_form("third"), Some((3, FORM_FRACTION)));
-        assert_eq!(lookup_form("quarter"), Some((4, FORM_FRACTION)));
+        let frac = Form::Fraction.chord_bits();
+        assert_eq!(lookup_form("half"), Some((2, frac)));
+        assert_eq!(lookup_form("third"), Some((3, frac)));
+        assert_eq!(lookup_form("quarter"), Some((4, frac)));
         // Group / prefix words.
-        assert_eq!(lookup_form("pair"), Some((2, FORM_GROUP)));
-        assert_eq!(lookup_form("triple"), Some((3, FORM_GROUP)));
-        assert_eq!(lookup_form("mono"), Some((1, FORM_PREFIX)));
-        assert_eq!(lookup_form("tri"), Some((3, FORM_PREFIX)));
+        let group = Form::Group.chord_bits();
+        assert_eq!(lookup_form("pair"), Some((2, group)));
+        assert_eq!(lookup_form("triple"), Some((3, group)));
+        let prefix = Form::Prefix.chord_bits();
+        assert_eq!(lookup_form("mono"), Some((1, prefix)));
+        assert_eq!(lookup_form("tri"), Some((3, prefix)));
     }
 
     #[test]
@@ -1583,7 +1517,7 @@ mod tests {
         // word as its glyph hint and the L_IDX chord for SpelledCardinal.
         let form_step = &steps[steps.len() - 2];
         assert_eq!(form_step.target.right, 0);
-        assert_eq!(form_step.target.left, FORM_SPELLED_CARDINAL);
+        assert_eq!(form_step.target.left, Form::SpelledCardinal.chord_bits());
         assert!(!form_step.target.word);
         assert_eq!(form_step.number_glyph.as_deref(), Some("nineteen"));
     }

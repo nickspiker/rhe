@@ -11,8 +11,7 @@ pub trait KeyInput {
 
 /// Events emitted by a grabbing input backend.
 ///
-/// `Quit` is a synthetic escape signal — the grabbing backend swallows Esc
-/// so the tutor can still exit cleanly without the keystroke reaching apps.
+/// `Quit` is a synthetic escape signal — the grabbing backend swallows Esc so the tutor can still exit cleanly without the keystroke reaching apps.
 #[derive(Debug, Clone, Copy)]
 pub enum HidEvent {
     Key(KeyEvent),

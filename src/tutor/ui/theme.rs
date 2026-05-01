@@ -1,9 +1,6 @@
-//! Single source of truth for every colour the tutor renders. Tweak
-//! one constant here and recompile to retheme the whole UI.
+//! Single source of truth for every colour the tutor renders. Tweak one constant here and recompile to retheme the whole UI.
 //!
-//! All colours are u32 in packed ARGB format: 0xAARRGGBB. On Android
-//! `fmt()` swaps R↔B at compile time so the same source colour ends
-//! up correct on either pipeline.
+//! All colours are u32 in packed ARGB format: 0xAARRGGBB. On Android `fmt()` swaps R↔B at compile time so the same source colour ends up correct on either pipeline.
 
 /// Compile-time colour format conversion for Android (ARGB → ABGR).
 #[cfg(target_os = "android")]
@@ -25,8 +22,7 @@ const fn fmt(argb: u32) -> u32 {
 
 /// Tray icon ring colour while rhe is grabbing input — bright lime.
 pub const TRAY_RING_ON: u32 = fmt(0xFF_40_FF_00);
-/// Tray icon ring colour while rhe is passing keys through to the OS —
-/// dark purple.
+/// Tray icon ring colour while rhe is passing keys through to the OS — dark purple.
 pub const TRAY_RING_OFF: u32 = fmt(0xFF_40_00_80);
 
 // ── Tutor canvas ─────────────────────────────────────────────────────────
@@ -38,8 +34,7 @@ pub const WINDOW_LIGHT_EDGE: u32 = fmt(0xFF_44_41_37);
 pub const WINDOW_SHADOW_EDGE: u32 = fmt(0xFF_2B_34_37);
 /// Background behind the close / maximise / minimise buttons.
 pub const WINDOW_CONTROLS_BG: u32 = fmt(0xFF_1E_1E_1E);
-/// Hairline separators between chrome buttons (same hue as the warm
-/// window edge).
+/// Hairline separators between chrome buttons (same hue as the warm window edge).
 pub const WINDOW_CONTROLS_HAIRLINE: u32 = fmt(0xFF_44_41_37);
 
 // ── Window-control glyphs ────────────────────────────────────────────────
@@ -57,10 +52,7 @@ pub const MINIMIZE_HOVER: u32 = fmt(0xFF_F7_FA_25);
 
 // ── Chord-row cells (per-finger gradient + idle / press states) ──────────
 
-/// Per-cell primary highlight. Cyan on the left hand fades to yellow
-/// on the right so the user picks out finger position peripherally.
-/// Index order matches the row layout (L pinky → R pinky); cells 4
-/// and 5 are the inner-index keys.
+/// Per-cell primary highlight. Cyan on the left hand fades to yellow on the right so the user picks out finger position peripherally. Index order matches the row layout (L pinky → R pinky); cells 4 and 5 are the inner-index keys.
 pub const KEY_COLOURS: [u32; 10] = [
     fmt(0xFF_60_A8_F0), // L pinky
     fmt(0xFF_70_A8_E0), // L ring
@@ -74,9 +66,7 @@ pub const KEY_COLOURS: [u32; 10] = [
     fmt(0xFF_F0_A8_60), // R pinky
 ];
 
-/// Half-brightness companion to `KEY_COLOURS`. Used for ordered-brief
-/// secondary targets — chord cells that aren't (or aren't yet) the
-/// locked-in lead finger.
+/// Half-brightness companion to `KEY_COLOURS`. Used for ordered-brief secondary targets — chord cells that aren't (or aren't yet) the locked-in lead finger.
 pub const DOT_COLOURS: [u32; 10] = [
     fmt(0xFF_30_54_78),
     fmt(0xFF_38_54_70),
@@ -90,13 +80,9 @@ pub const DOT_COLOURS: [u32; 10] = [
     fmt(0xFF_78_54_30),
 ];
 
-/// Idle / non-target / errored fill for the eight resting-finger
-/// cells. Dark grey: present enough to anchor the row, dim enough to
-/// fade behind any active target.
+/// Idle / non-target / errored fill for the eight resting-finger cells. Dark grey: present enough to anchor the row, dim enough to fade behind any active target.
 pub const CELL_IDLE: u32 = fmt(0xFF_30_30_30);
-/// Idle fill for the two inner-index cells (idx 4, 5). Near-black so
-/// they visually drop out when not in play — they're never resting-
-/// finger keys, only used for number / symbol modes.
+/// Idle fill for the two inner-index cells (idx 4, 5). Near-black so they visually drop out when not in play — they're never resting- finger keys, only used for number / symbol modes.
 pub const CELL_INNER_IDLE: u32 = fmt(0xFF_18_18_18);
 
 /// Word-mode bar (left thumb)
@@ -108,8 +94,7 @@ pub const MOD_SECONDARY: u32 = fmt(0xFF_40_00_70);
 
 // ── Tutor text ───────────────────────────────────────────────────────────
 
-/// Sentence-context line: current word stays bright white + bold; past
-/// words dim to a muted grey-purple, future words sit at medium grey.
+/// Sentence-context line: current word stays bright white + bold; past words dim to a muted grey-purple, future words sit at medium grey.
 pub const SENTENCE_CURRENT: u32 = fmt(0xFF_E0_E0_E0);
 pub const SENTENCE_PAST: u32 = fmt(0xFF_70_70_70);
 pub const SENTENCE_FUTURE: u32 = fmt(0xFF_B0_B0_B0);
@@ -121,9 +106,7 @@ pub const STEP_HINT: u32 = fmt(0xFF_B0_B0_B0);
 /// Adaptive label centred in each chord cell.
 pub const CELL_LABEL: u32 = fmt(0xFF_E0_E0_E0);
 
-/// Brief-mode word render: photon-logo style. Black text foreground,
-/// soft bright glow underneath, sharper highlight on top — same
-/// constants photon's main logo uses.
+/// Brief-mode word render: photon-logo style. Black text foreground, soft bright glow underneath, sharper highlight on top — same constants photon's main logo uses.
 pub const LOGO_TEXT: u32 = fmt(0xFF_00_00_00);
 pub const LOGO_GLOW_GRAY: u8 = 192;
 pub const LOGO_HIGHLIGHT_GRAY: u8 = 128;
@@ -171,8 +154,7 @@ pub const STATUS_TEXT_ATTESTING: u32 = fmt(0xFF_FF_FF_00);
 pub const STATUS_TEXT_ERROR: u32 = fmt(0xFF_FF_00_00);
 pub const ZOOM_HINT_TEXT: u32 = fmt(0xFF_80_80_80);
 
-/// Magenta debug marker. Alpha 0xFE so it never accidentally matches
-/// real opaque content during pixel comparisons.
+/// Magenta debug marker. Alpha 0xFE so it never accidentally matches real opaque content during pixel comparisons.
 pub const DEBUG_MARKER: u32 = fmt(0xFE_FF_00_FF);
 
 // Background texture (noise generator inputs, if/when we add one).

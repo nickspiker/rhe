@@ -5,15 +5,9 @@ use crate::scan;
 
 /// A chord key — the set of physical keys that fire this chord.
 ///
-/// Internally a `KeyMask` (256-bit, one bit per HID scancode), so it can
-/// represent any physical keyboard chord. For now rhe uses only 9 of
-/// those bits (4 right fingers + 4 left fingers + right thumb / "mod"),
-/// but the wider representation is what lets future features bind to
-/// inner-index keys, function row, etc.
+/// Internally a `KeyMask` (256-bit, one bit per HID scancode), so it can represent any physical keyboard chord. For now rhe uses only 9 of those bits (4 right fingers + 4 left fingers + right thumb / "mod"), but the wider representation is what lets future features bind to inner-index keys, function row, etc.
 ///
-/// Backward-compatible packed-bit accessors (`right_bits`, `left_bits`,
-/// `has_mod`) translate back to the legacy 9-bit layout for display/
-/// legacy-storage purposes.
+/// Backward-compatible packed-bit accessors (`right_bits`, `left_bits`, `has_mod`) translate back to the legacy 9-bit layout for display/ legacy-storage purposes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct ChordKey(KeyMask);
 
@@ -21,17 +15,12 @@ impl ChordKey {
     /// Empty chord (no keys pressed).
     pub const EMPTY: Self = Self(KeyMask::EMPTY);
 
-    /// Build directly from a `KeyMask`. This is the path the state
-    /// machine uses — no packed-bit round-trip, no hand/finger detour.
+    /// Build directly from a `KeyMask`. This is the path the state machine uses — no packed-bit round-trip, no hand/finger detour.
     pub fn from_mask(mask: KeyMask) -> Self {
         Self(mask)
     }
 
-    /// Build from the legacy packed representation: 4 right-finger bits,
-    /// 4 left-finger bits, plus the modkey flag. This is how
-    /// `briefs_data.rs`, `suffixes_data.rs`, and `Phoneme::chord_key`
-    /// still express chords — kept so those data tables don't have to
-    /// change format yet.
+    /// Build from the legacy packed representation: 4 right-finger bits, 4 left-finger bits, plus the modkey flag. This is how `briefs_data.rs`, `suffixes_data.rs`, and `Phoneme::chord_key` still express chords — kept so those data tables don't have to change format yet.
     pub fn from_packed(right_fingers: u8, left_fingers: u8, has_mod: bool) -> Self {
         let mut mask = KeyMask::EMPTY;
         const LEFT: [u8; 4] = [scan::L_IDX, scan::L_MID, scan::L_RING, scan::L_PINKY];
@@ -52,8 +41,7 @@ impl ChordKey {
         Self(mask)
     }
 
-    /// Legacy u16 construction (used by some callers that round-trip
-    /// a packed encoding). Bits 0-3 = right, bits 4-7 = left, bit 8 = mod.
+    /// Legacy u16 construction (used by some callers that round-trip a packed encoding). Bits 0-3 = right, bits 4-7 = left, bit 8 = mod.
     pub fn from_packed_u16(packed: u16) -> Self {
         Self::from_packed(
             (packed & 0xF) as u8,
@@ -251,11 +239,7 @@ impl Phoneme {
         }
     }
 
-    /// Approximate English grapheme spelling for this phoneme.
-    /// Used when a phoneme sequence doesn't resolve to a dictionary word
-    /// and the user wants ASCII autospell output instead of IPA.
-    /// Crude by design — English spelling is irregular — but readable and
-    /// representable in any keyboard layout.
+    /// Approximate English grapheme spelling for this phoneme. Used when a phoneme sequence doesn't resolve to a dictionary word and the user wants ASCII autospell output instead of IPA. Crude by design — English spelling is irregular — but readable and representable in any keyboard layout.
     pub fn to_grapheme(self) -> &'static str {
         use Phoneme::*;
         match self {
@@ -305,12 +289,9 @@ impl Phoneme {
 
     /// The ChordKey for this phoneme.
     ///
-    /// Mapped by frequency × measured chord effort from bench data.
-    /// Each finger combo appears twice: without mod (top 15) and with mod (next 9).
-    /// Easiest combo = most frequent phoneme.
+    /// Mapped by frequency × measured chord effort from bench data. Each finger combo appears twice: without mod (top 15) and with mod (next 9). Easiest combo = most frequent phoneme.
     ///
-    /// Effort ranking (measured): I < R < P < M < all4 < M+R < I+M < I+M+R
-    ///   < I+P < I+R < R+P < M+R+P < M+P < I+R+P < I+M+P
+    /// Effort ranking (measured): I < R < P < M < all4 < M+R < I+M < I+M+R < I+P < I+R < R+P < M+R+P < M+P < I+R+P < I+M+P
     pub fn chord_key(self) -> ChordKey {
         use Phoneme::*;
         let (right, left, modkey) = match self {
@@ -361,8 +342,7 @@ impl Phoneme {
     }
 }
 
-/// Phoneme table: maps ChordKey → Phoneme. HashMap-backed so the 256-bit
-/// keyspace isn't a problem (only actual phoneme chords consume memory).
+/// Phoneme table: maps ChordKey → Phoneme. HashMap-backed so the 256-bit keyspace isn't a problem (only actual phoneme chords consume memory).
 pub struct PhonemeTable {
     entries: std::collections::HashMap<ChordKey, Phoneme>,
 }
@@ -426,18 +406,12 @@ impl PhonemeTable {
 /// Brief table: maps `ChordKey` → word string.
 ///
 /// Two flavours coexist:
-/// - **Unordered briefs**: any down-order fires the entry. Default case,
-///   produced by `gen_briefs` from frequency × savings ranking.
-/// - **Ordered briefs**: `(ChordKey, first_down_scancode)` → word. When
-///   a chord has any ordered entry, the chord becomes "claimed" and its
-///   unordered entry is suppressed. Only the scancode that goes down
-///   first decides which word fires. Used for homophone splits
-///   (to/too) and deliberate gesture vocabulary.
+/// - **Unordered briefs**: any down-order fires the entry. Default case, produced by `gen_briefs` from frequency × savings ranking.
+/// - **Ordered briefs**: `(ChordKey, first_down_scancode)` → word. When a chord has any ordered entry, the chord becomes "claimed" and its unordered entry is suppressed. Only the scancode that goes down first decides which word fires. Used for homophone splits (to/too) and deliberate gesture vocabulary.
 pub struct BriefTable {
     unordered: std::collections::HashMap<ChordKey, String>,
     ordered: std::collections::HashMap<(ChordKey, u8), String>,
-    /// Chords with at least one ordered entry. Insertions to these
-    /// chords via the unordered path are dropped.
+    /// Chords with at least one ordered entry. Insertions to these chords via the unordered path are dropped.
     claimed: std::collections::HashSet<ChordKey>,
 }
 
@@ -450,9 +424,7 @@ impl BriefTable {
         }
     }
 
-    /// Insert an unordered brief. Silently dropped if the chord is
-    /// already claimed by an ordered entry — the ordered-first load
-    /// order makes this a lockout.
+    /// Insert an unordered brief. Silently dropped if the chord is already claimed by an ordered entry — the ordered-first load order makes this a lockout.
     pub fn insert(&mut self, key: ChordKey, word: String) {
         if self.claimed.contains(&key) {
             return;
@@ -460,9 +432,7 @@ impl BriefTable {
         self.unordered.insert(key, word);
     }
 
-    /// Insert an ordered brief. Claims the chord — future unordered
-    /// inserts at the same key are dropped, and any already-inserted
-    /// unordered entry is removed so lookup stays consistent.
+    /// Insert an ordered brief. Claims the chord — future unordered inserts at the same key are dropped, and any already-inserted unordered entry is removed so lookup stays consistent.
     pub fn insert_ordered(&mut self, key: ChordKey, first_down: u8, word: String) {
         self.claimed.insert(key);
         self.unordered.remove(&key);
@@ -471,9 +441,7 @@ impl BriefTable {
 
     /// Lookup the word for a chord.
     ///
-    /// Claimed chords require `first_down` to match a registered ordered
-    /// entry — any other starting finger returns `None`. Unclaimed
-    /// chords fall through to the unordered table and ignore `first_down`.
+    /// Claimed chords require `first_down` to match a registered ordered entry — any other starting finger returns `None`. Unclaimed chords fall through to the unordered table and ignore `first_down`.
     pub fn lookup(&self, key: ChordKey, first_down: Option<u8>) -> Option<&str> {
         if self.claimed.contains(&key) {
             let first = first_down?;
@@ -482,10 +450,7 @@ impl BriefTable {
         self.unordered.get(&key).map(String::as_str)
     }
 
-    /// Iterate every (chord, first_down, word) entry. Unordered briefs
-    /// yield `first_down = None`; ordered briefs yield the required
-    /// first-down scancode. Used by the tutor for reverse word→chord
-    /// lookup, and by `rhe briefs` for display.
+    /// Iterate every (chord, first_down, word) entry. Unordered briefs yield `first_down = None`; ordered briefs yield the required first-down scancode. Used by the tutor for reverse word→chord lookup, and by `rhe briefs` for display.
     pub fn iter(&self) -> impl Iterator<Item = (&ChordKey, Option<u8>, &String)> {
         self.unordered
             .iter()

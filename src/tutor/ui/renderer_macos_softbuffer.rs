@@ -1,7 +1,6 @@
 //! macOS renderer — softbuffer (direct CPU buffer via Core Graphics)
 //!
-//! The compositor gets a direct pointer to our pixel buffer.
-//! Single-pixel read/write with zero copy overhead.
+//! The compositor gets a direct pointer to our pixel buffer. Single-pixel read/write with zero copy overhead.
 
 use softbuffer::{Context, Surface};
 use std::num::NonZeroU32;

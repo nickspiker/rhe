@@ -1,15 +1,8 @@
 //! Windows keyboard input grab via rdev's WH_KEYBOARD_LL hook.
 //!
-//! Mirrors evdev/cgevent backend semantics: when `enabled` is true,
-//! home-row chord keys are intercepted and forwarded to the chord
-//! state machine; the Win key (mode selector) and unrelated keys pass
-//! through. Esc fires a `HidEvent::Quit` so the tutor can shut down
-//! cleanly.
+//! Mirrors evdev/cgevent backend semantics: when `enabled` is true, home-row chord keys are intercepted and forwarded to the chord state machine; the Win key (mode selector) and unrelated keys pass through. Esc fires a `HidEvent::Quit` so the tutor can shut down cleanly.
 //!
-//! Caps Lock is fully intercepted — the OS never sees it — and a solo
-//! tap toggles the `enabled` flag (rhe ↔ keyboard passthrough). Caps
-//! held while another key is pressed cancels the toggle so chorded
-//! shortcuts like Caps+Esc (= Quit) still work.
+//! Caps Lock is fully intercepted — the OS never sees it — and a solo tap toggles the `enabled` flag (rhe ↔ keyboard passthrough). Caps held while another key is pressed cancels the toggle so chorded shortcuts like Caps+Esc (= Quit) still work.
 
 use crate::hand::{KeyDirection, KeyEvent};
 use crate::input::HidEvent;
@@ -18,10 +11,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 
-/// Quit-signal selector matching the evdev backend's API. On Windows
-/// caps lock is always intercepted (we never let it reach the OS), so
-/// the only choice the variants make is *what quits*: Esc alone,
-/// caps+Esc only, or either.
+/// Quit-signal selector matching the evdev backend's API. On Windows caps lock is always intercepted (we never let it reach the OS), so the only choice the variants make is *what quits*: Esc alone, caps+Esc only, or either.
 #[derive(Clone, Copy)]
 pub enum QuitTrigger {
     EscAlone,

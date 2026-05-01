@@ -1,47 +1,53 @@
 //! Runtime data loader.
 //!
-//! The cmudict and word-frequency files are too large to ship inside the
-//! crate tarball (10 MiB crates.io limit) so they're hosted on GitHub and
-//! resolved at runtime. Lookup order per file:
+//! Three files are too large to ship inside the crate tarball (10 MiB crates.io limit), so they're resolved at runtime: `cmudict.dict` (CMU pronouncing dictionary), `en_freq.txt` (word frequency table), and `brown_corpus.txt.zst` (zstd-compressed Brown Corpus, used as the "Brown Corpus" tutor text source). Lookup order per file:
 //!
-//!   1. `$RHE_DATA_DIR/<file>` — explicit override
-//!   2. `$XDG_CACHE_HOME/rhe/<file>` (or `~/.cache/rhe/<file>`)
-//!   3. `./data/<file>` — convenience for running from a source checkout
-//!   4. Download from `https://raw.githubusercontent.com/nickspiker/rhe/main/data/<file>`
-//!      into the cache directory, then read it.
+//! 0. `$RHE_DATA_DIR/<file>` — explicit override
+//! 1. `$XDG_CACHE_HOME/rhe/<file>` (or `~/.cache/rhe/<file>`)
+//! 2. `./data/<file>` — convenience for running from a source checkout
+//! 3. Download from a per-file URL into the cache, then read.
 //!
 //! Downloads happen once; subsequent runs hit the cache.
+//!
+//! `brown_corpus.txt.zst` was bundled with `rhe-0.1.0` on crates.io, so its download URL points at the docs.rs source view (`https://docs.rs/crate/rhe/0.1.0/source/assets/brown_corpus.txt.zst`) — that mirror is genuinely immutable: as long as version 0.1.0 exists on crates.io the bytes remain reachable, no GitHub-repo dependency. `cmudict.dict` and `en_freq.txt` were never small enough to publish, so they fall back to GitHub raw on `main`.
 
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-const RAW_URL_BASE: &str = "https://raw.githubusercontent.com/nickspiker/rhe/main/data";
+const GITHUB_RAW_BASE: &str = "https://raw.githubusercontent.com/nickspiker/rhe/main/data";
+const BROWN_CORPUS_URL: &str = "https://docs.rs/crate/rhe/0.1.0/source/assets/brown_corpus.txt.zst";
 
 pub fn load_cmudict() -> String {
-    load("cmudict.dict")
+    load_string("cmudict.dict")
 }
 
 pub fn load_word_freq() -> String {
-    load("en_freq.txt")
+    load_string("en_freq.txt")
 }
 
-pub fn load_briefs() -> String {
-    load("briefs.txt")
+/// Brown Corpus, zstd-compressed. Caller decompresses (decompressed size ~6 MB).
+pub fn load_brown_corpus_zstd() -> Vec<u8> {
+    load_bytes("brown_corpus.txt.zst")
 }
 
-fn load(filename: &str) -> String {
+fn load_string(filename: &str) -> String {
+    let bytes = load_bytes(filename);
+    String::from_utf8(bytes).unwrap_or_else(|e| panic!("rhe: {} not valid UTF-8: {}", filename, e))
+}
+
+fn load_bytes(filename: &str) -> Vec<u8> {
     for path in lookup_paths(filename) {
-        if let Ok(contents) = fs::read_to_string(&path) {
+        if let Ok(contents) = fs::read(&path) {
             return contents;
         }
     }
 
     let cache = cache_path(filename);
-    // fetching data file from github
     match download(filename, &cache) {
-        Ok(()) => fs::read_to_string(&cache)
-            .unwrap_or_else(|e| panic!("rhe: cached {:?} unreadable: {}", cache, e)),
+        Ok(()) => {
+            fs::read(&cache).unwrap_or_else(|e| panic!("rhe: cached {:?} unreadable: {}", cache, e))
+        }
         Err(e) => panic!(
             "rhe: could not load {}: {}\n\
              supply a local copy via $RHE_DATA_DIR or drop the file at {:?}",
@@ -76,8 +82,15 @@ fn cache_path(filename: &str) -> PathBuf {
     cache_dir().join(filename)
 }
 
+fn download_url(filename: &str) -> String {
+    match filename {
+        "brown_corpus.txt.zst" => BROWN_CORPUS_URL.to_string(),
+        _ => format!("{}/{}", GITHUB_RAW_BASE, filename),
+    }
+}
+
 fn download(filename: &str, dest: &Path) -> Result<(), String> {
-    let url = format!("{}/{}", RAW_URL_BASE, filename);
+    let url = download_url(filename);
     let response = ureq::get(&url)
         .call()
         .map_err(|e| format!("GET {}: {}", url, e))?;
