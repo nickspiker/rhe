@@ -1019,7 +1019,7 @@ impl TrayApp {
             }
 
             // Big centred target word — red on error, white otherwise.
-            let word_colour = if drill_errored { 0xFF0000 } else { theme::TARGET_WORD };
+            let word_colour = if drill_errored { 0xFFFF0000 } else { theme::TARGET_WORD };
             text.draw_text_center_u32(
                 pixels,
                 width,
