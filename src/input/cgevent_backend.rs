@@ -337,7 +337,20 @@ extern "C" fn event_callback(
         const CMD: u64 = 0x100000;
         const FN: u64 = 0x800000;
         const PASSTHROUGH_MODIFIERS: u64 = SHIFT | CTRL | ALT | CMD | FN;
-        let flags = ffi::CGEventGetFlags(event);
+
+        // Strip modifier flags for keys rhe owns — their flags leak
+        // through even though we suppress FlagsChanged events, because
+        // the OS tracks modifier state below the event tap layer.
+        let mut flags = ffi::CGEventGetFlags(event);
+        // Strip flags for any modifier that maps to a rhe scan code
+        if vk_to_scan(0x37).is_some() { flags &= !CMD; }  // left cmd
+        if vk_to_scan(0x36).is_some() { flags &= !CMD; }  // right cmd
+        if vk_to_scan(0x3A).is_some() { flags &= !ALT; }  // left alt
+        if vk_to_scan(0x3D).is_some() { flags &= !ALT; }  // right alt
+        // Also strip the leaked flags from the event itself so apps
+        // don't see phantom modifier state
+        ffi::CGEventSetFlags(event, flags);
+
         if flags & PASSTHROUGH_MODIFIERS != 0 {
             return event;
         }
