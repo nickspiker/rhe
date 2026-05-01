@@ -2282,6 +2282,7 @@ impl TutorApp {
         size: f32,
         weight: u16,
         font: &str,
+        colour: u32,
     ) {
         if text.is_empty() {
             return;
@@ -2422,7 +2423,7 @@ impl TutorApp {
             pixels[pixel_idx] = ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
         }
 
-        // Black foreground glyph.
+        // Foreground glyph — colour-parameterised for error feedback.
         text_renderer.draw_text_center_u32(
             pixels,
             window_width,
@@ -2431,7 +2432,7 @@ impl TutorApp {
             cy,
             size,
             weight,
-            theme::LOGO_TEXT,
+            colour,
             font,
             false,
         );

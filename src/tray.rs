@@ -1039,6 +1039,7 @@ impl TrayApp {
             // same line shows in phoneme mode, signalling "one-shot
             // chord shortcut, not a sounded-out spelling."
             if is_brief_mode && !word_text.is_empty() {
+                let logo_colour = if drill_errored { 0xFFFF0000 } else { theme::LOGO_TEXT };
                 crate::tutor::ui::compositor::TutorApp::draw_logo_text(
                     pixels,
                     text,
@@ -1049,6 +1050,7 @@ impl TrayApp {
                     layout.phoneme_font,
                     700,
                     "Bona Nova",
+                    logo_colour,
                 );
             } else
             // Phoneme line: italic Bona Nova. Each glyph is measured
