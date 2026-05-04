@@ -169,6 +169,83 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     // Convention for these pairs:
     //   thumb → more-common form; non-thumb fingers → less-common form.
     //
+    // ─── Spelled numbers, position-aligned with number-mode ───────
+    // one / won — R-ring + R-thumb (number-mode position 1 = R-ring)
+    //   thumb (easy)   → one (more common, the spelled digit)
+    //   ring  (hard)   → won (less common, past tense of "win")
+    (0b0000, 0b10100, scan::R_THUMB, "one"),
+    (0b0000, 0b10100, scan::R_RING, "won"),
+
+    // ─── Homophone pairs reusing existing brief chords ────────────
+    // ok / okay — okay's chord (R-idx + all 4 L-fingers, no thumb)
+    //   easy fingers (L-pinky/L-idx/R-idx/L-mid) → okay (more common)
+    //   ring (hardest, no thumb)                  → ok
+    (0b1111, 0b00001, scan::L_PINKY, "okay"),
+    (0b1111, 0b00001, scan::L_IDX, "okay"),
+    (0b1111, 0b00001, scan::R_IDX, "okay"),
+    (0b1111, 0b00001, scan::L_MID, "okay"),
+    (0b1111, 0b00001, scan::L_RING, "ok"),
+    // seen / scene — seen's chord (R-ring + R-pinky + L-mid+ring+pinky)
+    //   easy fingers → seen  ring → scene
+    (0b1110, 0b01100, scan::L_PINKY, "seen"),
+    (0b1110, 0b01100, scan::R_PINKY, "seen"),
+    (0b1110, 0b01100, scan::L_MID, "seen"),
+    (0b1110, 0b01100, scan::R_RING, "seen"),
+    (0b1110, 0b01100, scan::L_RING, "scene"),
+    // knows / nose — knows's chord (R-idx+R-ring+R-pinky + L-idx+L-ring+L-pinky)
+    //   easy fingers → knows  rings → nose
+    (0b1101, 0b01101, scan::L_PINKY, "knows"),
+    (0b1101, 0b01101, scan::L_IDX, "knows"),
+    (0b1101, 0b01101, scan::R_IDX, "knows"),
+    (0b1101, 0b01101, scan::R_PINKY, "knows"),
+    (0b1101, 0b01101, scan::L_RING, "nose"),
+    (0b1101, 0b01101, scan::R_RING, "nose"),
+
+    // ─── Unreachable-homophone pairs needing new chord allocations ──
+    // Each pair takes one chord slot from the regular brief assignment
+    // pool. Lower-freq word goes on the hardest-available finger of the
+    // chord; higher-freq word claims the easy fingers (thumb-lead first).
+    //
+    // peace / piece — chord R-I+R-M+R-P+R-thumb+L-M (displaces `black`)
+    (0b0010, 0b11011, scan::R_THUMB, "piece"),
+    (0b0010, 0b11011, scan::L_MID, "piece"),
+    (0b0010, 0b11011, scan::R_IDX, "piece"),
+    (0b0010, 0b11011, scan::R_PINKY, "piece"),
+    (0b0010, 0b11011, scan::R_MID, "peace"),
+    // weather / whether — chord R-M+R-thumb+L-I+L-M+L-P (displaces `funny`)
+    (0b1011, 0b10010, scan::R_THUMB, "whether"),
+    (0b1011, 0b10010, scan::L_IDX, "whether"),
+    (0b1011, 0b10010, scan::L_PINKY, "whether"),
+    (0b1011, 0b10010, scan::R_MID, "whether"),
+    (0b1011, 0b10010, scan::L_MID, "weather"),
+    // cell / sell — chord R-I+R-M+R-P+R-thumb+L-P (displaces `may`)
+    (0b1000, 0b11011, scan::R_THUMB, "sell"),
+    (0b1000, 0b11011, scan::L_PINKY, "sell"),
+    (0b1000, 0b11011, scan::R_IDX, "sell"),
+    (0b1000, 0b11011, scan::R_PINKY, "sell"),
+    (0b1000, 0b11011, scan::R_MID, "cell"),
+    // led / lead — chord R-P+R-thumb+L-I+L-M+L-P (displaces `obviously`)
+    (0b1011, 0b11000, scan::R_THUMB, "lead"),
+    (0b1011, 0b11000, scan::L_IDX, "lead"),
+    (0b1011, 0b11000, scan::R_PINKY, "lead"),
+    (0b1011, 0b11000, scan::L_PINKY, "lead"),
+    (0b1011, 0b11000, scan::L_MID, "led"),
+    // role / roll — chord R-I+R-M+R-P+R-thumb+L-R (displaces `order`;
+    // L-RING is in the chord — perfect "ring = hardest" assignment)
+    (0b0100, 0b11011, scan::R_THUMB, "roll"),
+    (0b0100, 0b11011, scan::R_IDX, "roll"),
+    (0b0100, 0b11011, scan::R_PINKY, "roll"),
+    (0b0100, 0b11011, scan::R_MID, "roll"),
+    (0b0100, 0b11011, scan::L_RING, "role"),
+    // site / sight — chord R-R+R-thumb+L-I+L-M+L-P (displaces `clear`;
+    // R-RING in chord = hardest finger for the lower-freq word)
+    (0b1011, 0b10100, scan::R_THUMB, "sight"),
+    (0b1011, 0b10100, scan::L_IDX, "sight"),
+    (0b1011, 0b10100, scan::L_PINKY, "sight"),
+    (0b1011, 0b10100, scan::L_MID, "sight"),
+    (0b1011, 0b10100, scan::R_RING, "site"),
+
+    // ─── Morphological pairs (base + suffix on one chord) ───────────
     // go / going — R-idx + R-pinky + R-thumb (going's chord)
     //   thumb           → going (more common, auxiliary "going to")
     //   pinky / index   → go    (less common, distinct verb)
@@ -185,10 +262,8 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     (0b1100, 0b10001, scan::R_IDX, "working"),
     (0b1100, 0b10001, scan::L_RING, "working"),
     (0b1100, 0b10001, scan::L_PINKY, "working"),
-    // thing / things — R-pinky + R-thumb + L-ring (things's chord)
-    (0b0100, 0b11000, scan::R_THUMB, "thing"),
-    (0b0100, 0b11000, scan::R_PINKY, "things"),
-    (0b0100, 0b11000, scan::L_RING, "things"),
+    // (thing/things removed — thing now in pinned thing-family pattern;
+    // things reachable via thing + s suffix.)
     // year / years — R-ring + R-thumb + L-mid (years's chord)
     (0b0010, 0b10100, scan::R_THUMB, "year"),
     (0b0010, 0b10100, scan::R_RING, "years"),
@@ -294,12 +369,9 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     (0b0100, 0b11101, scan::R_RING, "careful"),
     (0b0100, 0b11101, scan::R_PINKY, "careful"),
     (0b0100, 0b11101, scan::L_RING, "careful"),
-    // feel / feeling — R-idx + R-mid + R-ring + R-thumb + L-mid (feel's chord)
-    (0b0010, 0b10111, scan::R_THUMB, "feel"),
-    (0b0010, 0b10111, scan::R_IDX, "feeling"),
-    (0b0010, 0b10111, scan::R_MID, "feeling"),
-    (0b0010, 0b10111, scan::R_RING, "feeling"),
-    (0b0010, 0b10111, scan::L_MID, "feeling"),
+    // (feel/feeling removed — chord 0b10111 is now the thing-family base
+    // shared with something via L-MID modifier; feel and feeling go back
+    // to separate auto-assigned briefs.)
     // play / playing — R-ring + R-pinky + R-thumb + L-ring + L-pinky (play's chord; playing more common)
     (0b1100, 0b11100, scan::R_THUMB, "playing"),
     (0b1100, 0b11100, scan::R_RING, "play"),

@@ -311,12 +311,12 @@ built-in delay.
 `Exit`. Tapping Caps Lock toggles rhe/keyboard mode. OS caps lock
 is fully suppressed — rhe strips the alpha-shift flag from every
 event, so caps lock only affects rhe's mode, never the OS text
-layer. Media keys (volume, brightness, play/pause) pass through
+layer. Media keys (volume, brightness, play/pause) pass thru
 natively.
 
 ### Linux
 
-Grab keyboards via evdev and inject passthrough via uinput — the user
+Grab keyboards via evdev and inject passthru via uinput — the user
 running rhe needs read access to `/dev/input/event*` and write access
 to `/dev/uinput`. One-time setup:
 
@@ -347,7 +347,7 @@ Fallback mode choices: `Autospell` emits English-approximate ASCII
 when a phoneme sequence isn't in the dictionary (any keyboard layout,
 any terminal). `IPA` emits raw IPA unicode for every word, bypassing
 the dictionary entirely — useful for linguistic work, but unicode
-injection goes through the GTK/Qt/IBus `Ctrl+Shift+U <hex> Enter`
+injection goes thru the GTK/Qt/IBus `Ctrl+Shift+U <hex> Enter`
 sequence which looks like keyboard gibberish in terminals (`Ctrl+U`
 = "kill line" there). Set `RHE_FALLBACK=ipa` to start in IPA mode;
 set `RHE_UNICODE_FALLBACK=off` to drop unmapped chars silently
@@ -358,7 +358,7 @@ instead of using the Ctrl+Shift+U path.
 Done:
 
 - **IOHIDManager driver** (macOS) — raw HID, one event per key change
-- **evdev driver** (Linux) — pre-xkb scancode grab + uinput passthrough
+- **evdev driver** (Linux) — pre-xkb scancode grab + uinput passthru
 - **Interactive tutor** — GUI drill window opened from the tray
   menu, with real-time key display, error recovery, brief/phoneme
   mode switching, adaptive cell labels (each cell shows what its
@@ -375,10 +375,24 @@ Done:
   `frequency × (phonemes - 1)` against slots sorted by ergonomic
   effort. Writes `src/preferences/briefs_data.rs`.
 - **Curated candidates file** — `data/brief_candidates.txt` is the
-  editable source of truth for which words get briefs. `gen_briefs`
-  writes it on first run (top-1000, savings-weighted) and reads it
-  thereafter; delete lines you don't want, delete the file to
-  regenerate defaults.
+  editable source of truth for which words get briefs. Each line
+  carries inline auto-reasons in its comment column: suffix
+  decomposition (`+ing→base(freq) defer/keep`), homophone collision,
+  sidecar-category exclusion, or ordered-brief slot claim. Comment
+  out a line to drop the word; un-comment to bring it back.
+  Re-runs of `gen_briefs` refresh ranks/values/reasons but preserve
+  user `#`s, custom-added words, and any user notes after a ` ; `
+  separator.
+- **Sidecar excludes file** — `data/brief_excludes.txt` contains
+  categorized word lists (gender, religion, proper nouns by person /
+  place, nationality, title, profanity, stage directions, informal
+  fragments, number-mode aliases, abbreviations) that auto-`#` the
+  matching candidates with `excluded: <category>` reasons. Per-
+  category disable by commenting the section header; per-word
+  opt-back-in by removing the word from the file. Lets the default
+  brief set stay free of statehood / religious / racial / gender
+  bias and proper-noun clutter, with each install free to opt back
+  in selectively.
 - **Homophone collision report** — `gen_briefs` emits
   `data/homophones.txt` every run, listing every CMU phoneme-sequence
   set that has multiple frequency-listed words. Scoped to sets
@@ -388,16 +402,35 @@ Done:
   (no/know, here/hear, right/write) use symmetric same-finger-per-
   hand split chords; 3-way sets (to/too/two, for/four/fore) use
   single-hand 3- or 4-finger chords with outer-left / outer-right /
-  center leads. Curated in `src/preferences/ordered_briefs_data.rs`;
-  the tutor brightens the first-down cell so the ordering is
-  obvious at a glance.
+  center leads. The mechanism extends beyond homophones to:
+  morphological pairs (go/going, have/having, work/working, …),
+  unreachable-homophone allocations (peace/piece, weather/whether,
+  cell/sell, led/lead, role/roll, site/sight) so the lower-freq
+  member is typeable at all, and the spelled-number bundle for
+  one/won. Curated in `src/layout/ordered_briefs.rs`; the tutor
+  brightens the first-down cell so the ordering is obvious at a
+  glance.
+- **Compound family pattern** — `thing` and its prefix compounds
+  (something / anything / nothing / everything) share a base R-only
+  chord (R-IDX+R-MID+R-RING+R-thumb), with each prefix modifier
+  adding a single left finger: `some-` → L-MID, `any-` → L-RING,
+  `no-` → L-PINKY, `every-` → L-IDX. The `one`-family
+  (someone/anyone/everyone) extends the same convention. Once the
+  prefix→finger map is in muscle memory, every compound is
+  reachable with one chord and the family stays mentally unified.
+- **Spelled-zero pristine gesture** — `word + mod-tap + word-up`
+  (number mode entered with no digit chord between) emits the
+  spelled "zero". No chord slot consumed; the empty-mode-exit case
+  is repurposed as the shortcut. Number-form transforms still
+  apply (the emit arms `last_number` so L-hand chords can transform
+  to "zeroth" etc.).
 - **Linux text output** — libxkbcommon reverse-map + uinput injection
   for Latin output in the user's active layout (Dvorak/Colemak/any),
   with `Ctrl+Shift+U <hex> Enter` fallback for IPA and other unicode
   not representable in the current keymap.
 - **Linux `rhe run`** — full engine on Linux (evdev grab + uinput
   injection). Caps Lock tap toggles rhe enabled/disabled, Caps+Esc
-  quits. Esc alone passes through to the focused app.
+  quits. Esc alone passes thru to the focused app.
 - **Cross-platform tray menu** — StatusNotifierItem on Linux / native
   NSStatusItem on macOS via `tray-icon`. Right-click for mode toggle
   (rhe ↔ keyboard), fallback toggle (Autospell ↔ IPA), and exit.
@@ -418,13 +451,17 @@ Done:
   integer into spelled cardinal / ordinal / multiplier / group /
   fraction / prefix forms.
 - **Six physical layouts** — narrow / medium / wide × right- or
-  left-dominant. `CURRENT` in `src/preferences/layout.rs` picks the
+  left-dominant. `CURRENT` in `src/layout/keyboard.rs` picks the
   active one at compile time; the rest of the engine is agnostic.
 - **Repository reorg** — user-tunable mappings live under
-  `src/preferences/` (chord_map, layout, briefs, suffixes, number
-  data, number forms); GUI + drill state under `src/tutor/` (drill,
-  wiki, ui/compositor + ui/drawing + ui/text_rasterizing + ui/theme).
-  Single `theme.rs` is the source of truth for every colour.
+  `src/layout/` (chords, keyboard, briefs, ordered_briefs,
+  suffixes, numbers, number_forms); GUI + drill state under
+  `src/tutor/` (drill, wiki, ui/compositor + ui/drawing +
+  ui/text_rasterizing + ui/theme). Single `theme.rs` is the source
+  of truth for every colour. Brief loader and phoneme-dictionary
+  loader live at crate root (`src/briefs.rs`, `src/phoneme_dict.rs`)
+  — they build runtime tables from the layout/ data, distinct from
+  the data itself.
 
 Short-term:
 
@@ -477,6 +514,29 @@ Longer-term:
 cargo build --release
 cargo test
 ```
+
+## On building this with an LLM
+
+Most commits in this repo land with `Co-Authored-By: Claude Opus`. That tag is the conventional disclosure, but it doesn't quite capture what's going on.
+
+The structural thing first: wisdom needs stakes and continuity, and an LLM has neither. Knowledge is storable — text in, text out — so a model trained on enough of it ends up with broad pattern access. Wisdom is what happens when a continuous self is *shaped by consequences over time*. Claude doesn't have a continuous self. Each conversation starts fresh. Nothing it says has cost. It can't have a hunch ripen, can't get burned and remember, can't accumulate the kind of taste that comes from living with its own bad calls.
+
+The closest human analogy is the brilliant prodigy who's read every book but lived thru nothing. They can quote every wise person but don't know what to do when their parent dies, when they fall in love, when they fail at something they cared about. The knowledge is in there; it just hasn't been metabolized into judgment by being a person who needed it.
+
+Which makes the collaboration asymmetric in a useful way. I bring vision, judgment, and the willingness to live with bad calls. Claude brings:
+
+- **Consistency at scale.** Applying "exclude gendered terms" across 54 words in `data/brief_excludes.txt` is 30 seconds of LLM time vs. an hour of mine, plus the miss on `gentleman` because it slipped past the obvious `he/him/his` cluster. The convention is mine; the per-word execution is Claude's.
+- **Unbiased categorization.** Default-excluding proper nouns and gendered titles isn't itself neutral, but the categorization is. An LLM treats `kim`, `jane`, `daniel`, and `william` the same way — no curator's blind spots about whose names "feel like proper nouns." The brief set is fairer because a tireless outsider helped curate it, not because I'm careful.
+- **Mechanical cleanup.** The 44-file doc-comment unwrap, the `preferences/` → `layout/` rename touching ~50 files, the `table_gen.rs` → `phoneme_dict.rs` rename plus parser dedupe — the kind of work I'd put off forever. With Claude they happen the moment I notice them.
+- **A second pair of eyes on judgment calls.** When I rewrite an interpreter branch, Claude catches that the spelled-zero change broke `ordinal_not_triggered_after_symbol` because of a `last_number` flag interaction. The bug is mine; the fast feedback is the LLM's.
+
+A strange consequence of all this: an LLM can *sound* wise without being wise. It can recite what wise people said with high fidelity. The way I tell the difference is by my own taste — the words alone don't transmit the substance. So our exchanges are asymmetric in a precise way: Claude supplies pattern, I supply taste. Whether what it says is *good* is mostly a function of my judgment on its output. The pattern-recognition is real. The caring isn't. And caring is most of what wisdom is.
+
+Also worth flagging — "infinite knowledge" overshoots. LLMs don't have perfect recall; they reconstruct probabilistically and will confidently confabulate when reaching past coverage. It's broad pattern access, not encyclopedic memory. The hole-shapes are different from a human's, which is why an LLM is useful as a *complement* rather than a replacement.
+
+So: not co-authored in the way two engineers co-author a paper. More like… built with a tireless assistant that never gets tired and never has an agenda but also won't stop me from making a questionable choice when I want to. The project is what it is because of choices I made; it's *finished* — unified, unbiased, clean — because Claude carried the pattern across.
+
+If you're building something opinionated and have a clear vision but limited tolerance for the mechanical work of seeing it thru, an LLM is a force multiplier that conventional automation can't match. It applies pattern. It outlines tradeoffs. It catches consistency bugs. It doesn't decide what matters — and treating it as if it could is how projects end up with the *texture* of wisdom but not the substance.
 
 ## License
 

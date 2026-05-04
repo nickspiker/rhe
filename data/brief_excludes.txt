@@ -1,0 +1,260 @@
+# Sidecar excludes for brief assignment.
+#
+# Words listed under an active category section are auto-`#`'d in
+# `data/brief_candidates.txt` with reason `excluded: <category>`. The
+# auto-exclusion fires before the greedy brief assignment, so excluded
+# words don't claim chord slots — those slots go to the next-ranked
+# words instead.
+#
+# Format:
+#   [category_name]      ← active section header (auto-exclude applies)
+#   #[category_name]     ← disabled section (entire category ignored)
+#   word                 ← one word per line; lowercase
+#   # comment            ← regular comments, ignored by the parser
+#
+# Per-word override: NOT supported via this file. To opt back in to a
+# single word, remove it from this file (or move it to a disabled
+# section). To opt back in to a whole category, comment out the
+# section header (`#[gender]`).
+#
+# Categorization is one editor's judgment — adjust freely. The goal is
+# a default that's free of statehood / religious / racial / gender bias
+# and proper-noun clutter, with each install free to opt back in.
+
+# ──────────────────────────────────────────────────────────────────────
+# Gendered terms — pronouns, gendered family members, gendered titles
+# ──────────────────────────────────────────────────────────────────────
+[gender]
+he
+him
+his
+himself
+she
+her
+hers
+herself
+man
+men
+woman
+women
+boy
+boys
+boyfriend
+girl
+girls
+girlfriend
+guy
+guys
+mother
+father
+mom
+mommy
+mama
+mum
+dad
+daddy
+papa
+brother
+brothers
+sister
+son
+daughter
+husband
+wife
+aunt
+uncle
+grandfather
+grandma
+grandpa
+gentleman
+gentlemen
+ladies
+lady
+madam
+madame
+ma
+mr
+mrs
+master
+prince
+princess
+queen
+king
+
+# ──────────────────────────────────────────────────────────────────────
+# Religious terms — common across major Western religions
+# ──────────────────────────────────────────────────────────────────────
+[religion]
+god
+christ
+holy
+church
+pray
+heaven
+hell
+devil
+soul
+angel
+faith
+lord
+temple
+priest
+goddamn
+santa
+
+# ──────────────────────────────────────────────────────────────────────
+# Proper nouns — common given names that show up in transcripts
+# ──────────────────────────────────────────────────────────────────────
+[proper_noun_person]
+adam
+alan
+alice
+amy
+andy
+arthur
+billy
+charles
+daniel
+dave
+ed
+jake
+jane
+jason
+jeff
+jerry
+jim
+kelly
+kevin
+kim
+larry
+laura
+lee
+lisa
+lucy
+maria
+martin
+pete
+phil
+roger
+ryan
+simon
+smith
+thomas
+tim
+walter
+william
+
+# ──────────────────────────────────────────────────────────────────────
+# Proper nouns — places, countries, cities
+# ──────────────────────────────────────────────────────────────────────
+[proper_noun_place]
+america
+england
+europe
+france
+london
+paris
+rome
+york
+
+# ──────────────────────────────────────────────────────────────────────
+# Nationality / ethnic adjectives
+# ──────────────────────────────────────────────────────────────────────
+[nationality]
+american
+british
+chinese
+english
+french
+german
+indian
+japanese
+russian
+spanish
+
+# ──────────────────────────────────────────────────────────────────────
+# Titles — military, professional, civic
+# ──────────────────────────────────────────────────────────────────────
+[title]
+captain
+colonel
+commander
+dr
+doc
+fbi
+inspector
+lieutenant
+minister
+officer
+president
+sergeant
+sheriff
+sir
+
+# ──────────────────────────────────────────────────────────────────────
+# Profanity — vulgar / strong language
+# ──────────────────────────────────────────────────────────────────────
+#[profanity]
+#bastard
+#bitch
+#bloody
+#damn
+#dick
+#fuck
+
+# ──────────────────────────────────────────────────────────────────────
+# Stage directions — TV/film transcript artifacts (high frequency
+# because subtitle corpora are over-represented in source data)
+# ──────────────────────────────────────────────────────────────────────
+[stage_direction]
+applause
+beeping
+bleep
+chuckles
+cheering
+gasps
+groans
+groaning
+grunting
+grunts
+indistinct
+laughs
+panting
+sighs
+whoo
+
+# ──────────────────────────────────────────────────────────────────────
+# Informal / dialect fragments — low-value transcribed speech
+# ──────────────────────────────────────────────────────────────────────
+[informal_fragment]
+cos
+da
+de
+em
+goin
+ho
+ya
+
+# ──────────────────────────────────────────────────────────────────────
+# Spelled-number aliases — reachable via number-mode finger-first-mod
+# gesture, plus number-mode-pristine-exit for "zero", plus dedicated
+# briefs / ordered bundles for one (with won), two (in to/too/two), and
+# four (in for/four/fore). The remaining spelled forms below have low
+# value and multiple existing access paths.
+# ──────────────────────────────────────────────────────────────────────
+[number_mode_alias]
+five
+six
+seven
+eight
+nine
+ten
+eleven
+twelve
+
+# Abbreviations — typed via case shift or expansion, not phoneme path
+# ──────────────────────────────────────────────────────────────────────
+[abbreviation]
+dna
+fbi
+tv

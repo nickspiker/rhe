@@ -115,6 +115,8 @@ pub struct Interpreter {
     last_number: Option<NumberContext>,
     /// True once a phoneme has been buffered during this word session. Stays true even if all phonemes are undone. Prevents ModTap from entering number mode after phoneme undo-to-empty.
     phoneme_session: bool,
+    /// True from the moment number-mode is entered until any chord/decimal/symbol is processed. The "pristine" exit (mode-entered + word-released with no other input) is the spelled-zero shortcut; this flag distinguishes it from the symbol-then-exit case (where the buffer is also empty but pristine is false).
+    number_session_pristine: bool,
 }
 
 impl Interpreter {
@@ -138,6 +140,7 @@ impl Interpreter {
             number_buffer: String::new(),
             last_number: None,
             phoneme_session: false,
+            number_session_pristine: false,
         }
     }
 
@@ -195,6 +198,10 @@ impl Interpreter {
                     //   no mod → digit ("5")
                     //   mod, first_down = thumb → symbol ("+")
                     //   mod, first_down = finger → spelled word ("five")
+                    // Any chord clears `pristine` so the empty-buffer
+                    // SpaceUp can tell "did nothing" from "did stuff
+                    // that ended with the buffer cleared".
+                    self.number_session_pristine = false;
                     if !key.has_mod() {
                         return crate::layout::numbers::chord_to_digit(*key).map(|c| {
                             self.number_buffer.push(c);
@@ -269,11 +276,13 @@ impl Interpreter {
                         self.mode = Mode::Number;
                         self.buffer.clear();
                         self.number_buffer.clear();
+                        self.number_session_pristine = true;
                         None
                     }
                     Mode::Number => {
                         // Decimal — invalidates pure-integer buffer.
                         self.number_buffer.clear();
+                        self.number_session_pristine = false;
                         Some(self.record_emit(".".to_string()))
                     }
                 }
@@ -287,9 +296,33 @@ impl Interpreter {
                     // a single combined one covering the whole
                     // number + space, and arm the form context so
                     // L-hand chords can transform it.
+                    //
+                    // Empty buffer + pristine session: the user entered
+                    // number mode (word-held + mod-tap) and released
+                    // word without typing any chord. Repurpose this
+                    // gesture to emit the spelled "zero" — a fast
+                    // standalone shortcut that doesn't consume a brief
+                    // slot. Number-form transforms still work on it
+                    // ("zero" + Ordinal → "zeroth") because we arm
+                    // last_number too.
+                    //
+                    // Empty buffer + non-pristine: a symbol/decimal
+                    // cleared the buffer mid-session. Emit just a
+                    // trailing space and don't arm last_number — the
+                    // session was a non-pure-integer expression.
                     self.mode = Mode::Normal;
+                    let pristine = std::mem::replace(&mut self.number_session_pristine, false);
                     let buf = std::mem::take(&mut self.number_buffer);
                     if buf.is_empty() {
+                        if pristine {
+                            let emit = "zero ".to_string();
+                            let action = self.record_emit(emit.clone());
+                            self.last_number = Some(NumberContext {
+                                digits: "0".to_string(),
+                                current: emit,
+                            });
+                            return Some(action);
+                        }
                         self.last_number = None;
                         return Some(self.record_emit(" ".to_string()));
                     }
@@ -514,11 +547,13 @@ mod tests {
     }
 
     #[test]
-    fn number_mode_spaceup_emits_space_and_exits() {
+    fn number_mode_spaceup_empty_emits_zero_and_exits() {
+        // Empty number-mode commit (word-held + mod-tap + word-up with
+        // no digit chord between) is the spelled-zero shortcut.
         let mut interp = setup();
         interp.process(&Event::ModTap);
         let action = interp.process(&Event::SpaceUp).unwrap();
-        assert_eq!(action, Action::Emit(" ".to_string()));
+        assert_eq!(action, Action::Emit("zero ".to_string()));
         assert_eq!(interp.mode, Mode::Normal);
     }
 

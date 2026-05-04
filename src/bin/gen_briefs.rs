@@ -328,6 +328,29 @@ const ORDERED_CLAIMED: &[(u8, u8, &str)] = &[
     (0b01100, 0b0110, "by"),
     (0b01100, 0b0110, "buy"),
     (0b01100, 0b0110, "bye"),
+    // Spelled numbers (position-aligned with number-mode)
+    (0b10100, 0b0000, "one"),
+    (0b10100, 0b0000, "won"),
+    // Homophone pairs reusing existing chords
+    (0b00001, 0b1111, "ok"),
+    (0b00001, 0b1111, "okay"),
+    (0b01100, 0b1110, "seen"),
+    (0b01100, 0b1110, "scene"),
+    (0b01101, 0b1101, "knows"),
+    (0b01101, 0b1101, "nose"),
+    // Unreachable-homophone pairs (new chord allocations)
+    (0b11011, 0b0010, "peace"),
+    (0b11011, 0b0010, "piece"),
+    (0b10010, 0b1011, "weather"),
+    (0b10010, 0b1011, "whether"),
+    (0b11011, 0b1000, "cell"),
+    (0b11011, 0b1000, "sell"),
+    (0b11000, 0b1011, "led"),
+    (0b11000, 0b1011, "lead"),
+    (0b11011, 0b0100, "role"),
+    (0b11011, 0b0100, "roll"),
+    (0b10100, 0b1011, "site"),
+    (0b10100, 0b1011, "sight"),
     // Morphological pairs (base + suffix on one chord)
     (0b11001, 0b0000, "go"),
     (0b11001, 0b0000, "going"),
@@ -335,8 +358,7 @@ const ORDERED_CLAIMED: &[(u8, u8, &str)] = &[
     (0b10011, 0b0010, "having"),
     (0b10001, 0b1100, "work"),
     (0b10001, 0b1100, "working"),
-    (0b11000, 0b0100, "thing"),
-    (0b11000, 0b0100, "things"),
+    // (thing in pinned thing-family; things reachable via thing+s suffix.)
     (0b10100, 0b0010, "year"),
     (0b10100, 0b0010, "years"),
     (0b10001, 0b1110, "take"),
@@ -373,8 +395,7 @@ const ORDERED_CLAIMED: &[(u8, u8, &str)] = &[
     (0b11110, 0b0011, "days"),
     (0b11101, 0b0100, "care"),
     (0b11101, 0b0100, "careful"),
-    (0b10111, 0b0010, "feel"),
-    (0b10111, 0b0010, "feeling"),
+    // (feel/feeling removed — chord 0b10111 is the thing-family base.)
     (0b11100, 0b1100, "play"),
     (0b11100, 0b1100, "playing"),
     (0b10010, 0b0001, "thank"),
@@ -471,8 +492,10 @@ fn main() {
             continue;
         }
         // Skip contraction fragments (high-freq only because of "don't", "won't", etc.)
+        // "won" is intentionally NOT here — it's a real word (past tense of
+        // "win", homophone of "one"), not just a fragment of "won't".
         const FRAGMENTS: &[&str] = &[
-            "don", "doesn", "didn", "wasn", "weren", "isn", "won", "wouldn", "couldn", "shouldn",
+            "don", "doesn", "didn", "wasn", "weren", "isn", "wouldn", "couldn", "shouldn",
             "hasn", "hadn", "ain", "aren", "mustn",
         ];
         if FRAGMENTS.contains(&word.as_str()) {
@@ -561,12 +584,22 @@ fn main() {
     // that decomposes as `base + <SUFFIX>`. The user's exclusions and any
     // custom-added words survive the rewrite; inline user notes do not.
     let freq_map: HashMap<String, u64> = freq_words.iter().cloned().collect();
+    let excludes_path = project.join("data/brief_excludes.txt");
+    let excludes = read_excludes_file(&excludes_path);
+    if !excludes.is_empty() {
+        eprintln!(
+            "Loaded {} sidecar excludes from {}",
+            excludes.len(),
+            excludes_path.display()
+        );
+    }
     top_words = refresh_candidate_file(
         &candidates_path,
         &top_words,
         &cmu,
         &freq_map,
         ORDERED_CLAIMED,
+        &excludes,
     );
     eprintln!(
         "Using {} candidate words from {}",
@@ -622,7 +655,34 @@ fn main() {
     // by ergonomic effort ascending, zip them. Highest-value word
     // gets the easiest free slot.
 
-    let pinned: &[(u8, u8, &str)] = &[];
+    // Hand-pinned brief slots. These claim a specific chord before the greedy
+    // pass runs, so the chord is locked to this word regardless of value rank.
+    // Format: (right_5bits, left_4bits, word).
+    // Hand-pinned brief slots. These claim a specific chord before the greedy
+    // pass runs, so the chord is locked to this word regardless of value rank.
+    // Format: (right_5bits, left_4bits, word).
+    //
+    // Compound family — `thing` and its prefix-modified compounds.
+    // Base chord = R-IDX + R-MID + R-RING + R-thumb (0b10111). Compounds
+    // add a left-finger modifier per prefix, building muscle memory across
+    // every `prefix-X` family (one, body, where, way, ...) when those are
+    // pinned with the same prefix→finger convention:
+    //   some-  → L-MID    any-   → L-RING
+    //   no-    → L-PINKY  every- → L-IDX
+    let pinned: &[(u8, u8, &str)] = &[
+        // thing-family — base chord (R-IDX+R-MID+R-RING+R-thumb)
+        (0b10111, 0b0000, "thing"),
+        (0b10111, 0b0010, "something"),
+        (0b10111, 0b0100, "anything"),
+        (0b10111, 0b1000, "nothing"),
+        (0b10111, 0b0001, "everything"),
+        // one-family — base chord = R-RING+R-thumb (also in ordered_briefs
+        // for one/won homophone bundle). Compounds extend with the same
+        // prefix-modifier convention. No `noone` (it's two words "no one").
+        (0b10100, 0b0010, "someone"),
+        (0b10100, 0b0100, "anyone"),
+        (0b10100, 0b0001, "everyone"),
+    ];
 
     let all_slots = all_slots_by_effort();
     let mut occupied: HashSet<(u8, u8)> = HashSet::new();
@@ -797,6 +857,61 @@ fn try_strip_suffix(word: &str, cmu: &HashMap<String, Vec<String>>) -> Option<(S
     None
 }
 
+/// Read `data/brief_excludes.txt` (if present), returning a `word → category` map. File format: section headers like `[gender]` or `[religion]`, followed by one word per line. Categories whose header is commented (starts with `#[`) are ignored. Words in active categories will be auto-`#`'d in `brief_candidates.txt` with reason `excluded: <category>`.
+fn read_excludes_file(path: &Path) -> HashMap<String, String> {
+    let mut out: HashMap<String, String> = HashMap::new();
+    if !path.exists() {
+        return out;
+    }
+    let content = fs::read_to_string(path).expect("cannot read brief_excludes.txt");
+    let mut current_category: Option<String> = None;
+    let mut category_active = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // Active section header: `[name]`
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            current_category = Some(trimmed[1..trimmed.len() - 1].to_string());
+            category_active = true;
+            continue;
+        }
+        // Disabled section header: `#[name]`
+        if trimmed.starts_with("#[") && trimmed.ends_with(']') {
+            current_category = Some(trimmed[2..trimmed.len() - 1].to_string());
+            category_active = false;
+            continue;
+        }
+        if trimmed.starts_with('#') {
+            continue; // pure comment
+        }
+        if category_active {
+            if let Some(cat) = &current_category {
+                let word = trimmed.to_lowercase();
+                out.insert(word, cat.clone());
+            }
+        }
+    }
+    out
+}
+
+/// Extract the user-typed portion of a comment column. Auto-reasons (recognisable by their leading keyword) get stripped; whatever's left is the user note. Convention for explicit auto/user separation is ` ; ` — anything after that is unambiguously user. Without `;`, we check whether the comment starts with a known auto-reason keyword: if so, no user note. Otherwise the whole comment IS the user note (catches legacy bare-paren notes like `# (number-mode gesture)`).
+fn extract_user_note(comment: &str) -> String {
+    let trimmed = comment.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if let Some(idx) = trimmed.find(" ; ") {
+        return trimmed[idx + 3..].trim().to_string();
+    }
+    let auto_starts = ["excluded:", "ordered brief", "homophone of"];
+    if auto_starts.iter().any(|p| trimmed.starts_with(p)) || trimmed.starts_with('+') {
+        return String::new();
+    }
+    trimmed.to_string()
+}
+
 /// Group CMU words by phoneme sequence and report collisions where at least one member is in the candidate pool. Output goes to `data/homophones.txt` for the user to browse and decide which pairs warrant ordered-brief entries in `src/layout/ordered_briefs.rs`.
 ///
 /// Only words that appear in `en_freq.txt` are included (filters out obscure CMU entries that would otherwise dominate the report). Groups are sorted by max member frequency descending.
@@ -888,28 +1003,43 @@ fn refresh_candidate_file(
     cmu: &HashMap<String, Vec<String>>,
     freq_map: &HashMap<String, u64>,
     ordered_claimed: &[(u8, u8, &str)],
+    excludes: &HashMap<String, String>,
 ) -> Vec<(String, u64, Vec<String>)> {
     let defaults_set: HashSet<String> = defaults.iter().map(|(w, _, _)| w.clone()).collect();
     let ordered_set: HashSet<String> =
         ordered_claimed.iter().map(|(_, _, w)| (*w).to_string()).collect();
 
-    // Phase 1: parse existing file. The only state we preserve is which lines
-    // are `#`-excluded (durable user signal) and which words are custom
-    // (user-added, not in defaults).
+    // Phase 1: parse existing file. State preserved across regens:
+    //   - `#`-excluded lines (durable user signal)
+    //   - custom user-added words (anything not in defaults)
+    //   - user notes — anything in the comment column AFTER the auto-reasons,
+    //     separated by ` ; `. Pure-user notes (no auto reason) survive too:
+    //     `# my note` with no `excluded:`, `+suffix→`, `homophone of`, or
+    //     `ordered brief` prefix is treated as a pure user note.
     //
     // The new column order puts the word FIRST, but old files have rank
     // first and word last. Handle both: if the first token looks like a
     // word (alphabetic), use it; otherwise fall back to the last token
-    // before any inline `#`. This way regenerating an old-format file
-    // converts it in place without losing user `#`s.
+    // before any inline `#`.
     let mut excluded: HashSet<String> = HashSet::new();
     let mut custom: Vec<String> = Vec::new();
     let mut custom_set: HashSet<String> = HashSet::new();
+    let mut user_notes: HashMap<String, String> = HashMap::new();
+    let mut in_custom_section = false;
     if path.exists() {
         let content = fs::read_to_string(path).expect("cannot read brief_candidates.txt");
         for line in content.lines() {
             let trimmed = line.trim();
             if trimmed.is_empty() {
+                continue;
+            }
+            // The "Custom user-added words" marker switches us into
+            // single-token-acceptable mode. Before this marker, single-word
+            // lines are header text — reject them so leaked header words
+            // (e.g., `defer`, `omitted`, `whitespace`) don't end up in the
+            // custom set.
+            if trimmed.contains("Custom user-added words") {
+                in_custom_section = true;
                 continue;
             }
             let is_excluded = trimmed.starts_with('#');
@@ -918,18 +1048,20 @@ fn refresh_candidate_file(
             } else {
                 trimmed
             };
+            // Split body at the first `#` to separate the columns from any
+            // trailing comment text.
+            let (before_comment, comment) = match body.find('#') {
+                Some(i) => (body[..i].trim(), Some(body[i + 1..].trim())),
+                None => (body, None),
+            };
             let is_alpha = |s: &str| s.chars().all(|c| c.is_ascii_alphabetic() || c == '\'');
-            let word_str = match body.split_whitespace().next() {
+            let tokens: Vec<&str> = before_comment.split_whitespace().collect();
+            let word_str = match tokens.first() {
                 Some(first) if is_alpha(first) => Some(first.to_string()),
                 _ => {
                     // Old format: word is the last whitespace token before
                     // any inline `#`.
-                    body.split('#')
-                        .next()
-                        .unwrap_or(body)
-                        .split_whitespace()
-                        .last()
-                        .map(|s| s.to_string())
+                    tokens.last().map(|s| s.to_string())
                 }
             };
             let Some(word) = word_str else {
@@ -939,11 +1071,34 @@ fn refresh_candidate_file(
             if !is_alpha(&word) {
                 continue;
             }
+            // Validate line shape: a real candidate line is either column-
+            // formatted (word + numeric value/phc/rank columns) or a single
+            // token in the custom section. Anything else is header text.
+            let is_column_formatted = tokens.len() >= 4
+                && tokens[1..]
+                    .iter()
+                    .take(3)
+                    .all(|t| t.chars().all(|c| c.is_ascii_digit()));
+            let is_old_format_line = tokens.len() >= 4
+                && tokens[..tokens.len() - 1]
+                    .iter()
+                    .all(|t| t.chars().all(|c| c.is_ascii_digit()));
+            let is_lone_word = tokens.len() == 1;
+            if !is_column_formatted && !is_old_format_line && !(is_lone_word && in_custom_section) {
+                continue;
+            }
             if is_excluded {
                 excluded.insert(word.clone());
             }
             if !defaults_set.contains(&word) && custom_set.insert(word.clone()) {
-                custom.push(word);
+                custom.push(word.clone());
+            }
+            // Extract any user note from the comment.
+            if let Some(comment) = comment {
+                let note = extract_user_note(comment);
+                if !note.is_empty() {
+                    user_notes.insert(word, note);
+                }
             }
         }
     }
@@ -995,12 +1150,19 @@ fn refresh_candidate_file(
             .or_insert((word.clone(), freq));
     }
 
-    // Phase 4: format the auto-reason column. Walks every signal we have
-    // and joins them with `, `. Empty string when nothing applies (the
-    // user manually `#`'d it for a reason gen_briefs can't see, or the
-    // line is fine and just hasn't been touched).
+    // Phase 4: format the comment column = auto reasons + preserved user
+    // notes. Auto reasons regenerate each run (suffix collision, homophone,
+    // ordered-brief slot). User notes (if present) survive verbatim,
+    // separated by ` ; ` from any auto reasons.
     let format_reason = |word: &str, inflected_freq: u64, phs: &[String]| -> String {
         let mut reasons: Vec<String> = Vec::new();
+
+        // Sidecar excludes file category match: auto-`#` and tag with the
+        // category so the user can see WHY it's excluded (and adjust the
+        // sidecar file if they want to opt back in).
+        if let Some(category) = excludes.get(word) {
+            reasons.push(format!("excluded: {}", category));
+        }
 
         // Already covered by an ordered brief: the chord slot is locked
         // and the word is excluded from regular brief assignment. Listing
@@ -1035,10 +1197,13 @@ fn refresh_candidate_file(
             }
         }
 
-        if reasons.is_empty() {
-            String::new()
-        } else {
-            format!("  # {}", reasons.join(", "))
+        let auto = reasons.join(", ");
+        let user = user_notes.get(word).map(String::as_str).unwrap_or("");
+        match (auto.is_empty(), user.is_empty()) {
+            (true, true) => String::new(),
+            (false, true) => format!("  # {}", auto),
+            (true, false) => format!("  # {}", user),
+            (false, false) => format!("  # {} ; {}", auto, user),
         }
     };
 
@@ -1078,23 +1243,32 @@ fn refresh_candidate_file(
          #       instead. Promote to ordered_briefs.rs if you want both\n\
          #       reachable from the same chord with finger-order disambig.\n\
          #\n\
-         # Multiple reasons are comma-separated. Reasons re-generate each run.\n\
+         # Multiple auto reasons are comma-separated. Auto reasons regenerate\n\
+         # each run.\n\
+         #\n\
+         # User notes: anything you type after ` ; ` (separator: space-semi-space)\n\
+         # in the comment column is preserved verbatim across regens. On a line\n\
+         # with no auto reason you can also write `# my note` directly.\n\
+         # Examples:\n\
+         #   #one     ...    # excluded: number_mode_alias ; legacy reason\n\
+         #   #up      ...    # personal preference, too short to bother\n\
          #\n\
          # value = frequency × (phonemes - 1). Single-phoneme words are\n\
          # omitted (a brief saves nothing over typing the one chord).\n\
          #\n\
          # Adding a custom word: append a line with the word as the FIRST\n\
-         # whitespace token. Custom words and `#` exclusions survive regens;\n\
-         # everything else (rank, value, phonemes, reason) refreshes.\n\
+         # whitespace token. Custom words, `#` exclusions, and user notes\n\
+         # survive regens; everything else (rank, value, phonemes, auto\n\
+         # reasons) refreshes.\n\
          #\n\
-         # Fields: word  value  phonemes  rank  [# reason(s)]\n\
+         # Fields: word  value  phonemes  rank  [# auto-reason(s) [ ; user-note]]\n\
          #\n",
     );
 
     let mut emitted_excluded: HashSet<String> = HashSet::new();
     for (i, (entry, value, phc)) in scored.iter().enumerate() {
         let word = &entry.0;
-        let is_excluded = excluded.contains(word);
+        let is_excluded = excluded.contains(word) || excludes.contains_key(word);
         if is_excluded {
             emitted_excluded.insert(word.clone());
         }
@@ -1114,7 +1288,7 @@ fn refresh_candidate_file(
     if !custom.is_empty() {
         text.push_str("\n# ---- Custom user-added words ----\n");
         for word in &custom {
-            let is_excluded = excluded.contains(word);
+            let is_excluded = excluded.contains(word) || excludes.contains_key(word);
             if is_excluded {
                 emitted_excluded.insert(word.clone());
             }
@@ -1148,13 +1322,13 @@ fn refresh_candidate_file(
     // and minus ordered-claimed words which already have a permanent home).
     let mut out: Vec<(String, u64, Vec<String>)> = Vec::new();
     for (entry, _, _) in scored {
-        if excluded.contains(&entry.0) || ordered_set.contains(&entry.0) {
+        if excluded.contains(&entry.0) || ordered_set.contains(&entry.0) || excludes.contains_key(&entry.0) {
             continue;
         }
         out.push(entry.clone());
     }
     for word in &custom {
-        if excluded.contains(word) || ordered_set.contains(word) {
+        if excluded.contains(word) || ordered_set.contains(word) || excludes.contains_key(word) {
             continue;
         }
         let Some(phs) = cmu.get(word) else {
