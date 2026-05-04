@@ -44,7 +44,6 @@ girl
 girls
 girlfriend
 guy
-guys
 mother
 father
 mom
@@ -75,11 +74,74 @@ madame
 ma
 mr
 mrs
-master
 prince
 princess
 queen
 king
+
+# ──────────────────────────────────────────────────────────────────────
+# Hierarchy — structural dominance / control terminology. Tech and
+# academic communities have actively migrated off these (Git "main"
+# vs "master", DB "primary/replica" vs "master/slave"). Excluded so
+# the most-typed chord slots don't reinforce the framing. Words below
+# the candidate-frequency threshold are listed declaratively so a
+# future corpus can't promote them into brief slots.
+# ──────────────────────────────────────────────────────────────────────
+[hierarchy]
+master
+slave
+slaves
+slavery
+
+# ──────────────────────────────────────────────────────────────────────
+# Slurs — words whose primary function is to dehumanize, demean, or
+# assert inferiority of a person or group. Generic-usage words that
+# happen to have pejorative secondary meanings ("crazy", "blind",
+# "dumb", "fool", "nuts") are NOT here — they pass the dominant-
+# modern-usage test the same way "bitch" / "dick" do. Racial / ethnic
+# slurs aren't enumerated here: their frequency is well below the
+# candidate threshold so they can't earn a brief, and explicit
+# enumeration in source has its own cost. If a future corpus surfaces
+# one above threshold, add it then.
+# ──────────────────────────────────────────────────────────────────────
+[slur]
+# Ableist
+retard
+retards
+retarded
+moron
+morons
+imbecile
+imbeciles
+cripple
+cripples
+crippled
+spastic
+spaz
+gimp
+midget
+midgets
+mongoloid
+# Sex-work / misogynist (as slur, distinct from generic profanity)
+hooker
+hookers
+hag
+hags
+wench
+tramp
+tramps
+# Anti-LGBTQ
+faggot
+faggots
+fag
+fags
+dyke
+dykes
+tranny
+trannies
+# Anti-Roma (the word *is* the slur; Romani is the ethnonym)
+gypsy
+gypsies
 
 # ──────────────────────────────────────────────────────────────────────
 # Religious terms — common across major Western religions
@@ -190,17 +252,6 @@ president
 sergeant
 sheriff
 sir
-
-# ──────────────────────────────────────────────────────────────────────
-# Profanity — vulgar / strong language
-# ──────────────────────────────────────────────────────────────────────
-#[profanity]
-#bastard
-#bitch
-#bloody
-#damn
-#dick
-#fuck
 
 # ──────────────────────────────────────────────────────────────────────
 # Stage directions — TV/film transcript artifacts (high frequency

@@ -437,6 +437,9 @@ struct TrayApp {
     /// Currently hovered chrome button (for hover fill effect).
     tutor_hovered_button: u8,
 
+    /// True while a file is being dragged over the tutor window — drives the on-screen "drop to load drill text" hint. Mirrored from `WindowEvent::HoveredFile` / `HoveredFileCancelled`; cleared again on `DroppedFile` as belt-and-suspenders in case `HoveredFileCancelled` doesn't fire on a given compositor (Wayland-on-some-shells, mostly).
+    tutor_file_hovering: bool,
+
     // Manual resize/move drag state (Photon parity — winit's
     // drag_resize_window is unreliable on macOS).
     tutor_dragging_resize: bool,
@@ -1434,6 +1437,31 @@ impl TrayApp {
             }
         }
 
+        // Drag-hover hint: while a file is being dragged over the
+        // tutor window, show a centered "drop to load drill text"
+        // line so the user knows the drop will be accepted before
+        // releasing. Cleared by HoveredFileCancelled or by a
+        // successful DroppedFile.
+        if self.tutor_file_hovering {
+            if let Some(text) = self.text_renderer.as_mut() {
+                let span = crate::tutor::ui::span(size.width, size.height);
+                let hint_size = (span / 18.0).max(14.0);
+                let msg = "drop to load drill text";
+                text.draw_text_center_u32(
+                    pixels,
+                    width,
+                    msg,
+                    width as f32 / 2.0,
+                    height as f32 / 2.0,
+                    hint_size,
+                    500,
+                    theme::ZOOM_HINT_TEXT,
+                    "Bona Nova",
+                    false,
+                );
+            }
+        }
+
         // Top-left zoom-percentage hint. Bumped to `now + 1s` on
         // every ru change (Ctrl+= / Ctrl+- / Ctrl+0 / Ctrl+scroll);
         // about_to_wait schedules a wake at the deadline so this
@@ -1829,6 +1857,33 @@ impl TrayApp {
         self.tutor_hit_test.get(idx).copied().unwrap_or(HIT_NONE)
     }
 
+    /// Swap the active drill source to the contents of a dropped text file. Returns `Err` with a user-facing message on any failure (oversize / unreadable / not UTF-8 / empty); caller logs. Mirrors `photon::ui::app::handle_dropped_file`'s pattern: pure parsing in a free fn (`parse_dropped_drill_text`), state mutation kept out of the parse step so the parser is unit-testable.
+    fn load_dropped_text_file(&mut self, path: std::path::PathBuf) -> Result<(), String> {
+        self.tutor_file_hovering = false;
+        let lines = read_and_parse_drill_file(&path)?;
+
+        if self.tutor_word_lookup.is_none() {
+            let cmudict = crate::data::load_cmudict();
+            self.tutor_word_lookup = Some(WordLookup::new(&cmudict));
+            self.tutor_brief_table = Some(crate::briefs::load_briefs());
+        }
+        let lookup = self
+            .tutor_word_lookup
+            .as_ref()
+            .ok_or("word lookup not initialised")?;
+        let briefs = self
+            .tutor_brief_table
+            .as_ref()
+            .ok_or("brief table not initialised")?;
+        let practice = build_practice(lookup, briefs, lines, false);
+        self.tutor_state = Some(TutorState::new(practice));
+        self.tutor_wiki_stream = None;
+        if let Some(w) = self.tutor_window.as_ref() {
+            w.request_redraw();
+        }
+        Ok(())
+    }
+
     fn on_menu_click(&mut self, event_loop: &ActiveEventLoop, id: MenuId) {
         if id == self.ids.tutor {
             self.open_tutor(event_loop);
@@ -2102,6 +2157,27 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
             WindowEvent::RedrawRequested => {
                 self.redraw_tutor();
             }
+            WindowEvent::HoveredFile(_) => {
+                if !self.tutor_file_hovering {
+                    self.tutor_file_hovering = true;
+                    if let Some(w) = self.tutor_window.as_ref() {
+                        w.request_redraw();
+                    }
+                }
+            }
+            WindowEvent::HoveredFileCancelled => {
+                if self.tutor_file_hovering {
+                    self.tutor_file_hovering = false;
+                    if let Some(w) = self.tutor_window.as_ref() {
+                        w.request_redraw();
+                    }
+                }
+            }
+            WindowEvent::DroppedFile(path) => {
+                if let Err(e) = self.load_dropped_text_file(path) {
+                    eprintln!("rhe: drop rejected: {e}");
+                }
+            }
             _ => {}
         }
     }
@@ -2167,6 +2243,41 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
 
         event_loop.set_control_flow(ControlFlow::Wait);
     }
+}
+
+/// Hard cap on dropped-file size. Sized for "any reasonable book" (War and Peace ≈ 3 MiB plain text, the entire King James ≈ 4 MiB) with headroom; rejects accidental log/dump drops before they OOM the tutor.
+const MAX_DROPPED_FILE_BYTES: u64 = 16 * 1024 * 1024;
+
+/// Read a dropped file from disk and parse it into drill lines. Stat → read → parse, with the size cap enforced before reading. Errors are user-facing strings the caller can log or surface in the UI.
+fn read_and_parse_drill_file(path: &std::path::Path) -> Result<Vec<String>, String> {
+    let md = std::fs::metadata(path)
+        .map_err(|e| format!("cannot stat {}: {e}", path.display()))?;
+    if md.len() > MAX_DROPPED_FILE_BYTES {
+        return Err(format!(
+            "{} is {} bytes, exceeds {} MiB cap",
+            path.display(),
+            md.len(),
+            MAX_DROPPED_FILE_BYTES / (1024 * 1024)
+        ));
+    }
+    let bytes =
+        std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    parse_dropped_drill_text(&bytes).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// Pure parser: bytes → drill lines. UTF-8 with BOM tolerance, blank lines and surrounding whitespace stripped. Returns `Err` for invalid UTF-8 or zero usable lines. Pulled out of the I/O path so it can be unit-tested without touching the filesystem.
+fn parse_dropped_drill_text(bytes: &[u8]) -> Result<Vec<String>, String> {
+    let text = std::str::from_utf8(bytes).map_err(|e| format!("not valid UTF-8: {e}"))?;
+    let lines: Vec<String> = text
+        .trim_start_matches('\u{feff}')
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    if lines.is_empty() {
+        return Err("contains no usable lines".to_string());
+    }
+    Ok(lines)
 }
 
 /// Forwarder thread: pipe `tray-icon`'s internal menu-click channel into the winit event loop. Runs on any platform — the menu-event receiver itself is thread-agnostic.
@@ -2390,6 +2501,7 @@ pub fn run_tray(
         tutor_debug_hit_colours: Vec::new(),
         tutor_debug_colour_seed: 0x9E3779B9,
         tutor_hovered_button: HIT_NONE,
+        tutor_file_hovering: false,
         tutor_dragging_resize: false,
         tutor_dragging_move: false,
         tutor_mouse_pressed: false,
@@ -2404,3 +2516,43 @@ pub fn run_tray(
 
     event_loop.run_app(&mut app).ok();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_drops_blank_lines_and_trims() {
+        let bytes = b"  first line  \n\nsecond\n   \nthird\n";
+        let lines = parse_dropped_drill_text(bytes).unwrap();
+        assert_eq!(lines, vec!["first line", "second", "third"]);
+    }
+
+    #[test]
+    fn parse_strips_utf8_bom() {
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend_from_slice(b"hello\nworld\n");
+        let lines = parse_dropped_drill_text(&bytes).unwrap();
+        assert_eq!(lines, vec!["hello", "world"]);
+    }
+
+    #[test]
+    fn parse_rejects_invalid_utf8() {
+        let bytes = [0xFFu8, 0xFE, 0xFD];
+        assert!(parse_dropped_drill_text(&bytes).is_err());
+    }
+
+    #[test]
+    fn parse_rejects_empty_input() {
+        assert!(parse_dropped_drill_text(b"").is_err());
+        assert!(parse_dropped_drill_text(b"   \n\n  \n").is_err());
+    }
+
+    #[test]
+    fn parse_keeps_unicode_lines() {
+        let bytes = "naïve café\nrésumé\n".as_bytes();
+        let lines = parse_dropped_drill_text(bytes).unwrap();
+        assert_eq!(lines, vec!["naïve café", "résumé"]);
+    }
+}
+

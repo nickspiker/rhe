@@ -338,6 +338,8 @@ const ORDERED_CLAIMED: &[(u8, u8, &str)] = &[
     (0b01100, 0b1110, "scene"),
     (0b01101, 0b1101, "knows"),
     (0b01101, 0b1101, "nose"),
+    (0b01110, 0b1011, "damn"),
+    (0b01110, 0b1011, "dam"),
     // Unreachable-homophone pairs (new chord allocations)
     (0b11011, 0b0010, "peace"),
     (0b11011, 0b0010, "piece"),

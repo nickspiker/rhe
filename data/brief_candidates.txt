@@ -292,7 +292,7 @@
  ever                     888176    3    239  # +er→ev(1278) keep
  feel                     888028    3    240
  police                   885520    5    241
-#guys                     884482    3    242  # excluded: gender, +s→guy(435832)
+ guys                     884482    3    242  # +s→guy(435832)
  minutes                  875455    6    243  # ordered brief (slot already claimed), +s→minute(188958)
  baby                     871488    4    244
  made                     867800    3    245
@@ -572,7 +572,7 @@
  immediately              383504    9    519  # +ly→immediate(8061) keep
  department               382383   10    520  # +ment→depart(2640) keep
  evening                  381284    5    521
-#master                   380524    5    522  # excluded: gender, +er→mast(1115) keep
+#master                   380524    5    522  # excluded: hierarchy, +er→mast(1115) keep
 #lieutenant               380247    8    523  # excluded: title
  present                  379842    7    524
  needs                    379194    4    525  # +s→need(1040131) defer
@@ -591,7 +591,7 @@
  funny                    371772    4    538
  black                    371154    4    539
  alive                    368499    4    540
-#damn                     368456    3    541
+ damn                     368456    3    541  # ordered brief (slot already claimed)
  system                   368390    6    542
  responsible              367810   11    543
 #five                     367252    3    544  # excluded: number_mode_alias ; (number-mode gesture, also weird to brief)
@@ -711,7 +711,7 @@
  finish                   297196    5    658
  during                   297192    5    659
  cold                     297096    4    660
-#bastard                  296660    6    661
+ bastard                  296660    6    661
  forward                  295320    6    662
  watching                 294800    5    663  # +ing→watch(207949) defer
  words                    294726    4    664  # +s→word(164938)
@@ -904,7 +904,7 @@
  pleasure                 216340    5    851
 #princess                 216276    7    852  # excluded: gender
 #tv                       216162    4    853  # excluded: abbreviation
-#bloody                   216104    5    854
+ bloody                   216104    5    854
  college                  215732    5    855
  born                     215718    4    856
 #french                   215644    5    857  # excluded: nationality
@@ -952,7 +952,7 @@
  figured                  202950    6    899  # +ed→figure(81048)
  brilliant                202804    8    900
  practice                 202650    7    901
-#bitch                    202604    3    902
+ bitch                    202604    3    902
  luck                     202456    3    903
  national                 202182    7    904
 #minister                 201918    7    905  # excluded: title
@@ -1257,7 +1257,7 @@
  asshole                  147376    5   1204
  eating                   147357    4   1205  # +ing→eat(197654) defer
  north                    147321    4   1206
-#fuckin                   147208    5   1207
+ fuckin                   147208    5   1207
 #cheering                 146892    5   1208  # excluded: stage_direction, +ing→cheer(14507) keep
  common                   146792    5   1209
  bottom                   146720    5   1210
@@ -1865,7 +1865,7 @@
  knife                     72394    3   1812
 #alan                      72312    4   1813  # excluded: proper_noun_person
  ruin                      72024    4   1814
-#dick                      71992    3   1815
+ dick                      71992    3   1815
  rose                      71884    3   1816
  buying                    71823    4   1817  # +ing→buy(136137) defer
  clock                     71721    4   1818

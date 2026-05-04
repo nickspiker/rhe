@@ -213,8 +213,33 @@ impl Practice {
 
 // ─── Build practice steps ───
 
-/// Curated drill lines used by `rhe test`. Reproducible, offline, short enough to cycle thru while iterating on chord designs.
+/// Curated drill lines used by the tray menu's Test Text source. Reproducible, offline, short enough to cycle thru while iterating on chord designs. One line per recent feature comes first so a quick pass through Test Text exercises every new chord / gesture before the older homophone and number-mode regression sets.
 pub const TEST_SENTENCES: &[&str] = &[
+    // ─── Recent features ─────────────────────────────────────────────
+    // Pristine zero gesture (word + mod-tap + word-up = "zero").
+    "the count is zero and now we begin to type slowly",
+    // one/won ordered bundle on R-RING+R-thumb.
+    "i won the match and one of you must lose this round",
+    // thing-family compound: thing / something / anything / nothing / everything.
+    "the thing is something anything nothing everything has its own place here",
+    // one-family compound: someone / anyone / everyone.
+    "someone said anyone or everyone could be welcome here today right now",
+    // Batch A homophones: ok/okay, seen/scene.
+    "i have seen this scene and ok and okay both work fine here",
+    // Batch A homophones: knows/nose.
+    "she knows my nose well so we get along fine all day",
+    // Batch B homophones: peace/piece.
+    "for peace we share a piece of warm bread by the fire",
+    // Batch B homophones: weather/whether.
+    "i wonder whether the weather will hold today or turn cold tonight",
+    // Batch B homophones: cell/sell, role/roll.
+    "let us sell the cell and roll the new role at dawn",
+    // Batch B homophones: led/lead.
+    "he led the team and now i lead the next round here",
+    // Batch B homophones: site/sight.
+    "the site is a sight for sore eyes today and tomorrow too",
+
+    // ─── Number-mode regression set ──────────────────────────────────
     "the answer is 42 four times ten plus two",
     "pi is about 3.14159 ish today",
     "count 0 1 2 3 4 5 6 7 8 9 and then stop",
@@ -302,12 +327,46 @@ pub fn number_char_target(c: char) -> Option<(u8, u8, bool)> {
     Some((right, left, is_symbol))
 }
 
-/// Build number-mode steps for spelled digit words ("zero" through "nine"). Generates: mod-tap entry → finger+mod chord → commit.
+/// Pristine empty-number-mode-exit gesture: word-hold → mod-tap → word-release. Engine emits "zero ". Both this and the older R-pinky-spelled path are accepted by the engine, but the pristine path is the recent shortcut and is what the tutor teaches for "zero".
+pub fn build_pristine_zero_steps() -> Vec<Step> {
+    let word_only = Target {
+        right: 0,
+        left: 0,
+        word: true,
+        accepted_leads: KeyMask::EMPTY,
+    };
+    let all_off = Target::default();
+    vec![
+        // 1. +word
+        Step {
+            target: word_only,
+            ..Step::default()
+        },
+        // 2. mod-tap (R-thumb press+release while word held)
+        Step {
+            target: word_only,
+            mod_tap_only: true,
+            number_glyph: Some("zero".to_string()),
+            ..Step::default()
+        },
+        // 3. all-off (word release → engine emits "zero ")
+        Step {
+            target: all_off,
+            ..Step::default()
+        },
+    ]
+}
+
+/// Build number-mode steps for spelled digit words ("zero" through "nine"). Generates: mod-tap entry → finger+mod chord → commit. Special cases: "zero" uses the pristine gesture (`build_pristine_zero_steps`); "one" returns `None` so practice falls through to the brief table, where the recent one/won ordered bundle (R-RING+R-thumb, R_THUMB-first → "one", R_RING-first → "won") owns the chord.
 pub fn build_digit_word_steps(word: &str) -> Option<Vec<Step>> {
     let lower = word.to_lowercase();
+    if lower == "zero" {
+        return Some(build_pristine_zero_steps());
+    }
+    if lower == "one" {
+        return None;
+    }
     let scan_code = match lower.as_str() {
-        "zero" => scan::R_PINKY,
-        "one" => scan::R_RING,
         "two" => scan::R_MID,
         "three" => scan::R_IDX,
         "four" => scan::R_IDX_INNER,

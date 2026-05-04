@@ -200,6 +200,14 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     (0b1101, 0b01101, scan::R_PINKY, "knows"),
     (0b1101, 0b01101, scan::L_RING, "nose"),
     (0b1101, 0b01101, scan::R_RING, "nose"),
+    // damn / dam — damn's chord (L-idx+L-mid+L-pinky + R-mid+R-ring+R-pinky)
+    //   easy fingers → damn  R-ring → dam
+    (0b1011, 0b01110, scan::L_PINKY, "damn"),
+    (0b1011, 0b01110, scan::L_IDX, "damn"),
+    (0b1011, 0b01110, scan::L_MID, "damn"),
+    (0b1011, 0b01110, scan::R_MID, "damn"),
+    (0b1011, 0b01110, scan::R_PINKY, "damn"),
+    (0b1011, 0b01110, scan::R_RING, "dam"),
 
     // ─── Unreachable-homophone pairs needing new chord allocations ──
     // Each pair takes one chord slot from the regular brief assignment

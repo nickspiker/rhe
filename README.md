@@ -157,6 +157,42 @@ the first-down key renders at full brightness and the rest of the
 target keys dim to the dot colour. The brighter cell is the
 "press this one first" hint, no extra steps needed.
 
+### Compound families (similar word → similar chord)
+
+Ordered briefs collapse same-sound words onto a shared chord. The inverse case is same-family words: stems like `thing` and `one` that grow a small set of prefix compounds (`something`, `anything`, `nothing`, `everything` / `someone`, `anyone`, `everyone`). The words are obviously related — the chords should be too.
+
+Compound families put the stem on a right-hand base chord and let each prefix add **one** left-hand finger. The prefix → finger mapping is fixed across families:
+
+```
+some-     L-MID
+any-      L-RING
+no-       L-PINKY
+every-    L-IDX
+```
+
+Examples:
+
+```
+thing        R-IDX + R-MID + R-RING + R-thumb       (the bare stem)
+something    R-base + L-MID
+anything     R-base + L-RING
+nothing      R-base + L-PINKY
+everything   R-base + L-IDX
+```
+
+The `one`-family (`someone` / `anyone` / `everyone` — no "noone") rides the same convention on its own R-base chord.
+
+This is the inverse of ordered briefs. The two rules form a matched pair:
+
+```
+Same sound   → same chord, different lead finger      (ordered briefs)
+Same family  → similar chord, single-finger modifier  (compound families)
+```
+
+Both trade some chord-slot economy for memorability. Once the prefix → finger map is in muscle memory, `anything` reads as "thing with the any-finger added", not a separate brief to memorize. New families are cheap to add: pick a base chord and the prefix modifiers are already wired.
+
+Curated alongside ordered briefs in [`src/layout/ordered_briefs.rs`](src/layout/ordered_briefs.rs); `gen_briefs` reserves the family slots so unordered briefs can't claim them.
+
 ## Consonants
 
 Mapped by frequency × measured chord effort. No voicing pairs —
@@ -444,6 +480,12 @@ Done:
   background, so wraparounds swap instantly. Strips brackets,
   parentheticals, non-ASCII; falls back to bundled Alice in
   Wonderland if offline. Random starting sentence each run.
+- **Drag-and-drop custom text** — drop any UTF-8 `.txt` file on the
+  tutor window to switch the drill source to that file's lines.
+  Capped at 16 MiB per drop so an accidental log-file drop can't OOM
+  the tutor; well above any reasonable book length. Complements the
+  built-in Test Text and Brown Corpus menu picks for material that
+  isn't bundled or auto-fetched.
 - **Number mode** — `word + mod` tap to enter. Ten home-row +
   inner-index positions (G/H included) map 1-to-1 to digits 0–9;
   mod-variants give symbols (`+`, `-`, `*`, `/`, `%`, etc.). Word
