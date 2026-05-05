@@ -684,6 +684,13 @@ fn main() {
         (0b10100, 0b0010, "someone"),
         (0b10100, 0b0100, "anyone"),
         (0b10100, 0b0001, "everyone"),
+        // three — center 6 fingers (idx+mid+ring on both hands, no thumbs,
+        // no pinkies). Symmetric, near digit-3's number-mode finger
+        // (R-IDX), and parallel to the digit-word brief slots for
+        // one (R-RING+R-thumb), two (R-IDX+R-MID+R-thumb), four (all 4
+        // right fingers). Auto-assignment had given "three" a 5-finger
+        // chord that didn't fit the family.
+        (0b00111, 0b0111, "three"),
     ];
 
     let all_slots = all_slots_by_effort();
