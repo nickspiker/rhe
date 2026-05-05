@@ -327,16 +327,8 @@ pub fn number_char_target(c: char) -> Option<(u8, u8, bool)> {
     Some((right, left, is_symbol))
 }
 
-/// Pristine empty-number-mode-exit gesture: hold word + mod-tap, release word. Engine emits "zero ". Both this and the older R-pinky-spelled path are accepted by the engine; this is what the tutor teaches.
-///
-/// Decomposed into four discrete key transitions so each step is one observable event (key going down, or key going up) rather than an abstract "tap" or "hold." Cells light by target match: a cell that's lit but not pressed = "press it"; a cell that's pressed but not lit = "release it." User watches the lit set change between steps and acts on the diff.
+/// Pristine empty-number-mode-exit gesture, drilled as two state targets: both keys held, then both keys released. The engine accepts all four press/release orders (word↓ first or mod↓ first × word↑ first or mod↑ first), and the strict state matcher does too — extras only error on a held key that isn't in target, so partial-press states (only word held, only thumb held) just wait for the other key without erroring.
 pub fn build_pristine_zero_steps() -> Vec<Step> {
-    let word_only = Target {
-        right: 0,
-        left: 0,
-        word: true,
-        accepted_leads: KeyMask::EMPTY,
-    };
     let word_and_thumb = Target {
         right: 1 << 4, // R-thumb bit
         left: 0,
@@ -345,25 +337,13 @@ pub fn build_pristine_zero_steps() -> Vec<Step> {
     };
     let all_off = Target::default();
     vec![
-        // 1. Word DOWN (no fingers, word held).
-        Step {
-            target: word_only,
-            ..Step::default()
-        },
-        // 2. Thumb DOWN (word still held).
+        // Step 0: +mod +word — both keys held, in any order.
         Step {
             target: word_and_thumb,
             number_glyph: Some("zero".to_string()),
             ..Step::default()
         },
-        // 3. Thumb UP (word still held). Engine fires ModTap on this
-        //    transition and the engine's interpreter enters / exits
-        //    number mode pristine.
-        Step {
-            target: word_only,
-            ..Step::default()
-        },
-        // 4. Word UP (all off). Engine emits "zero ".
+        // Step 1: -mod -word — both keys released, in any order.
         Step {
             target: all_off,
             ..Step::default()
@@ -1632,25 +1612,17 @@ mod tests {
     #[test]
     fn pristine_zero_steps_shape() {
         let steps = build_pristine_zero_steps();
-        // 4 discrete key transitions: word↓, thumb↓, thumb↑, word↑.
-        assert_eq!(steps.len(), 4);
-        // Step 0: word down only.
+        // 2 state targets: both held, then both released.
+        assert_eq!(steps.len(), 2);
+        // Step 0: word + R-thumb both held.
         assert!(steps[0].target.word);
-        assert_eq!(steps[0].target.right, 0);
-        // Step 1: word + thumb both down.
-        assert!(steps[1].target.word);
-        assert_eq!(steps[1].target.right, 1 << 4);
-        // Step 2: word still down, thumb up.
-        assert!(steps[2].target.word);
-        assert_eq!(steps[2].target.right, 0);
-        // Step 3: all off.
-        assert!(!steps[3].target.word);
-        assert_eq!(steps[3].target.right, 0);
+        assert_eq!(steps[0].target.right, 1 << 4);
+        // Step 1: all off.
+        assert!(!steps[1].target.word);
+        assert_eq!(steps[1].target.right, 0);
     }
 
-    /// Word-first sequence: word↓, thumb↓, thumb↑, word↑.
-    #[test]
-    fn pristine_zero_drill_word_first() {
+    fn run_pristine_zero(events: &[(u8, KeyDirection)]) -> TutorState {
         let practice = Practice {
             sentences: vec![vec![PracticeWord {
                 word: "zero".to_string(),
@@ -1667,25 +1639,59 @@ mod tests {
             wrapped: false,
         };
         let mut state = TutorState::new(practice);
-        let down = |s| RheKeyEvent {
-            scan: s,
-            direction: KeyDirection::Down,
-        };
-        let up = |s| RheKeyEvent {
-            scan: s,
-            direction: KeyDirection::Up,
-        };
+        for &(scan, direction) in events {
+            state.tick(RheKeyEvent { scan, direction });
+        }
+        state
+    }
 
-        state.tick(down(scan::WORD));
-        assert!(!state.errored);
-        assert_eq!(state.practice.step_idx, 1);
-        state.tick(down(scan::R_THUMB));
-        assert!(!state.errored);
-        assert_eq!(state.practice.step_idx, 2);
-        state.tick(up(scan::R_THUMB));
-        assert!(!state.errored);
-        assert_eq!(state.practice.step_idx, 3);
-        state.tick(up(scan::WORD));
-        assert!(!state.errored);
+    /// All four engine-accepted orders should drill cleanly through both
+    /// steps without botching: press order × release order.
+    #[test]
+    fn pristine_zero_drill_word_first_thumb_first_release() {
+        // word↓, thumb↓, thumb↑, word↑
+        let s = run_pristine_zero(&[
+            (scan::WORD, KeyDirection::Down),
+            (scan::R_THUMB, KeyDirection::Down),
+            (scan::R_THUMB, KeyDirection::Up),
+            (scan::WORD, KeyDirection::Up),
+        ]);
+        assert!(!s.errored);
+    }
+
+    #[test]
+    fn pristine_zero_drill_word_first_word_first_release() {
+        // word↓, thumb↓, word↑, thumb↑
+        let s = run_pristine_zero(&[
+            (scan::WORD, KeyDirection::Down),
+            (scan::R_THUMB, KeyDirection::Down),
+            (scan::WORD, KeyDirection::Up),
+            (scan::R_THUMB, KeyDirection::Up),
+        ]);
+        assert!(!s.errored);
+    }
+
+    #[test]
+    fn pristine_zero_drill_thumb_first_thumb_first_release() {
+        // thumb↓, word↓, thumb↑, word↑
+        let s = run_pristine_zero(&[
+            (scan::R_THUMB, KeyDirection::Down),
+            (scan::WORD, KeyDirection::Down),
+            (scan::R_THUMB, KeyDirection::Up),
+            (scan::WORD, KeyDirection::Up),
+        ]);
+        assert!(!s.errored);
+    }
+
+    #[test]
+    fn pristine_zero_drill_thumb_first_word_first_release() {
+        // thumb↓, word↓, word↑, thumb↑
+        let s = run_pristine_zero(&[
+            (scan::R_THUMB, KeyDirection::Down),
+            (scan::WORD, KeyDirection::Down),
+            (scan::WORD, KeyDirection::Up),
+            (scan::R_THUMB, KeyDirection::Up),
+        ]);
+        assert!(!s.errored);
     }
 }
