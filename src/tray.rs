@@ -744,19 +744,12 @@ impl TrayApp {
             .as_ref()
             .map(|s| matches!(s.practice.mode, crate::tutor::drill::WordMode::Brief))
             .unwrap_or(false);
-        // Step hint: action verb on mod_tap_only steps so the user
-        // sees "tap" instead of just the output glyph (lit cells alone
-        // read as "hold these," but the gesture is press+release, not
-        // hold). The hint slot is only one cell-width wide, so keep
-        // it short — the target word above already shows the output.
         let step_hint = self
             .tutor_state
             .as_ref()
             .and_then(|s| s.practice.current_step())
             .map(|step| {
-                if step.mod_tap_only {
-                    "tap".to_string()
-                } else if let Some(g) = &step.number_glyph {
+                if let Some(g) = &step.number_glyph {
                     g.clone()
                 } else if let Some(p) = step.phoneme {
                     p.to_ipa().to_string()
@@ -980,36 +973,6 @@ impl TrayApp {
                     700,
                     "Bona Nova",
                     logo_colour,
-                );
-            } else if self
-                .tutor_state
-                .as_ref()
-                .and_then(|s| s.practice.current_step())
-                .map_or(false, |step| step.mod_tap_only)
-            {
-                // mod_tap_only step: replace the phoneme/glyph strip
-                // with an explicit gesture instruction. Lit cells alone
-                // read as "hold these," so the user holds both keys
-                // and the tap never happens. A whole sentence in the
-                // phoneme line removes any ambiguity. The tiny "tap"
-                // hint in the keyboard gap stays as a secondary cue.
-                let msg = "hold word, tap mod";
-                let phon_colour = if drill_errored {
-                    0xFFFF0000
-                } else {
-                    theme::SENTENCE_CURRENT
-                };
-                text.draw_text_center_u32(
-                    pixels,
-                    width,
-                    msg,
-                    layout.target_cx,
-                    layout.phoneme_cy,
-                    layout.phoneme_font,
-                    700,
-                    phon_colour,
-                    "Bona Nova",
-                    true,
                 );
             } else
             // Phoneme line: italic Bona Nova. Each glyph is measured
@@ -1320,19 +1283,7 @@ impl TrayApp {
             let bottom_cy = layout.bottom_cy;
             let mod_w = layout.mod_w;
             let mod_cx = layout.mod_cx;
-            // mod_tap_only steps don't carry R-thumb in target.right (the
-            // target *state* is no fingers held; the gesture is a tap, not
-            // a hold), so the mod cell wouldn't highlight by chord match
-            // alone. Force-highlight on mod_tap_only so the user gets a
-            // visual cue to tap the green cell — otherwise they sit there
-            // holding word forever wondering what comes next.
-            let step_is_mod_tap = self
-                .tutor_state
-                .as_ref()
-                .and_then(|s| s.practice.current_step())
-                .map(|step| step.mod_tap_only)
-                .unwrap_or(false);
-            let mod_target = (target.right & (1u8 << 4)) != 0 || step_is_mod_tap;
+            let mod_target = (target.right & (1u8 << 4)) != 0;
             let mod_fill = if mod_target {
                 theme::MOD_PRIMARY
             } else {
