@@ -4,12 +4,35 @@
 //!
 //! Language-neutral submodules (`keyboard`, `numbers`) are shared across all builds.
 
+#[cfg(not(any(feature = "lang-en", feature = "lang-mri")))]
+compile_error!("rhe needs exactly one of `lang-en` or `lang-mri` enabled");
+
+#[cfg(all(feature = "lang-en", feature = "lang-mri"))]
+compile_error!(
+    "rhe must not have both `lang-en` and `lang-mri` enabled — pass --no-default-features when enabling lang-mri"
+);
+
+#[cfg(feature = "lang-en")]
 pub mod en;
+
+#[cfg(feature = "lang-mri")]
+pub mod mri;
+
 pub mod keyboard;
 pub mod numbers;
 
+#[cfg(feature = "lang-en")]
 pub use en::briefs;
+#[cfg(feature = "lang-en")]
 pub use en::chords;
+#[cfg(feature = "lang-en")]
 pub use en::number_forms;
+#[cfg(feature = "lang-en")]
 pub use en::ordered_briefs;
+#[cfg(feature = "lang-en")]
 pub use en::suffixes;
+
+#[cfg(feature = "lang-mri")]
+pub use mri::briefs;
+#[cfg(feature = "lang-mri")]
+pub use mri::chords;

@@ -20,6 +20,14 @@ exclude = [
     "target/*",
 ]
 
+[features]
+default = ["lang-en"]
+# Compile-time language selection. Exactly one must be enabled.
+# `cargo install rhe`                                            → English (default)
+# `cargo install rhe --features lang-mri --no-default-features`  → Māori
+lang-en = []
+lang-mri = []
+
 [dependencies]
 ureq = "2"
 zstd = "0.13"
