@@ -745,19 +745,17 @@ impl TrayApp {
             .map(|s| matches!(s.practice.mode, crate::tutor::drill::WordMode::Brief))
             .unwrap_or(false);
         // Step hint: action verb on mod_tap_only steps so the user
-        // sees "tap" instead of just "zero" (the lit cells alone read
-        // as "hold these," but the gesture is press+release, not hold).
-        // Other steps fall through to glyph / phoneme as before.
+        // sees "tap" instead of just the output glyph (lit cells alone
+        // read as "hold these," but the gesture is press+release, not
+        // hold). The hint slot is only one cell-width wide, so keep
+        // it short — the target word above already shows the output.
         let step_hint = self
             .tutor_state
             .as_ref()
             .and_then(|s| s.practice.current_step())
             .map(|step| {
                 if step.mod_tap_only {
-                    match &step.number_glyph {
-                        Some(g) => format!("tap → {}", g),
-                        None => "tap".to_string(),
-                    }
+                    "tap".to_string()
                 } else if let Some(g) = &step.number_glyph {
                     g.clone()
                 } else if let Some(p) = step.phoneme {
