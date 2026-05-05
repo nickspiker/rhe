@@ -981,6 +981,36 @@ impl TrayApp {
                     "Bona Nova",
                     logo_colour,
                 );
+            } else if self
+                .tutor_state
+                .as_ref()
+                .and_then(|s| s.practice.current_step())
+                .map_or(false, |step| step.mod_tap_only)
+            {
+                // mod_tap_only step: replace the phoneme/glyph strip
+                // with an explicit gesture instruction. Lit cells alone
+                // read as "hold these," so the user holds both keys
+                // and the tap never happens. A whole sentence in the
+                // phoneme line removes any ambiguity. The tiny "tap"
+                // hint in the keyboard gap stays as a secondary cue.
+                let msg = "hold word, tap mod";
+                let phon_colour = if drill_errored {
+                    0xFFFF0000
+                } else {
+                    theme::SENTENCE_CURRENT
+                };
+                text.draw_text_center_u32(
+                    pixels,
+                    width,
+                    msg,
+                    layout.target_cx,
+                    layout.phoneme_cy,
+                    layout.phoneme_font,
+                    700,
+                    phon_colour,
+                    "Bona Nova",
+                    true,
+                );
             } else
             // Phoneme line: italic Bona Nova. Each glyph is measured
             // at its actual render weight (400 for past/future, 700
