@@ -1126,6 +1126,26 @@ impl TutorState {
 
             if step_advanced_by_modtap {
                 // already advanced above; fall through to step-transition reseed
+            } else if self
+                .practice
+                .current_step()
+                .map_or(false, |s| s.mod_tap_only)
+            {
+                // mod_tap_only step: tolerate R-thumb press/release without
+                // overshoot errors. Advance fires above via the ModTap sm
+                // event when R-thumb releases. Any other finger going down
+                // is still a botch — the gesture is "thumb tap, no other
+                // input." Hoisted above the Number-mode arm so spelled-zero
+                // (lives in number_steps) doesn't trip the strict state
+                // matcher on R-thumb down.
+                if is_key_down
+                    && rhe_event.scan != scan::WORD
+                    && rhe_event.scan != scan::R_THUMB
+                {
+                    self.practice.reset_word();
+                    self.last_was_botch = true;
+                    self.errored = true;
+                }
             } else if self.practice.mode == WordMode::Number {
                 // Number mode: pure state matching. Advance when
                 // current key state exactly equals the target.
