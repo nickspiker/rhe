@@ -327,7 +327,9 @@ pub fn number_char_target(c: char) -> Option<(u8, u8, bool)> {
     Some((right, left, is_symbol))
 }
 
-/// Pristine empty-number-mode-exit gesture: word-hold → mod-tap → word-release. Engine emits "zero ". Both this and the older R-pinky-spelled path are accepted by the engine, but the pristine path is the recent shortcut and is what the tutor teaches for "zero".
+/// Pristine empty-number-mode-exit gesture: hold word + tap mod, then release word. Engine emits "zero ". Both this and the older R-pinky-spelled path are accepted by the engine, but the pristine path is the recent shortcut and is what the tutor teaches for "zero".
+///
+/// Single instructable chord step (word held + mod tapped, presented as one gesture so both word-bar and mod cell light up together) followed by all-off. Advance on the StateMachine's `ModTap` event, which fires when R-thumb is released while word is still held — the engine's actual entry condition for number mode.
 pub fn build_pristine_zero_steps() -> Vec<Step> {
     let word_only = Target {
         right: 0,
@@ -337,19 +339,18 @@ pub fn build_pristine_zero_steps() -> Vec<Step> {
     };
     let all_off = Target::default();
     vec![
-        // 1. +word
-        Step {
-            target: word_only,
-            ..Step::default()
-        },
-        // 2. mod-tap (R-thumb press+release while word held)
+        // 1. Combined gesture: hold word + tap mod. Both cells light up
+        //    in the tutor (mod_tap_only highlights mod via the predicate
+        //    in tray.rs, target.word=true highlights the word bar).
+        //    ModTap fires only if word is held during R-thumb tap, so
+        //    the engine's order requirement is naturally enforced.
         Step {
             target: word_only,
             mod_tap_only: true,
             number_glyph: Some("zero".to_string()),
             ..Step::default()
         },
-        // 3. all-off (word release → engine emits "zero ")
+        // 2. All-off — release word, engine emits "zero ".
         Step {
             target: all_off,
             ..Step::default()
@@ -1067,7 +1068,13 @@ impl TutorState {
             && !self.key_state.word;
 
         if self.errored {
-            if all_off {
+            // Clear when all fingers are off — word can stay held. The
+            // strict all_off rule (including word) was too punishing
+            // for word-held gestures (phoneme typing, pristine-zero
+            // mod-tap retry): user had to drop word and rebuild the
+            // chord context. Now they can release just the bad
+            // fingers and retry the chord with word still held.
+            if self.key_state.right_bits() == 0 && self.key_state.left_bits() == 0 {
                 self.errored = false;
                 self.touched_right = 0;
                 self.touched_left = 0;
