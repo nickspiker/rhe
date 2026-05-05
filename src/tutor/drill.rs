@@ -225,6 +225,7 @@ impl Practice {
 // ─── Build practice steps ───
 
 /// Curated drill lines used by the tray menu's Test Text source. Reproducible, offline, short enough to cycle thru while iterating on chord designs. One line per recent feature comes first so a quick pass through Test Text exercises every new chord / gesture before the older homophone and number-mode regression sets.
+#[cfg(feature = "lang-en")]
 pub const TEST_SENTENCES: &[&str] = &[
     // ─── Recent features ─────────────────────────────────────────────
     // Pristine zero gesture: +word+mod then -word-mod, in any order.
@@ -287,6 +288,26 @@ pub const TEST_SENTENCES: &[&str] = &[
     "i had to wait for the weight to settle down",
     "the son watches the sun rise each morning",
     "we will meet for a piece of meat tonight",
+];
+
+/// Curated drill lines for the te reo Māori build. Common greetings, particles, and a sampling of vocabulary that exercises every consonant + every vowel + the digraphs (`ng`, `wh`) and macron-marked long vowels. Native-speaker review pending; first cut.
+#[cfg(feature = "lang-mri")]
+pub const TEST_SENTENCES: &[&str] = &[
+    "kia ora",
+    "tēnā koe",
+    "kei te pēhea koe",
+    "ko wai tō ingoa",
+    "ko hēmi tōku ingoa",
+    "haere mai ki tēnei wāhi",
+    "kei te pai ahau",
+    "he aha tēnei",
+    "he reka te kai",
+    "kei te kāinga te whānau",
+    "ka tunua e ia ngā paraoa",
+    "kāore au e mōhio",
+    "hoatu ki a ia te pukapuka",
+    "ka mau te wehi",
+    "rangatahi me ngā pakeke",
 ];
 
 /// Brown Corpus (40k sentences of American English): one sentence per line, zstd-compressed in `data/brown_corpus.txt.zst` and resolved through `crate::data` (cache → checkout → GitHub raw). Decompressed on each call; called once when the user selects the "Brown Corpus" tutor text source.
