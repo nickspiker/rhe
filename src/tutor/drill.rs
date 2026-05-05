@@ -1648,7 +1648,8 @@ pub fn update_key_state(state: &mut KeyState, event: &RheKeyEvent) {
     }
 }
 
-#[cfg(test)]
+// Drill tests use English-specific Form variants, English digit-word multi-path drill, and English phoneme paths. Skip under lang-mri — Māori has no number forms / suffix system / homophone bundles in v0.1.2 so the tests don't apply.
+#[cfg(all(test, feature = "lang-en"))]
 mod tests {
     use super::*;
     use crate::layout::number_forms::Form;

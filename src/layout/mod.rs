@@ -18,6 +18,7 @@ pub mod en;
 #[cfg(feature = "lang-mri")]
 pub mod mri;
 
+pub mod chord_key;
 pub mod keyboard;
 pub mod numbers;
 
@@ -36,3 +37,9 @@ pub use en::suffixes;
 pub use mri::briefs;
 #[cfg(feature = "lang-mri")]
 pub use mri::chords;
+#[cfg(feature = "lang-mri")]
+pub use mri::number_forms;
+#[cfg(feature = "lang-mri")]
+pub use mri::ordered_briefs;
+#[cfg(feature = "lang-mri")]
+pub use mri::suffixes;

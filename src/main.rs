@@ -65,11 +65,19 @@ fn run() {
     let caps_proxy = proxy.clone();
 
     std::thread::spawn(move || {
-        let cmudict = data::load_cmudict();
-        let freq = data::load_word_freq();
-
         let phoneme_table = crate::layout::chords::PhonemeTable::new();
-        let dictionary = phoneme_dict::PhonemeDictionary::build(&cmudict, &freq);
+        // English: PhonemeDictionary built from CMU + frequency data so the
+        // interpreter can resolve homographs (`to/two`) by phoneme path.
+        // Māori: 1:1 grapheme→phoneme, no equivalent dictionary needed —
+        // engine emits via the autospell (phoneme→grapheme) fallback.
+        #[cfg(feature = "lang-en")]
+        let dictionary = {
+            let cmudict = data::load_cmudict();
+            let freq = data::load_word_freq();
+            phoneme_dict::PhonemeDictionary::build(&cmudict, &freq)
+        };
+        #[cfg(feature = "lang-mri")]
+        let dictionary = phoneme_dict::PhonemeDictionary::empty();
         let brief_table = crate::briefs::load_briefs();
 
         let mut interp = interpreter::Interpreter::with_fallback_and_modes(
@@ -176,11 +184,19 @@ fn run() {
     });
 
     std::thread::spawn(move || {
-        let cmudict = data::load_cmudict();
-        let freq = data::load_word_freq();
-
         let phoneme_table = crate::layout::chords::PhonemeTable::new();
-        let dictionary = phoneme_dict::PhonemeDictionary::build(&cmudict, &freq);
+        // English: PhonemeDictionary built from CMU + frequency data so the
+        // interpreter can resolve homographs (`to/two`) by phoneme path.
+        // Māori: 1:1 grapheme→phoneme, no equivalent dictionary needed —
+        // engine emits via the autospell (phoneme→grapheme) fallback.
+        #[cfg(feature = "lang-en")]
+        let dictionary = {
+            let cmudict = data::load_cmudict();
+            let freq = data::load_word_freq();
+            phoneme_dict::PhonemeDictionary::build(&cmudict, &freq)
+        };
+        #[cfg(feature = "lang-mri")]
+        let dictionary = phoneme_dict::PhonemeDictionary::empty();
         let brief_table = crate::briefs::load_briefs();
 
         let mut interp = interpreter::Interpreter::with_fallback_and_modes(
@@ -294,11 +310,19 @@ fn run() {
     });
 
     std::thread::spawn(move || {
-        let cmudict = data::load_cmudict();
-        let freq = data::load_word_freq();
-
         let phoneme_table = crate::layout::chords::PhonemeTable::new();
-        let dictionary = phoneme_dict::PhonemeDictionary::build(&cmudict, &freq);
+        // English: PhonemeDictionary built from CMU + frequency data so the
+        // interpreter can resolve homographs (`to/two`) by phoneme path.
+        // Māori: 1:1 grapheme→phoneme, no equivalent dictionary needed —
+        // engine emits via the autospell (phoneme→grapheme) fallback.
+        #[cfg(feature = "lang-en")]
+        let dictionary = {
+            let cmudict = data::load_cmudict();
+            let freq = data::load_word_freq();
+            phoneme_dict::PhonemeDictionary::build(&cmudict, &freq)
+        };
+        #[cfg(feature = "lang-mri")]
+        let dictionary = phoneme_dict::PhonemeDictionary::empty();
         let brief_table = crate::briefs::load_briefs();
 
         let mut interp = interpreter::Interpreter::with_fallback_and_modes(

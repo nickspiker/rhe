@@ -59,4 +59,8 @@ gtk = "0.18"
 rdev = { version = "0.5", features = ["unstable_grab"] }
 windows = { version = "0.58", features = ["Win32_Foundation", "Win32_UI_Input_KeyboardAndMouse"] }
 
+[[bin]]
+name = "gen_briefs"
+required-features = ["lang-en"]
+
 [dev-dependencies]

@@ -1,14 +1,17 @@
-//! Builds phoneme-sequence-to-word dictionary from CMU dict and frequency data.
+//! Builds phoneme-sequence-to-word dictionary.
+//!
+//! For English (`lang-en`), parses the CMU pronouncing dictionary's ARPABET notation. For Māori (`lang-mri`), the dictionary is empty — te reo's 1:1 grapheme-to-phoneme orthography means the engine emits via the autospell (phoneme→grapheme) path and never needs a phoneme→word lookup.
 
 use crate::layout::chords::Phoneme;
 use std::collections::HashMap;
 
-/// Phoneme dictionary: maps a sequence of phonemes → English word. Built from CMU dict. Homophones resolve to most frequent word.
+/// Phoneme dictionary: maps a sequence of phonemes → word. Under `lang-en` it's built from CMU dict + frequency data; under `lang-mri` it's permanently empty (every lookup misses, engine falls through to autospell).
 pub struct PhonemeDictionary {
     entries: HashMap<Vec<Phoneme>, String>,
 }
 
-/// Walk CMU dict text, yielding `(lowercase_word, phonemes)` for every well-formed entry. Skips comment lines (`;;;`), strips variant markers (`WORD(2)` → `word`), drops stress digits from each phoneme, and filters entries that contain no recognised phonemes. Both consumers below build over this single iterator so the parsing rules live in exactly one place.
+/// Walk CMU dict text, yielding `(lowercase_word, phonemes)` for every well-formed entry. Skips comment lines (`;;;`), strips variant markers (`WORD(2)` → `word`), drops stress digits from each phoneme, and filters entries that contain no recognised phonemes. Both consumers below build over this single iterator so the parsing rules live in exactly one place. ARPABET-specific; only compiled under `lang-en`.
+#[cfg(feature = "lang-en")]
 fn iter_entries(cmudict_text: &str) -> impl Iterator<Item = (String, Vec<Phoneme>)> + '_ {
     cmudict_text.lines().filter_map(|line| {
         if line.starts_with(";;;") {
@@ -31,7 +34,15 @@ fn iter_entries(cmudict_text: &str) -> impl Iterator<Item = (String, Vec<Phoneme
 }
 
 impl PhonemeDictionary {
-    /// Build from CMU dict text and frequency data.
+    /// Empty dictionary — always-miss lookup. Used by `lang-mri` (no CMU equivalent for te reo) and as the v0.1.2 baseline before any per-language phoneme-word table is wired in.
+    pub fn empty() -> Self {
+        Self {
+            entries: HashMap::new(),
+        }
+    }
+
+    /// Build from CMU dict text and frequency data. English-only — ARPABET-specific.
+    #[cfg(feature = "lang-en")]
     pub fn build(cmudict_text: &str, freq_text: &str) -> Self {
         let mut freq: HashMap<String, u64> = HashMap::new();
         for line in freq_text.lines() {
@@ -63,13 +74,14 @@ impl PhonemeDictionary {
         Self { entries: dict }
     }
 
-    /// Look up a phoneme sequence → English word.
+    /// Look up a phoneme sequence → word. Always misses under `lang-mri`.
     pub fn lookup(&self, phonemes: &[Phoneme]) -> Option<&str> {
         self.entries.get(phonemes).map(|s| s.as_str())
     }
 }
 
-/// Parse CMU dict text and return word → phoneme vec mapping. Useful for looking up specific words.
+/// Parse CMU dict text and return word → phoneme vec mapping. Useful for looking up specific words. English-only.
+#[cfg(feature = "lang-en")]
 pub fn parse_cmudict(cmudict_text: &str) -> HashMap<String, Vec<Phoneme>> {
     let mut dict: HashMap<String, Vec<Phoneme>> = HashMap::new();
     for (word, phonemes) in iter_entries(cmudict_text) {
@@ -78,7 +90,7 @@ pub fn parse_cmudict(cmudict_text: &str) -> HashMap<String, Vec<Phoneme>> {
     dict
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "lang-en"))]
 mod tests {
     use super::*;
 

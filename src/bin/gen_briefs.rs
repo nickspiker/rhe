@@ -414,7 +414,7 @@ fn main() {
     let freq_path = project.join("data/en_freq.txt");
     let candidates_path = project.join("data/brief_candidates.txt");
     let homophones_path = project.join("data/homophones.txt");
-    let out_path = project.join("src/layout/briefs.rs");
+    let out_path = project.join("src/layout/en/briefs.rs");
 
     // 1. Load CMU dict (word → phoneme list)
     let mut cmu: HashMap<String, Vec<String>> = HashMap::new();

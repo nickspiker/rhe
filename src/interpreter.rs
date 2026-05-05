@@ -412,7 +412,8 @@ impl Interpreter {
     }
 }
 
-#[cfg(test)]
+// English-specific tests — they reference English Phoneme variants (Ae, Dh, ...) and PhonemeDictionary::build (CMU parser). The Māori Phoneme enum has different variants and an empty PhonemeDictionary, so these tests don't apply.
+#[cfg(all(test, feature = "lang-en"))]
 mod tests {
     use super::*;
     use crate::layout::chords::{ChordKey, Phoneme};
