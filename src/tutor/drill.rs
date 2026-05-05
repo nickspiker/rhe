@@ -1615,4 +1615,112 @@ mod tests {
         assert!(build_spelled_form_steps("hello").is_none());
         assert!(build_spelled_form_steps("answer").is_none());
     }
+
+    #[test]
+    fn pristine_zero_steps_shape() {
+        let steps = build_pristine_zero_steps();
+        // 2 steps: combined word+mod-tap gesture, then all-off.
+        assert_eq!(steps.len(), 2);
+        let s0 = &steps[0];
+        assert!(s0.mod_tap_only);
+        assert!(s0.target.word);
+        assert_eq!(s0.target.right, 0);
+        assert_eq!(s0.target.left, 0);
+        assert_eq!(s0.number_glyph.as_deref(), Some("zero"));
+        let s1 = &steps[1];
+        assert!(!s1.mod_tap_only);
+        assert!(!s1.target.word);
+        assert_eq!(s1.target.right, 0);
+        assert_eq!(s1.target.left, 0);
+    }
+
+    /// Drill the pristine-zero gesture in the **mod-first** order:
+    /// thumb-down, word-down, thumb-up, word-up. Engine accepts this
+    /// (StateMachine arms `mod_tap_eligible` on word-down when thumb is
+    /// already held alone), so the tutor must too.
+    #[test]
+    fn pristine_zero_drill_accepts_mod_first() {
+        let practice = Practice {
+            sentences: vec![vec![PracticeWord {
+                word: "zero".to_string(),
+                phoneme_steps: Vec::new(),
+                brief_steps: None,
+                suffix_steps: None,
+                suffix_label: None,
+                number_steps: Some(build_pristine_zero_steps()),
+            }]],
+            sentence_idx: 0,
+            word_idx: 0,
+            step_idx: 0,
+            mode: WordMode::Number,
+            wrapped: false,
+        };
+        let mut state = TutorState::new(practice);
+
+        let down = |s| RheKeyEvent {
+            scan: s,
+            direction: KeyDirection::Down,
+        };
+        let up = |s| RheKeyEvent {
+            scan: s,
+            direction: KeyDirection::Up,
+        };
+
+        // Mod-first: thumb-down, then word-down.
+        state.tick(down(scan::R_THUMB));
+        assert!(!state.errored, "thumb-down without word should not botch");
+        state.tick(down(scan::WORD));
+        assert!(!state.errored, "word-down with thumb already held should not botch");
+        // Thumb-up while word held → StateMachine fires ModTap → step 0 advances to step 1.
+        state.tick(up(scan::R_THUMB));
+        assert!(!state.errored, "mod-tap completion should not botch");
+        assert_eq!(
+            state.practice.step_idx, 1,
+            "ModTap on thumb-up should advance to all-off step"
+        );
+        // Word-up → all-off → step 1 advances → next_word wraps to 0.
+        state.tick(up(scan::WORD));
+        assert!(!state.errored);
+    }
+
+    /// Same gesture in the **word-first** order: word-down, thumb-down,
+    /// thumb-up, word-up.
+    #[test]
+    fn pristine_zero_drill_accepts_word_first() {
+        let practice = Practice {
+            sentences: vec![vec![PracticeWord {
+                word: "zero".to_string(),
+                phoneme_steps: Vec::new(),
+                brief_steps: None,
+                suffix_steps: None,
+                suffix_label: None,
+                number_steps: Some(build_pristine_zero_steps()),
+            }]],
+            sentence_idx: 0,
+            word_idx: 0,
+            step_idx: 0,
+            mode: WordMode::Number,
+            wrapped: false,
+        };
+        let mut state = TutorState::new(practice);
+
+        let down = |s| RheKeyEvent {
+            scan: s,
+            direction: KeyDirection::Down,
+        };
+        let up = |s| RheKeyEvent {
+            scan: s,
+            direction: KeyDirection::Up,
+        };
+
+        state.tick(down(scan::WORD));
+        assert!(!state.errored);
+        state.tick(down(scan::R_THUMB));
+        assert!(!state.errored);
+        state.tick(up(scan::R_THUMB));
+        assert!(!state.errored);
+        assert_eq!(state.practice.step_idx, 1);
+        state.tick(up(scan::WORD));
+        assert!(!state.errored);
+    }
 }
