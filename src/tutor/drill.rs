@@ -362,16 +362,14 @@ pub fn build_pristine_zero_steps() -> Vec<Step> {
     ]
 }
 
-/// Build number-mode steps for spelled digit words ("zero" through "nine"). Generates: number-mode entry (word + mod alone) → finger+mod chord → commit. Special cases: "zero" uses the pristine gesture (`build_pristine_zero_steps`); "one" returns `None` so practice falls through to the brief table, where the recent one/won ordered bundle (R-RING+R-thumb, R_THUMB-first → "one", R_RING-first → "won") owns the chord.
+/// Build number-mode steps for spelled digit words ("zero" through "nine"). Generates: number-mode entry (word + mod alone) → finger+mod chord → commit. Special case: "zero" uses the pristine gesture (`build_pristine_zero_steps`); every other digit gets the standard 5-step spelled-digit path. The digit-word branch in `build_practice` then layers a brief (if one exists in the brief table — currently for "one", "two", "four") and a digit-then-form fallback on top, giving the user up to three drill paths per word.
 pub fn build_digit_word_steps(word: &str) -> Option<Vec<Step>> {
     let lower = word.to_lowercase();
     if lower == "zero" {
         return Some(build_pristine_zero_steps());
     }
-    if lower == "one" {
-        return None;
-    }
     let scan_code = match lower.as_str() {
+        "one" => scan::R_RING,
         "two" => scan::R_MID,
         "three" => scan::R_IDX,
         "four" => scan::R_IDX_INNER,
@@ -791,7 +789,16 @@ pub fn build_practice(
                     //     joining mod.
                     let lower = word_str.to_lowercase();
                     let brief_steps = brief_steps_for_word(&lower, brief_table);
-                    let number_fallback_steps = build_spelled_form_steps(word_str);
+                    // "zero" is special: number_steps is the pristine
+                    // 2-step gesture, which never reaches a +finger+mod
+                    // state, so the divergence detector that powers
+                    // Path 3 can't fire. Skip building the fallback —
+                    // it would be dead weight.
+                    let number_fallback_steps = if lower == "zero" {
+                        None
+                    } else {
+                        build_spelled_form_steps(word_str)
+                    };
                     sentence.push(PracticeWord {
                         word: word_str.to_string(),
                         phoneme_steps: Vec::new(),
@@ -1269,7 +1276,7 @@ impl TutorState {
                             // includes the R-thumb bit) — that's the
                             // exact moment Path 2 and Path 3 diverge.
                             let target_has_mod_and_finger = (target.right & (1u8 << 4)) != 0
-                                && (target.right & !(1u8 << 4)) != 0;
+                                && ((target.right & !(1u8 << 4)) != 0 || target.left != 0);
                             let post_release_state_word_only = state_right == 0
                                 && state_left == 0
                                 && state_word;
@@ -1897,6 +1904,125 @@ mod tests {
             (scan::WORD, KeyDirection::Up), // step 4 target = all-off ✓
         ]);
         assert!(!s.errored, "Path 2 should drill without botching");
+    }
+
+    fn one_practice() -> Practice {
+        // Brief chord for "one": R-RING + R-thumb (right=0b10100),
+        // R-thumb first-down disambiguates as "one" within one/won.
+        let mut leads = KeyMask::EMPTY;
+        leads.set(scan::R_THUMB);
+        let brief_steps = vec![
+            Step {
+                target: Target {
+                    right: 0b10100,
+                    left: 0,
+                    word: false,
+                    accepted_leads: leads,
+                },
+                ..Step::default()
+            },
+            Step {
+                target: Target::default(),
+                ..Step::default()
+            },
+        ];
+        let number_steps = build_digit_word_steps("one").expect("one builds");
+        let number_fallback_steps =
+            build_spelled_form_steps("one").expect("one has spelled form");
+        let word = PracticeWord {
+            word: "one".to_string(),
+            phoneme_steps: Vec::new(),
+            brief_steps: Some(brief_steps),
+            suffix_steps: None,
+            suffix_label: None,
+            number_steps: Some(number_steps),
+            number_fallback_steps: Some(number_fallback_steps),
+        };
+        Practice {
+            sentences: vec![vec![word]],
+            sentence_idx: 0,
+            word_idx: 0,
+            step_idx: 0,
+            mode: WordMode::Brief,
+            wrapped: false,
+        }
+    }
+
+    /// "one" gets the same three-path treatment as "two" — brief
+    /// default, spelled-digit fallback on word-press, digit-then-form
+    /// fallback on finger-release-without-mod.
+    #[test]
+    fn one_default_mode_is_brief() {
+        assert_eq!(one_practice().mode, WordMode::Brief);
+    }
+
+    /// Brief drill for "one": R-thumb landing first within R-RING+R-thumb.
+    #[test]
+    fn one_path_brief_drills_clean() {
+        let mut state = TutorState::new(one_practice());
+        for &(scan, direction) in &[
+            (scan::R_THUMB, KeyDirection::Down),
+            (scan::R_RING, KeyDirection::Down),
+            (scan::R_THUMB, KeyDirection::Up),
+            (scan::R_RING, KeyDirection::Up),
+        ] {
+            state.tick(RheKeyEvent { scan, direction });
+        }
+        assert!(!state.errored, "one brief path should drill clean");
+    }
+
+    fn five_practice() -> Practice {
+        // "five" has no brief — default mode is Number.
+        let number_steps = build_digit_word_steps("five").expect("five builds");
+        let number_fallback_steps =
+            build_spelled_form_steps("five").expect("five has spelled form");
+        let word = PracticeWord {
+            word: "five".to_string(),
+            phoneme_steps: Vec::new(),
+            brief_steps: None,
+            suffix_steps: None,
+            suffix_label: None,
+            number_steps: Some(number_steps),
+            number_fallback_steps: Some(number_fallback_steps),
+        };
+        let initial_mode = match Some(&word) {
+            Some(w) if w.brief_steps.is_some() => WordMode::Brief,
+            Some(w) if w.number_steps.is_some() && w.phoneme_steps.is_empty() => WordMode::Number,
+            _ => WordMode::Phoneme,
+        };
+        Practice {
+            sentences: vec![vec![word]],
+            sentence_idx: 0,
+            word_idx: 0,
+            step_idx: 0,
+            mode: initial_mode,
+            wrapped: false,
+        }
+    }
+
+    /// "five" has no brief, so default mode is Number.
+    #[test]
+    fn five_default_mode_is_number() {
+        assert_eq!(five_practice().mode, WordMode::Number);
+    }
+
+    /// Path 3 fallback works for "five" (digit on left hand) just as
+    /// it does for "two" (digit on right hand).
+    #[test]
+    fn five_path_digit_then_form_falls_back_cleanly() {
+        let mut state = TutorState::new(five_practice());
+        for &(scan, direction) in &[
+            (scan::WORD, KeyDirection::Down),
+            (scan::R_THUMB, KeyDirection::Down),
+            (scan::R_THUMB, KeyDirection::Up),
+            (scan::L_IDX_INNER, KeyDirection::Down),
+            (scan::L_IDX_INNER, KeyDirection::Up), // divergence
+        ] {
+            state.tick(RheKeyEvent { scan, direction });
+        }
+        assert!(!state.errored);
+        assert_eq!(state.practice.mode, WordMode::NumberFallback);
+        assert_eq!(state.practice.step_idx, 4);
     }
 
     /// Path 3: user starts Path 2 but releases the digit finger
