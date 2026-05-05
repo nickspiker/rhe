@@ -62,8 +62,8 @@ pub struct Step {
     pub phoneme: Option<Phoneme>,
     /// Commit step — matches on word release (phoneme mode) or on all-off (brief mode). Any finger press during this step triggers the "finger during commit" reset (except for bounces of keys already in the prior chord).
     pub space_only: bool,
-    /// Match on `Event::ModTap` instead of a chord. Used for number- mode entry (first tap of the sequence) and for the decimal point within a number sequence.
-    pub mod_tap_only: bool,
+    /// Advance on `Event::Mod` instead of a chord state match. Available for steps whose advancement depends on the StateMachine's mod-alone detection (number-mode entry, decimal point) rather than a target key state. Currently unused — pristine-zero is now state-matched as `+mod+word` then `-mod-word`. Kept as scaffolding for future gestures that need event-driven advancement.
+    pub advance_on_mod: bool,
     /// Hint text for the tutor's word-detail line — the one character this number-mode step emits ('3', '.', '+', etc.). None for non-number steps.
     pub number_glyph: Option<String>,
 }
@@ -74,7 +74,7 @@ pub struct PracticeWord {
     pub brief_steps: Option<Vec<Step>>, // single chord without word + all-off
     pub suffix_steps: Option<Vec<Step>>, // roll(base) + suffix chord + all-off
     pub suffix_label: Option<String>, // e.g. "~ing" for display
-    pub number_steps: Option<Vec<Step>>, // mod-tap entry + per-char + commit
+    pub number_steps: Option<Vec<Step>>, // number-mode entry + per-char + commit
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -216,10 +216,10 @@ impl Practice {
 /// Curated drill lines used by the tray menu's Test Text source. Reproducible, offline, short enough to cycle thru while iterating on chord designs. One line per recent feature comes first so a quick pass through Test Text exercises every new chord / gesture before the older homophone and number-mode regression sets.
 pub const TEST_SENTENCES: &[&str] = &[
     // ─── Recent features ─────────────────────────────────────────────
-    // Pristine zero gesture (word + mod-tap + word-up = "zero").
-    "the count is zero and now we begin to type slowly",
+    // Pristine zero gesture: +word+mod then -word-mod, in any order.
+    "the count is zero and one and two and three and four and five",
     // one/won ordered bundle on R-RING+R-thumb.
-    "i won the match and one of you must lose this round",
+    "I won the match for us too",
     // thing-family compound: thing / something / anything / nothing / everything.
     "the thing is something anything nothing everything has its own place here",
     // one-family compound: someone / anyone / everyone.
@@ -351,7 +351,7 @@ pub fn build_pristine_zero_steps() -> Vec<Step> {
     ]
 }
 
-/// Build number-mode steps for spelled digit words ("zero" through "nine"). Generates: mod-tap entry → finger+mod chord → commit. Special cases: "zero" uses the pristine gesture (`build_pristine_zero_steps`); "one" returns `None` so practice falls through to the brief table, where the recent one/won ordered bundle (R-RING+R-thumb, R_THUMB-first → "one", R_RING-first → "won") owns the chord.
+/// Build number-mode steps for spelled digit words ("zero" through "nine"). Generates: number-mode entry (word + mod alone) → finger+mod chord → commit. Special cases: "zero" uses the pristine gesture (`build_pristine_zero_steps`); "one" returns `None` so practice falls through to the brief table, where the recent one/won ordered bundle (R-RING+R-thumb, R_THUMB-first → "one", R_RING-first → "won") owns the chord.
 pub fn build_digit_word_steps(word: &str) -> Option<Vec<Step>> {
     let lower = word.to_lowercase();
     if lower == "zero" {
@@ -505,7 +505,7 @@ fn lookup_form(word: &str) -> Option<(u64, u8)> {
 /// Build drill steps for a spelled-form number word like "nineteen", "twentieth", "half", "twice", "tri", etc. Returns `None` if the word doesn't match any cardinal/ordinal/multiplier/group/fraction/ prefix form for n in 0..=1000.
 ///
 /// Step sequence mirrors what the engine actually accepts:
-/// 1. `+word+mod` — mod-tap entry
+/// 1. `+word+mod` — number-mode entry (word held + mod pressed alone)
 /// 2. `-mod` (word held) — confirm number-mode entry
 /// 3. for each digit of the underlying integer: a. `+digit` (target finger, word held) b. `-digit` (back to word_only)
 /// 4. all-off — release word; engine emits the integer + a space and arms `has_number_context`
@@ -525,7 +525,7 @@ pub fn build_spelled_form_steps(word: &str) -> Option<Vec<Step>> {
 
     let mut steps: Vec<Step> = Vec::new();
 
-    // Step 0: +word+mod (mod-tap entry).
+    // Step 0: +word+mod (number-mode entry).
     steps.push(Step {
         target: Target {
             right: 1 << 4,
@@ -591,7 +591,7 @@ pub fn build_spelled_form_steps(word: &str) -> Option<Vec<Step>> {
     Some(steps)
 }
 
-/// Build the per-step drill sequence for a number/symbol "word". Structure: mod-tap entry + one step per character + commit.
+/// Build the per-step drill sequence for a number/symbol "word". Structure: number-mode entry + one step per character + commit.
 pub fn build_number_steps(word: &str) -> Option<Vec<Step>> {
     if !word.chars().any(|c| c.is_ascii_digit()) {
         return None;
@@ -629,7 +629,7 @@ pub fn build_number_steps(word: &str) -> Option<Vec<Step>> {
 
     for c in word.chars() {
         if c == '.' {
-            // Decimal: re-tap mod
+            // Decimal: press-and-release mod again
             steps.push(Step {
                 target: Target {
                     right: 1 << 4,
@@ -796,7 +796,7 @@ pub fn build_practice(
                     },
                     phoneme: None,
                     space_only: true,
-                    mod_tap_only: false,
+                    advance_on_mod: false,
                     number_glyph: None,
                 });
 
@@ -974,7 +974,7 @@ pub fn build_practice(
 
 /// Renderer-agnostic drill driver. Wraps the loop body that used to live inline in `run_tutor`: feed it raw key events with `tick()`, then read `practice.current_word()` / `current_step()` / `key_state` to render whatever frontend you like.
 ///
-/// Owns a private `StateMachine` so it can spot `ModTap` events and advance number-mode entry steps. This is independent of the engine thread's interpreter — the drill matches what the user *should* be chording, while the engine still types the *actual* text into the focused app.
+/// Owns a private `StateMachine` so it can spot `Mod` events and advance number-mode entry steps. This is independent of the engine thread's interpreter — the drill matches what the user *should* be chording, while the engine still types the *actual* text into the focused app.
 pub struct TutorState {
     pub practice: Practice,
     pub key_state: KeyState,
@@ -1042,16 +1042,16 @@ impl TutorState {
             }
         }
 
-        let mut step_advanced_by_modtap = false;
+        let mut step_advanced_by_mod = false;
         for sm_event in self.sm.feed(rhe_event) {
-            if matches!(sm_event, crate::state_machine::Event::ModTap) {
-                let is_mod_tap_step = self
+            if matches!(sm_event, crate::state_machine::Event::Mod) {
+                let is_mod_advance_step = self
                     .practice
                     .current_step()
-                    .map_or(false, |s| s.mod_tap_only);
-                if is_mod_tap_step {
+                    .map_or(false, |s| s.advance_on_mod);
+                if is_mod_advance_step {
                     self.practice.advance_step();
-                    step_advanced_by_modtap = true;
+                    step_advanced_by_mod = true;
                 }
             }
         }
@@ -1064,9 +1064,9 @@ impl TutorState {
             // Clear when all fingers are off — word can stay held. The
             // strict all_off rule (including word) was too punishing
             // for word-held gestures (phoneme typing, pristine-zero
-            // mod-tap retry): user had to drop word and rebuild the
-            // chord context. Now they can release just the bad
-            // fingers and retry the chord with word still held.
+            // retry): user had to drop word and rebuild the chord
+            // context. Now they can release just the bad fingers and
+            // retry the chord with word still held.
             if self.key_state.right_bits() == 0 && self.key_state.left_bits() == 0 {
                 self.errored = false;
                 self.touched_right = 0;
@@ -1124,20 +1124,20 @@ impl TutorState {
                 self.fingers_during_word = true;
             }
 
-            if step_advanced_by_modtap {
+            if step_advanced_by_mod {
                 // already advanced above; fall through to step-transition reseed
             } else if self
                 .practice
                 .current_step()
-                .map_or(false, |s| s.mod_tap_only)
+                .map_or(false, |s| s.advance_on_mod)
             {
-                // mod_tap_only step: tolerate R-thumb press/release without
-                // overshoot errors. Advance fires above via the ModTap sm
+                // advance_on_mod step: tolerate R-thumb press/release without
+                // overshoot errors. Advance fires above via the Mod sm
                 // event when R-thumb releases. Any other finger going down
-                // is still a botch — the gesture is "thumb tap, no other
-                // input." Hoisted above the Number-mode arm so spelled-zero
-                // (lives in number_steps) doesn't trip the strict state
-                // matcher on R-thumb down.
+                // is still a botch — the gesture is "thumb alone, no other
+                // input." Hoisted above the Number-mode arm so any future
+                // event-driven step doesn't trip the strict state matcher
+                // on R-thumb down.
                 if is_key_down
                     && rhe_event.scan != scan::WORD
                     && rhe_event.scan != scan::R_THUMB
@@ -1196,7 +1196,7 @@ impl TutorState {
             } else if let Some(target) = self.practice.current_target() {
                 let target = *target;
                 let step = self.practice.current_step().unwrap();
-                let mod_tap_only = step.mod_tap_only;
+                let advance_on_mod = step.advance_on_mod;
                 let space_only = step.space_only;
 
                 let prev_target: Option<Target> = if self.practice.step_idx > 0 {
@@ -1222,7 +1222,7 @@ impl TutorState {
                     }
                 };
 
-                if mod_tap_only {
+                if advance_on_mod {
                     if is_key_down
                         && rhe_event.scan != scan::WORD
                         && rhe_event.scan != scan::R_THUMB

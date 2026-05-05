@@ -1,6 +1,6 @@
 //! Number-mode chord → character lookup.
 //!
-//! Number mode is a sub-session of word-held: entered by tapping the mod key (right thumb) while word is held, exited when word is released (with a trailing space emitted).
+//! Number mode is a sub-session of word-held: entered by pressing-and-releasing the mod key (right thumb) alone while word is held, exited when word is released (with a trailing space emitted).
 //!
 //! Single-finger chord → digit. Ten positions laid out right-to-left from R-pinky:
 //!

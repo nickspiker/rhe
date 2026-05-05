@@ -117,7 +117,7 @@ fn run() {
                     ),
                     state_machine::Event::SpaceUp => tlog!("engine: SpaceUp"),
                     state_machine::Event::Backspace => tlog!("engine: Backspace"),
-                    state_machine::Event::ModTap => tlog!("engine: ModTap"),
+                    state_machine::Event::Mod => tlog!("engine: Mod"),
                     state_machine::Event::UndoPhoneme => tlog!("engine: UndoPhoneme"),
                 }
 
@@ -166,8 +166,8 @@ fn run() {
 
     // Build the tray's event loop on the main thread so its proxy can be
     // handed to the engine thread before it spawns. The evdev reader wakes
-    // the tray via this proxy whenever caps-tap toggles enabled, so the
-    // tray icon/check item refresh without polling.
+    // the tray via this proxy whenever a solo caps press toggles enabled,
+    // so the tray icon/check item refresh without polling.
     let (event_loop, proxy) = tray::build();
     let toggle_proxy = proxy.clone();
     let drill_proxy = proxy.clone();
@@ -203,7 +203,7 @@ fn run() {
         let mut sm = state_machine::StateMachine::new();
 
         info!(
-            "ready. Tray icon in system panel. Caps tap to toggle, CapsLock+Esc to quit."
+            "ready. Tray icon in system panel. Solo Caps press to toggle, CapsLock+Esc to quit."
         );
 
         loop {
@@ -235,7 +235,7 @@ fn run() {
                     ),
                     state_machine::Event::SpaceUp => tlog!("engine: SpaceUp"),
                     state_machine::Event::Backspace => tlog!("engine: Backspace"),
-                    state_machine::Event::ModTap => tlog!("engine: ModTap"),
+                    state_machine::Event::Mod => tlog!("engine: Mod"),
                     state_machine::Event::UndoPhoneme => tlog!("engine: UndoPhoneme"),
                 }
                 if let Some(action) = interp.process(&sm_event) {
@@ -346,7 +346,7 @@ fn run() {
                     ),
                     state_machine::Event::SpaceUp => tlog!("engine: SpaceUp"),
                     state_machine::Event::Backspace => tlog!("engine: Backspace"),
-                    state_machine::Event::ModTap => tlog!("engine: ModTap"),
+                    state_machine::Event::Mod => tlog!("engine: Mod"),
                     state_machine::Event::UndoPhoneme => tlog!("engine: UndoPhoneme"),
                 }
                 if let Some(action) = interp.process(&sm_event) {

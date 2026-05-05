@@ -274,8 +274,8 @@ court reporter steno ~225 WPM.
 ## Controls
 
 ```
-Solo word tap (no fingers)     backspace last word
-Word + mod tap (no fingers)    undo last phoneme (before commit)
++word -word              (no other key live)        backspace last word
++word +mod -mod -word    (no finger between)        undo last phoneme (before commit)
 ```
 
 ## The math
@@ -372,8 +372,8 @@ menu: mode toggle (`rhe` ↔ `keyboard`), fallback toggle
 (`Autospell` ↔ `IPA`), and `Exit`. The tray works out of the box on
 KDE, XFCE, Cinnamon, and MATE; on GNOME, install and enable
 `gnome-shell-extension-appindicator`. Caps Lock also toggles
-rhe/keyboard — a solo tap toggles, Caps+Esc quits (the up-edge is
-only treated as a tap if no other key was pressed in between, so
+rhe/keyboard — a solo press toggles, Caps+Esc quits (the up-edge is
+only treated as a solo press if no other key was pressed in between, so
 combinations stay available). Unlike on macOS, the caps-lock LED
 isn't a reliable indicator here because xkb actively reconciles it
 against its own state — the tray icon's color is the visual mode
@@ -454,24 +454,24 @@ Done:
   (someone/anyone/everyone) extends the same convention. Once the
   prefix→finger map is in muscle memory, every compound is
   reachable with one chord and the family stays mentally unified.
-- **Spelled-zero pristine gesture** — `word + mod-tap + word-up`
-  (number mode entered with no digit chord between) emits the
-  spelled "zero". No chord slot consumed; the empty-mode-exit case
-  is repurposed as the shortcut. Number-form transforms still
-  apply (the emit arms `last_number` so L-hand chords can transform
-  to "zeroth" etc.).
+- **Spelled-zero pristine gesture** — `+word +mod` then `-mod -word`
+  (any order within each half; number mode entered with no digit
+  chord between) emits the spelled "zero". No chord slot consumed;
+  the empty-mode-exit case is repurposed as the shortcut. Number-
+  form transforms still apply (the emit arms `last_number` so
+  L-hand chords can transform to "zeroth" etc.).
 - **Linux text output** — libxkbcommon reverse-map + uinput injection
   for Latin output in the user's active layout (Dvorak/Colemak/any),
   with `Ctrl+Shift+U <hex> Enter` fallback for IPA and other unicode
   not representable in the current keymap.
 - **Linux `rhe run`** — full engine on Linux (evdev grab + uinput
-  injection). Caps Lock tap toggles rhe enabled/disabled, Caps+Esc
-  quits. Esc alone passes thru to the focused app.
+  injection). Solo Caps Lock press toggles rhe enabled/disabled,
+  Caps+Esc quits. Esc alone passes thru to the focused app.
 - **Cross-platform tray menu** — StatusNotifierItem on Linux / native
   NSStatusItem on macOS via `tray-icon`. Right-click for mode toggle
   (rhe ↔ keyboard), fallback toggle (Autospell ↔ IPA), and exit.
   Fully event-driven — the tao event loop sleeps until a menu click
-  or a caps-tap proxy nudge fires. Caps-lock LED tracks mode on
+  or a solo-Caps proxy nudge fires. Caps-lock LED tracks mode on
   macOS (off = rhe, on = keyboard); Linux uses the tray icon's color
   since xkb fights direct LED writes.
 - **Random practice text** — tutor pulls Wikipedia article extracts
@@ -486,7 +486,7 @@ Done:
   the tutor; well above any reasonable book length. Complements the
   built-in Test Text and Brown Corpus menu picks for material that
   isn't bundled or auto-fetched.
-- **Number mode** — `word + mod` tap to enter. Ten home-row +
+- **Number mode** — `+word +mod -mod` (mod alone) to enter. Ten home-row +
   inner-index positions (G/H included) map 1-to-1 to digits 0–9;
   mod-variants give symbols (`+`, `-`, `*`, `/`, `%`, etc.). Word
   release commits, then six L-hand chords transform the just-emitted

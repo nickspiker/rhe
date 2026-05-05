@@ -105,18 +105,18 @@ struct InputEvent {
 
 /// How the user signals "quit rhe" and whether caps lock toggles the grab.
 ///
-/// In both `CapsLockPlusEsc` and `EscOrCapsPlusEsc`, Caps Lock is intercepted and a solo tap toggles the `enabled` flag (passthrough on/ off). `EscAlone` leaves caps alone — for unit tests, not typical use.
+/// In both `CapsLockPlusEsc` and `EscOrCapsPlusEsc`, Caps Lock is intercepted and a solo press-and-release toggles the `enabled` flag (passthrough on/off). `EscAlone` leaves caps alone — for unit tests, not typical use.
 #[derive(Clone, Copy)]
 pub enum QuitTrigger {
     /// Esc alone quits. Caps lock passes through to OS, doesn't toggle.
     EscAlone,
-    /// Caps+Esc quits, Esc alone passes through. Caps taps toggle enabled. Used by `rhe run` where Esc is needed by the focused app (vim, etc).
+    /// Caps+Esc quits, Esc alone passes through. Solo Caps press toggles enabled. Used by `rhe run` where Esc is needed by the focused app (vim, etc).
     CapsLockPlusEsc,
-    /// Either Esc alone OR Caps+Esc quits. Caps taps toggle enabled. Used by the tutor so Esc still exits traditionally, *and* the user can tap caps to pause the tutor and type normally for a moment.
+    /// Either Esc alone OR Caps+Esc quits. Solo Caps press toggles enabled. Used by the tutor so Esc still exits traditionally, *and* the user can press Caps alone to pause the tutor and type normally for a moment.
     EscOrCapsPlusEsc,
 }
 
-/// Callback fired when a caps-lock solo-tap toggles the `enabled` flag. Lets the tray (or any other UI) refresh itself without polling.
+/// Callback fired when a solo Caps Lock press toggles the `enabled` flag. Lets the tray (or any other UI) refresh itself without polling.
 pub type ToggleHook = Arc<dyn Fn() + Send + Sync + 'static>;
 
 pub struct EvdevInput {
@@ -204,7 +204,7 @@ fn reader_loop(
     // Caps-lock state tracking:
     //   caps_held: key physically down right now (used to gate caps+Esc quit).
     //   caps_solo: true since last caps-down, cleared by any other key-down.
-    //              On caps-up, if still true, it was a solo tap → toggle rhe.
+    //              On caps-up, if still true, it was a solo press → toggle rhe.
     // In CapsLockPlusEsc mode we intercept caps entirely (OS never sees it);
     // in EscAlone mode caps passes through and doesn't toggle.
     let mut caps_held = false;

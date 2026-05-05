@@ -2,7 +2,7 @@
 //!
 //! Mirrors evdev/cgevent backend semantics: when `enabled` is true, home-row chord keys are intercepted and forwarded to the chord state machine; the Win key (mode selector) and unrelated keys pass through. Esc fires a `HidEvent::Quit` so the tutor can shut down cleanly.
 //!
-//! Caps Lock is fully intercepted — the OS never sees it — and a solo tap toggles the `enabled` flag (rhe ↔ keyboard passthrough). Caps held while another key is pressed cancels the toggle so chorded shortcuts like Caps+Esc (= Quit) still work.
+//! Caps Lock is fully intercepted — the OS never sees it — and pressing-and-releasing Caps with no other key live toggles the `enabled` flag (rhe ↔ keyboard passthrough). Caps held while another key is pressed cancels the toggle so chorded shortcuts like Caps+Esc (= Quit) still work.
 
 use crate::hand::{KeyDirection, KeyEvent};
 use crate::input::HidEvent;
@@ -34,7 +34,7 @@ impl WindowsInput {
         let (tx, rx) = mpsc::channel();
 
         std::thread::spawn(move || {
-            // rdev::grab callback is `Fn`, not `FnMut`, so caps-tap
+            // rdev::grab callback is `Fn`, not `FnMut`, so caps-solo
             // bookkeeping lives in shared atomics. caps_held = caps
             // physically pressed; caps_solo = no other key seen since
             // caps went down (cleared on any non-caps press).
@@ -48,7 +48,7 @@ impl WindowsInput {
             let result = rdev::grab(move |event| {
                 use rdev::{EventType, Key};
 
-                // Caps Lock — always intercepted. Tap toggles enabled;
+                // Caps Lock — always intercepted. Solo press toggles enabled;
                 // OS never sees the key so its CAPS state never flips.
                 match event.event_type {
                     EventType::KeyPress(Key::CapsLock) => {
@@ -59,7 +59,7 @@ impl WindowsInput {
                     EventType::KeyRelease(Key::CapsLock) => {
                         caps_held_cb.store(false, Ordering::Relaxed);
                         if caps_solo_cb.swap(false, Ordering::Relaxed) {
-                            // Solo tap → toggle rhe on/off
+                            // Solo press → toggle rhe on/off
                             let was = enabled_cb.fetch_xor(true, Ordering::Relaxed);
                             let _ = was;
                             if let Some(hook) = on_toggle.as_ref() {
@@ -90,7 +90,7 @@ impl WindowsInput {
 
                 // Any other key-down breaks the caps-solo tracking so a
                 // chorded press of caps+anything doesn't double as a
-                // tap-toggle on release.
+                // solo-toggle on release.
                 if matches!(event.event_type, EventType::KeyPress(_)) {
                     caps_solo_cb.store(false, Ordering::Relaxed);
                 }
@@ -144,7 +144,7 @@ fn rdev_to_scan(key: rdev::Key) -> Option<u8> {
         rdev::Key::SemiColon => Some(scan::R_PINKY),
         rdev::Key::Space => Some(scan::R_THUMB),
         // Left Win key as the WORD/mode-selector, mirroring macOS's
-        // left ⌘. Tapping it solo will still open Start; chord usage
+        // left ⌘. A solo press still opens Start; chord usage
         // (Win+letter) emits a chord event then suppresses Start.
         rdev::Key::MetaLeft => Some(scan::WORD),
         _ => None,

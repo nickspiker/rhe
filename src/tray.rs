@@ -326,7 +326,7 @@ fn make_tray_icon(size: u32, online: bool) -> Icon {
 /// Events that wake the winit event loop.
 #[derive(Debug, Clone)]
 pub enum TrayEvent {
-    /// The engine thread toggled the `enabled` flag (via caps tap). The tray icon + check item need refreshing. On Linux the gtk thread's glib timeout notices this via atomics directly, so this variant is just a no-op wake for the winit thread.
+    /// The engine thread toggled the `enabled` flag (via a solo Caps press). The tray icon + check item need refreshing. On Linux the gtk thread's glib timeout notices this via atomics directly, so this variant is just a no-op wake for the winit thread.
     StateChanged,
     /// A menu item was clicked.
     Menu(MenuId),
@@ -794,7 +794,7 @@ impl TrayApp {
         // Phoneme line: every chord-firing step in the current
         // target word's `current_steps()`, filtered to only those
         // with a displayable glyph (phoneme IPA or number_glyph).
-        // Skips entry-only mod_tap_only and space_only commits so
+        // Skips entry-only advance_on_mod and space_only commits so
         // the strip is just content, not state markers. cur_phon_idx
         // is the position of the current step in the filtered list,
         // pinned at the most-recent displayable step ≤ step_idx so

@@ -70,7 +70,7 @@ pub fn new_shared_mode_flags() -> Arc<AtomicU8> {
 enum Mode {
     /// Default: Chord events look up phonemes (word held) or briefs (word not held). Word release commits the phoneme buffer.
     Normal,
-    /// Entered via a mod-tap during a word-held session. Chord events emit digits or symbols (if mod is also in the chord). Another mod-tap emits a decimal point. Word release emits a trailing space and returns to Normal.
+    /// Entered via a `Mod` event during a word-held session (mod pressed and released alone). Chord events emit digits or symbols (if mod is also in the chord). Another `Mod` event emits a decimal point. Word release emits a trailing space and returns to Normal.
     Number,
 }
 
@@ -113,7 +113,7 @@ pub struct Interpreter {
     number_buffer: String,
     /// Active number-form context. Armed on a pure-integer commit from number mode, consumed by non-form emissions that clear it. Form-transform chords use `digits` as input and update `current` on success so successive transforms replace in place.
     last_number: Option<NumberContext>,
-    /// True once a phoneme has been buffered during this word session. Stays true even if all phonemes are undone. Prevents ModTap from entering number mode after phoneme undo-to-empty.
+    /// True once a phoneme has been buffered during this word session. Stays true even if all phonemes are undone. Prevents Mod from entering number mode after phoneme undo-to-empty.
     phoneme_session: bool,
     /// True from the moment number-mode is entered until any chord/decimal/symbol is processed. The "pristine" exit (mode-entered + word-released with no other input) is the spelled-zero shortcut; this flag distinguishes it from the symbol-then-exit case (where the buffer is also empty but pristine is false).
     number_session_pristine: bool,
@@ -264,8 +264,8 @@ impl Interpreter {
                     })
                 }
             }
-            Event::ModTap => {
-                // If phonemes were buffered this session, mod tap = undo last phoneme
+            Event::Mod => {
+                // If phonemes were buffered this session, Mod = undo last phoneme
                 if self.phoneme_session {
                     self.buffer.pop();
                     return None;
@@ -298,7 +298,7 @@ impl Interpreter {
                     // L-hand chords can transform it.
                     //
                     // Empty buffer + pristine session: the user entered
-                    // number mode (word-held + mod-tap) and released
+                    // number mode (word-held + Mod event) and released
                     // word without typing any chord. Repurpose this
                     // gesture to emit the spelled "zero" — a fast
                     // standalone shortcut that doesn't consume a brief
@@ -483,8 +483,8 @@ mod tests {
     #[test]
     fn number_mode_entry_and_digit() {
         let mut interp = setup();
-        // First ModTap: enter number mode, no emit.
-        assert!(interp.process(&Event::ModTap).is_none());
+        // First Mod: enter number mode, no emit.
+        assert!(interp.process(&Event::Mod).is_none());
         assert_eq!(interp.mode, Mode::Number);
         // Chord with R_IDX alone → digit "3" (position 3).
         use crate::key_mask::KeyMask;
@@ -499,17 +499,17 @@ mod tests {
     }
 
     #[test]
-    fn number_mode_decimal_on_second_mod_tap() {
+    fn number_mode_decimal_on_second_mod_event() {
         let mut interp = setup();
-        interp.process(&Event::ModTap); // enter
-        let action = interp.process(&Event::ModTap).unwrap();
+        interp.process(&Event::Mod); // enter
+        let action = interp.process(&Event::Mod).unwrap();
         assert_eq!(action, Action::Emit(".".to_string()));
     }
 
     #[test]
     fn number_mode_symbol_with_mod() {
         let mut interp = setup();
-        interp.process(&Event::ModTap); // enter
+        interp.process(&Event::Mod); // enter
         // R_IDX + thumb, first_down = thumb → "+"
         use crate::key_mask::KeyMask;
         let key = ChordKey::from_mask(
@@ -529,7 +529,7 @@ mod tests {
     #[test]
     fn number_mode_finger_first_emits_spelled_word() {
         let mut interp = setup();
-        interp.process(&Event::ModTap); // enter
+        interp.process(&Event::Mod); // enter
         // R_IDX + thumb, first_down = R_IDX → "three"
         use crate::key_mask::KeyMask;
         let key = ChordKey::from_mask(
@@ -548,10 +548,10 @@ mod tests {
 
     #[test]
     fn number_mode_spaceup_empty_emits_zero_and_exits() {
-        // Empty number-mode commit (word-held + mod-tap + word-up with
-        // no digit chord between) is the spelled-zero shortcut.
+        // Empty number-mode commit (word-held + Mod event + word-up
+        // with no digit chord between) is the spelled-zero shortcut.
         let mut interp = setup();
-        interp.process(&Event::ModTap);
+        interp.process(&Event::Mod);
         let action = interp.process(&Event::SpaceUp).unwrap();
         assert_eq!(action, Action::Emit("zero ".to_string()));
         assert_eq!(interp.mode, Mode::Normal);
@@ -560,7 +560,7 @@ mod tests {
     #[test]
     fn number_mode_backspace_pops_digit() {
         let mut interp = setup();
-        interp.process(&Event::ModTap);
+        interp.process(&Event::Mod);
         use crate::key_mask::KeyMask;
         let key = ChordKey::from_mask(KeyMask::EMPTY.with(crate::scan::R_PINKY));
         let event = Event::Chord {
@@ -576,7 +576,7 @@ mod tests {
     #[test]
     fn number_mode_multi_finger_ignored() {
         let mut interp = setup();
-        interp.process(&Event::ModTap);
+        interp.process(&Event::Mod);
         // Two fingers together don't map to a digit.
         use crate::key_mask::KeyMask;
         let key = ChordKey::from_mask(
@@ -613,7 +613,7 @@ mod tests {
     #[test]
     fn ordinal_transform_on_pinky_after_integer() {
         let mut interp = setup();
-        interp.process(&Event::ModTap); // enter number mode
+        interp.process(&Event::Mod); // enter number mode
         // Type "3"
         interp.process(&digit_event(crate::scan::R_IDX));
         interp.process(&Event::SpaceUp); // commit → emits " ", arms last_number
@@ -631,7 +631,7 @@ mod tests {
     #[test]
     fn ordinal_transform_on_multi_digit_number() {
         let mut interp = setup();
-        interp.process(&Event::ModTap);
+        interp.process(&Event::Mod);
         interp.process(&digit_event(crate::scan::R_IDX_INNER));
         interp.process(&digit_event(crate::scan::R_MID));
         interp.process(&Event::SpaceUp);
@@ -650,7 +650,7 @@ mod tests {
         // 1921 is outside v1 ordinal table (>999); L-pinky should
         // fall through to the standard -ing suffix behavior.
         let mut interp = setup();
-        interp.process(&Event::ModTap);
+        interp.process(&Event::Mod);
         // "1921" — R_RING=1, R_RING=9? actually 9 is L_PINKY, 2=R_MID, 1=R_RING.
         // Using positions: 1=R_RING, 9=L_PINKY, 2=R_MID, 1=R_RING.
         interp.process(&digit_event(crate::scan::R_RING));
@@ -673,7 +673,7 @@ mod tests {
         // last_number should be None on commit, so L-pinky falls
         // through to regular suffix behavior.
         let mut interp = setup();
-        interp.process(&Event::ModTap);
+        interp.process(&Event::Mod);
         interp.process(&digit_event(crate::scan::R_IDX)); // "3"
         // "+" is R_IDX with mod, first_down=R_THUMB
         use crate::key_mask::KeyMask;
@@ -731,7 +731,7 @@ mod tests {
         // without retyping. Each Replace backspaces the prior
         // emission and emits the new one.
         let mut interp = setup();
-        interp.process(&Event::ModTap);
+        interp.process(&Event::Mod);
         interp.process(&digit_event(crate::scan::R_IDX)); // "3"
         interp.process(&Event::SpaceUp);
         // Ordinal (L-ring)
@@ -774,7 +774,7 @@ mod tests {
         // Type "3" → ordinal → backspace should restore "3 " AND
         // re-arm last_number so a different form can be applied.
         let mut interp = setup();
-        interp.process(&Event::ModTap);
+        interp.process(&Event::Mod);
         interp.process(&digit_event(crate::scan::R_IDX)); // "3"
         interp.process(&Event::SpaceUp);
         let a1 = interp.process(&l_chord_event(0b0100)).unwrap(); // ordinal
@@ -810,7 +810,7 @@ mod tests {
         // Cycle through three forms, then backspace three times.
         // Each backspace reverses one step.
         let mut interp = setup();
-        interp.process(&Event::ModTap);
+        interp.process(&Event::Mod);
         interp.process(&digit_event(crate::scan::R_IDX)); // "3"
         interp.process(&Event::SpaceUp);
         interp.process(&l_chord_event(0b0100)); // → third
@@ -852,7 +852,7 @@ mod tests {
         // Type "1921" (outside group's 10-max range). L-mid should
         // fall back to the English -ly suffix.
         let mut interp = setup();
-        interp.process(&Event::ModTap);
+        interp.process(&Event::Mod);
         interp.process(&digit_event(crate::scan::R_RING)); // 1
         interp.process(&digit_event(crate::scan::L_PINKY)); // 9
         interp.process(&digit_event(crate::scan::R_MID)); // 2
@@ -868,7 +868,7 @@ mod tests {
     #[test]
     fn ordinal_context_cleared_by_intervening_word() {
         let mut interp = setup();
-        interp.process(&Event::ModTap);
+        interp.process(&Event::Mod);
         interp.process(&digit_event(crate::scan::R_IDX)); // "3"
         interp.process(&Event::SpaceUp); // last_number = Some("3")
         // Intervening word: word-held + phoneme chord + word-up.
