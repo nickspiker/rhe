@@ -437,9 +437,6 @@ struct TrayApp {
     /// Currently hovered chrome button (for hover fill effect).
     tutor_hovered_button: u8,
 
-    /// True while a file is being dragged over the tutor window — drives the on-screen "drop to load drill text" hint. Mirrored from `WindowEvent::HoveredFile` / `HoveredFileCancelled`; cleared again on `DroppedFile` as belt-and-suspenders in case `HoveredFileCancelled` doesn't fire on a given compositor (Wayland-on-some-shells, mostly).
-    tutor_file_hovering: bool,
-
     // Manual resize/move drag state (Photon parity — winit's
     // drag_resize_window is unreliable on macOS).
     tutor_dragging_resize: bool,
@@ -1435,31 +1432,6 @@ impl TrayApp {
             }
         }
 
-        // Drag-hover hint: while a file is being dragged over the
-        // tutor window, show a centered "drop to load drill text"
-        // line so the user knows the drop will be accepted before
-        // releasing. Cleared by HoveredFileCancelled or by a
-        // successful DroppedFile.
-        if self.tutor_file_hovering {
-            if let Some(text) = self.text_renderer.as_mut() {
-                let span = crate::tutor::ui::span(size.width, size.height);
-                let hint_size = (span / 18.0).max(14.0);
-                let msg = "drop to load drill text";
-                text.draw_text_center_u32(
-                    pixels,
-                    width,
-                    msg,
-                    width as f32 / 2.0,
-                    height as f32 / 2.0,
-                    hint_size,
-                    500,
-                    theme::ZOOM_HINT_TEXT,
-                    "Bona Nova",
-                    false,
-                );
-            }
-        }
-
         // Top-left zoom-percentage hint. Bumped to `now + 1s` on
         // every ru change (Ctrl+= / Ctrl+- / Ctrl+0 / Ctrl+scroll);
         // about_to_wait schedules a wake at the deadline so this
@@ -1857,7 +1829,6 @@ impl TrayApp {
 
     /// Swap the active drill source to the contents of a dropped text file. Returns `Err` with a user-facing message on any failure (oversize / unreadable / not UTF-8 / empty); caller logs. Mirrors `photon::ui::app::handle_dropped_file`'s pattern: pure parsing in a free fn (`parse_dropped_drill_text`), state mutation kept out of the parse step so the parser is unit-testable.
     fn load_dropped_text_file(&mut self, path: std::path::PathBuf) -> Result<(), String> {
-        self.tutor_file_hovering = false;
         let lines = read_and_parse_drill_file(&path)?;
 
         if self.tutor_word_lookup.is_none() {
@@ -2154,22 +2125,6 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
             }
             WindowEvent::RedrawRequested => {
                 self.redraw_tutor();
-            }
-            WindowEvent::HoveredFile(_) => {
-                if !self.tutor_file_hovering {
-                    self.tutor_file_hovering = true;
-                    if let Some(w) = self.tutor_window.as_ref() {
-                        w.request_redraw();
-                    }
-                }
-            }
-            WindowEvent::HoveredFileCancelled => {
-                if self.tutor_file_hovering {
-                    self.tutor_file_hovering = false;
-                    if let Some(w) = self.tutor_window.as_ref() {
-                        w.request_redraw();
-                    }
-                }
             }
             WindowEvent::DroppedFile(path) => {
                 if let Err(e) = self.load_dropped_text_file(path) {
@@ -2499,7 +2454,6 @@ pub fn run_tray(
         tutor_debug_hit_colours: Vec::new(),
         tutor_debug_colour_seed: 0x9E3779B9,
         tutor_hovered_button: HIT_NONE,
-        tutor_file_hovering: false,
         tutor_dragging_resize: false,
         tutor_dragging_move: false,
         tutor_mouse_pressed: false,
