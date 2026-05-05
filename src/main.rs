@@ -7,6 +7,7 @@ mod hand;
 mod input;
 mod interpreter;
 mod key_mask;
+mod log;
 mod output;
 mod phoneme_dict;
 mod layout;
@@ -27,13 +28,13 @@ fn main() {
     match crypto::self_verify::verify_binary_hash() {
         Ok(Some(_)) => {}
         Ok(None) => {
-            eprintln!(
-                "rhe: unsigned build (cargo install or local) — integrity not cryptographically verified."
+            info!(
+                "unsigned build (cargo install or local) — integrity not cryptographically verified."
             );
         }
         Err(e) => {
-            eprintln!(
-                "rhe: signature check failed — {} (binary appears modified or corrupted; continuing anyway).",
+            rerror!(
+                "signature check failed — {} (binary appears modified or corrupted; continuing anyway).",
                 e
             );
         }
@@ -45,8 +46,8 @@ fn main() {
 /// Full engine with menu bar app.
 #[cfg(target_os = "macos")]
 fn run() {
-    crate::tutor::log::init();
-    eprintln!("rhe — loading...");
+    crate::log::init();
+    info!("loading...");
 
     let enabled = Arc::new(AtomicBool::new(true)); // start in rhe mode
     let quit = Arc::new(AtomicBool::new(false));
@@ -79,7 +80,7 @@ fn run() {
             mode_flags_engine,
         );
 
-        eprintln!("rhe: ready. click menu bar icon to enable.");
+        info!("ready. click menu bar icon to enable.");
 
         let out = output::macos::MacOSOutput::new();
 
@@ -107,49 +108,27 @@ fn run() {
                 match &sm_event {
                     state_machine::Event::Chord {
                         key, first_down, ..
-                    } => {
-                        eprintln!(
-                            "  chord: R:{:04b} L:{:04b} mod={}",
-                            key.right_bits(),
-                            key.left_bits(),
-                            key.has_mod()
-                        );
-                        tlog!(
-                            "engine chord: R:{:04b} L:{:04b} mod={} first_down={:?}",
-                            key.right_bits(),
-                            key.left_bits(),
-                            key.has_mod(),
-                            first_down
-                        );
-                    }
-                    state_machine::Event::SpaceUp => {
-                        eprintln!("  space-up");
-                        tlog!("engine: SpaceUp");
-                    }
-                    state_machine::Event::Backspace => {
-                        eprintln!("  backspace");
-                        tlog!("engine: Backspace");
-                    }
-                    state_machine::Event::ModTap => {
-                        eprintln!("  mod-tap");
-                        tlog!("engine: ModTap");
-                    }
-                    state_machine::Event::UndoPhoneme => {
-                        eprintln!("  undo-phoneme");
-                        tlog!("engine: UndoPhoneme");
-                    }
+                    } => tlog!(
+                        "engine chord: R:{:04b} L:{:04b} mod={} first_down={:?}",
+                        key.right_bits(),
+                        key.left_bits(),
+                        key.has_mod(),
+                        first_down
+                    ),
+                    state_machine::Event::SpaceUp => tlog!("engine: SpaceUp"),
+                    state_machine::Event::Backspace => tlog!("engine: Backspace"),
+                    state_machine::Event::ModTap => tlog!("engine: ModTap"),
+                    state_machine::Event::UndoPhoneme => tlog!("engine: UndoPhoneme"),
                 }
 
                 if let Some(action) = interp.process(&sm_event) {
                     use output::TextOutput;
                     match action {
                         interpreter::Action::Emit(ref text) => {
-                            eprintln!("  emit: {}", text);
                             tlog!("engine emit: {:?}", text);
                             out.emit(text);
                         }
                         interpreter::Action::Backspace(n) => {
-                            eprintln!("  emit: backspace x{}", n);
                             tlog!("engine emit: backspace x{}", n);
                             out.backspace(n);
                         }
@@ -157,7 +136,6 @@ fn run() {
                             ref before,
                             ref after,
                         } => {
-                            eprintln!("  emit: replace(-{:?}) {:?}", before, after);
                             tlog!("engine emit: replace(-{:?}) {:?}", before, after);
                             out.backspace(before.chars().count());
                             out.emit(after);
@@ -174,8 +152,8 @@ fn run() {
 /// Full engine on Linux — evdev grab + uinput output + tray menu. Engine runs in a background thread; the tray event loop owns the main thread (tray-icon's DBus/StatusNotifierItem machinery requires that).
 #[cfg(target_os = "linux")]
 fn run() {
-    crate::tutor::log::init();
-    eprintln!("rhe — loading...");
+    crate::log::init();
+    info!("loading...");
 
     let enabled = Arc::new(AtomicBool::new(true));
     let quit = Arc::new(AtomicBool::new(false));
@@ -224,9 +202,8 @@ fn run() {
         let out = output::linux::LinuxOutput::new();
         let mut sm = state_machine::StateMachine::new();
 
-        eprintln!(
-            "rhe: ready. Tray icon in system panel. \
-             Caps tap to toggle, CapsLock+Esc to quit."
+        info!(
+            "ready. Tray icon in system panel. Caps tap to toggle, CapsLock+Esc to quit."
         );
 
         loop {
@@ -297,8 +274,8 @@ fn run() {
 /// Full engine on Windows — rdev::grab + SendInput output + tray menu.
 #[cfg(target_os = "windows")]
 fn run() {
-    crate::tutor::log::init();
-    eprintln!("rhe — loading...");
+    crate::log::init();
+    info!("loading...");
 
     let enabled = Arc::new(AtomicBool::new(true));
     let quit = Arc::new(AtomicBool::new(false));
@@ -341,7 +318,7 @@ fn run() {
         let out = output::windows::WindowsOutput::new();
         let mut sm = state_machine::StateMachine::new();
 
-        eprintln!("rhe: ready. Tray icon in system panel. Esc to quit.");
+        info!("ready. Tray icon in system panel. Esc to quit.");
 
         loop {
             if quit_engine.load(std::sync::atomic::Ordering::Relaxed) {
@@ -404,7 +381,7 @@ fn run() {
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 fn run() {
-    eprintln!("rhe run: not yet supported on this platform.");
-    eprintln!("use `rhe tutor` to practice chords.");
+    rerror!("run: not yet supported on this platform.");
+    info!("use `rhe tutor` to practice chords.");
 }
 

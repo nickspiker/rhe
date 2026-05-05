@@ -1,6 +1,10 @@
-//! Optional tutor activity log. Off by default; enable with `RHE_LOG=1`.
+//! Crate-wide logging. Three macros:
 //!
-//! When enabled, every chord-key event, drill step transition, and engine emission gets a timestamped line in a log file. Use Enter in the tutor window to truncate the log and start a fresh capture — handy for "let me reproduce this one bug" debugging.
+//! - `tlog!` — gated debug log to `tutor.log`. Off by default; enable with `RHE_LOG=1`. Format args are only evaluated when enabled (cheap fast-path on every event).
+//! - `info!` — always-on user status. Goes to stderr with a `rhe: ` prefix. Used for "loading", "ready", and similar startup chatter the user expects to see.
+//! - `rerror!` — always-on error report. Goes to stderr with a `rhe error: ` prefix. Used for failures the user should know about (init errors, file-load rejects, etc.).
+//!
+//! When `RHE_LOG=1` is set, every chord-key event, drill step transition, and engine emission gets a timestamped line in `tutor.log`. The Enter key in the tutor window truncates the file so a single repro attempt can be isolated.
 //!
 //! Log path defaults to `<cwd>/tutor.log`; override with `RHE_LOG_PATH`.
 
@@ -45,7 +49,7 @@ pub fn init() {
     {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("rhe: tutor log init failed at {}: {}", path.display(), e);
+            eprintln!("rhe error: log init failed at {}: {}", path.display(), e);
             return;
         }
     };
@@ -92,12 +96,28 @@ pub fn enabled() -> bool {
     ENABLED.load(Ordering::Relaxed)
 }
 
-/// `tlog!("...", args)` formats and writes a single line, but only when logging is enabled — when disabled the format args aren't evaluated at all.
+/// `tlog!("...", args)` formats and writes a single line to the gated debug log, but only when logging is enabled — when disabled the format args aren't evaluated at all.
 #[macro_export]
 macro_rules! tlog {
     ($($arg:tt)*) => {
-        if $crate::tutor::log::enabled() {
-            $crate::tutor::log::log_line(&format!($($arg)*));
+        if $crate::log::enabled() {
+            $crate::log::log_line(&format!($($arg)*));
         }
+    };
+}
+
+/// `info!("...", args)` always emits a single line to stderr with a `rhe: ` prefix. Use for user-visible status messages that aren't error conditions (startup banners, ready-to-use confirmations, etc.).
+#[macro_export]
+macro_rules! info {
+    ($($arg:tt)*) => {
+        eprintln!("rhe: {}", format!($($arg)*));
+    };
+}
+
+/// `rerror!("...", args)` always emits a single line to stderr with a `rhe error: ` prefix. Use for problem reports the user should see (init failures, dropped-file rejections, backend errors).
+#[macro_export]
+macro_rules! rerror {
+    ($($arg:tt)*) => {
+        eprintln!("rhe error: {}", format!($($arg)*));
     };
 }

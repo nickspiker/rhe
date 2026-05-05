@@ -529,7 +529,7 @@ impl TrayApp {
         let window = match event_loop.create_window(attrs) {
             Ok(w) => w,
             Err(e) => {
-                eprintln!("rhe: failed to create tutor window: {e}");
+                crate::rerror!("failed to create tutor window: {e}");
                 return;
             }
         };
@@ -1764,7 +1764,7 @@ impl TrayApp {
             && !self.tutor_mods.super_key()
             && matches!(event.logical_key, Key::Named(NamedKey::Enter))
         {
-            crate::tutor::log::reset();
+            crate::log::reset();
             return;
         }
         if !ctrl {
@@ -2175,7 +2175,7 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
             }
             WindowEvent::DroppedFile(path) => {
                 if let Err(e) = self.load_dropped_text_file(path) {
-                    eprintln!("rhe: drop rejected: {e}");
+                    crate::rerror!("drop rejected: {e}");
                 }
             }
             _ => {}

@@ -69,8 +69,8 @@ pub struct LinuxOutput {
 impl LinuxOutput {
     pub fn new() -> Self {
         let fd = open_uinput().unwrap_or_else(|e| {
-            eprintln!(
-                "rhe: /dev/uinput unavailable ({}); output disabled.\n\
+            crate::rerror!(
+                "/dev/uinput unavailable ({}); output disabled.\n\
                  fix: sudo tee /etc/udev/rules.d/99-uinput.rules <<<\\\n\
                      'KERNEL==\"uinput\", GROUP=\"input\", MODE=\"0660\"'",
                 e
@@ -81,8 +81,8 @@ impl LinuxOutput {
         let reverse_map = match build_reverse_map() {
             Ok(m) => m,
             Err(e) => {
-                eprintln!(
-                    "rhe: could not build xkb keymap ({}); unicode fallback only",
+                crate::rerror!(
+                    "could not build xkb keymap ({}); unicode fallback only",
                     e
                 );
                 HashMap::new()

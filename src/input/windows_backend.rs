@@ -114,7 +114,7 @@ impl WindowsInput {
                 }
             });
             if let Err(e) = result {
-                eprintln!("rhe: rdev::grab failed: {:?}", e);
+                crate::rerror!("rdev::grab failed: {:?}", e);
             }
         });
 

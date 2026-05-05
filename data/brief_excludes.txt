@@ -243,7 +243,6 @@ colonel
 commander
 dr
 doc
-fbi
 inspector
 lieutenant
 minister

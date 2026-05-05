@@ -155,8 +155,8 @@ impl EvdevInput {
         let uinput_fd = match open_uinput() {
             Ok(fd) => Some(fd),
             Err(e) => {
-                eprintln!(
-                    "evdev: passthrough disabled ({}); non-rhe keys will be swallowed",
+                crate::rerror!(
+                    "evdev passthrough disabled ({}); non-rhe keys will be swallowed",
                     e
                 );
                 None
