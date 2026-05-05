@@ -1285,7 +1285,19 @@ impl TrayApp {
             let bottom_cy = layout.bottom_cy;
             let mod_w = layout.mod_w;
             let mod_cx = layout.mod_cx;
-            let mod_target = (target.right & (1u8 << 4)) != 0;
+            // mod_tap_only steps don't carry R-thumb in target.right (the
+            // target *state* is no fingers held; the gesture is a tap, not
+            // a hold), so the mod cell wouldn't highlight by chord match
+            // alone. Force-highlight on mod_tap_only so the user gets a
+            // visual cue to tap the green cell — otherwise they sit there
+            // holding word forever wondering what comes next.
+            let step_is_mod_tap = self
+                .tutor_state
+                .as_ref()
+                .and_then(|s| s.practice.current_step())
+                .map(|step| step.mod_tap_only)
+                .unwrap_or(false);
+            let mod_target = (target.right & (1u8 << 4)) != 0 || step_is_mod_tap;
             let mod_fill = if mod_target {
                 theme::MOD_PRIMARY
             } else {
