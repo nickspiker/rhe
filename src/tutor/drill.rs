@@ -1082,6 +1082,23 @@ pub struct TutorState {
     chord_left_acc: u8,
     touched_right: u8,
     touched_left: u8,
+    /// Set when a goof needs the drill to roll back to step 0, but the
+    /// actual `practice.reset_word()` call is held until errored
+    /// clears so the user keeps seeing the failed target while they
+    /// wind down their bad press. Without this, the drill snaps back
+    /// to step 0 the moment they goof — distracting and especially
+    /// noticeable in number mode where step 0 is the +mod+word
+    /// re-entry chord.
+    pending_reset: bool,
+    /// Set when the goof happened after the user had already made
+    /// progress (step_idx > 0). In that case the rollback throws
+    /// away typed chords that the engine already committed to the
+    /// focused app, and we require a full all_off (including word)
+    /// before clearing errored so the engine has a chance to commit
+    /// and reset cleanly. Goofs at step 0 don't set this — they're
+    /// trivial first-chord misses where the user can stay in the
+    /// word-held context and retry the same chord.
+    requires_word_release: bool,
     sm: crate::state_machine::StateMachine,
 }
 
@@ -1098,7 +1115,32 @@ impl TutorState {
             chord_left_acc: 0,
             touched_right: 0,
             touched_left: 0,
+            pending_reset: false,
+            requires_word_release: false,
             sm: crate::state_machine::StateMachine::new(),
+        }
+    }
+
+    /// A wrong key for the current step. Mark the drill as botched and
+    /// either reset immediately (if the user already has hands clear,
+    /// no errored period to wait through) or defer the actual rollback
+    /// to step 0 until errored clears — so the visual target stays on
+    /// the failed step throughout the user's wind-down. If the goof
+    /// happened after some progress was made (step_idx > 0), also
+    /// flag that the user needs to release word too before retrying:
+    /// the rollback throws away typed chords that the engine already
+    /// committed to the focused app, so word-up gives the engine a
+    /// commit-and-reset boundary.
+    fn goof(&mut self, all_off: bool, prev_step_idx: usize) {
+        self.last_was_botch = true;
+        if all_off {
+            self.practice.reset_word();
+        } else {
+            self.errored = true;
+            self.pending_reset = true;
+            if prev_step_idx > 0 {
+                self.requires_word_release = true;
+            }
         }
     }
 
@@ -1157,17 +1199,30 @@ impl TutorState {
             && !self.key_state.word;
 
         if self.errored {
-            // Clear when all fingers are off — word can stay held. The
-            // strict all_off rule (including word) was too punishing
-            // for word-held gestures (phoneme typing, pristine-zero
-            // retry): user had to drop word and rebuild the chord
-            // context. Now they can release just the bad fingers and
-            // retry the chord with word still held.
-            if self.key_state.right_bits() == 0 && self.key_state.left_bits() == 0 {
+            // Clear when all fingers are off. Word stays optional for
+            // trivial step-0 misses (no progress made yet — user can
+            // retry the same chord without losing the word-held
+            // context); but if the goof discarded progress
+            // (`requires_word_release`), require word-up too so the
+            // engine's interpreter commits and resets cleanly before
+            // the user retries the word from the top.
+            let hands_off =
+                self.key_state.right_bits() == 0 && self.key_state.left_bits() == 0;
+            let cleared = if self.requires_word_release {
+                hands_off && !self.key_state.word
+            } else {
+                hands_off
+            };
+            if cleared {
                 self.errored = false;
                 self.touched_right = 0;
                 self.touched_left = 0;
                 self.tutor_first_down = None;
+                self.requires_word_release = false;
+                if self.pending_reset {
+                    self.practice.reset_word();
+                    self.pending_reset = false;
+                }
             }
         } else {
             let is_key_down = rhe_event.direction == KeyDirection::Down;
@@ -1211,9 +1266,7 @@ impl TutorState {
                 // Phoneme mode catches this further down via
                 // `space_dropped`; number mode needs its own check
                 // because its matcher is state-based, not acc-based.
-                self.practice.reset_word();
-                self.last_was_botch = true;
-                self.errored = true;
+                self.goof(all_off, prev_step_idx);
             }
 
             if self.key_state.word && is_key_down && rhe_event.scan != scan::WORD {
@@ -1238,9 +1291,7 @@ impl TutorState {
                     && rhe_event.scan != scan::WORD
                     && rhe_event.scan != scan::R_THUMB
                 {
-                    self.practice.reset_word();
-                    self.last_was_botch = true;
-                    self.errored = true;
+                    self.goof(all_off, prev_step_idx);
                 }
             } else if self.practice.mode == WordMode::Number {
                 // Number mode: pure state matching. Advance when
@@ -1261,9 +1312,7 @@ impl TutorState {
                         let extra_left = state_left & !target.left;
                         let extra_word = state_word && !target.word;
                         if extra_right != 0 || extra_left != 0 || extra_word {
-                            self.practice.reset_word();
-                            self.last_was_botch = true;
-                            self.errored = true;
+                            self.goof(all_off, prev_step_idx);
                         }
                     } else {
                         // Key release: if the released key was a target
@@ -1318,9 +1367,7 @@ impl TutorState {
                                 self.practice.mode = WordMode::NumberFallback;
                                 self.practice.step_idx = 4;
                             } else {
-                                self.practice.reset_word();
-                                self.last_was_botch = true;
-                                self.errored = true;
+                                self.goof(all_off, prev_step_idx);
                             }
                         }
                     }
@@ -1359,36 +1406,28 @@ impl TutorState {
                         && rhe_event.scan != scan::WORD
                         && rhe_event.scan != scan::R_THUMB
                     {
-                        self.practice.reset_word();
-                        self.last_was_botch = true;
-                        self.errored = true;
+                        self.goof(all_off, prev_step_idx);
                     }
                 } else if space_only {
                     if is_key_down
                         && rhe_event.scan != scan::WORD
                         && !bounce_of_prev(rhe_event.scan)
                     {
-                        self.practice.reset_word();
-                        self.last_was_botch = true;
-                        self.errored = true;
+                        self.goof(all_off, prev_step_idx);
                     } else if !self.key_state.word {
                         self.last_was_botch = false;
                         self.practice.advance_step();
                     }
                 } else if target.right == 0 && target.left == 0 && !target.word {
                     if is_key_down && !bounce_of_prev(rhe_event.scan) {
-                        self.practice.reset_word();
-                        self.last_was_botch = true;
-                        self.errored = true;
+                        self.goof(all_off, prev_step_idx);
                     } else if all_off {
                         self.last_was_botch = false;
                         self.practice.advance_step();
                     }
                 } else if target.right == 0 && target.left == 0 && target.word {
                     if is_key_down && rhe_event.scan != scan::WORD {
-                        self.practice.reset_word();
-                        self.last_was_botch = true;
-                        self.errored = true;
+                        self.goof(all_off, prev_step_idx);
                     } else if self.key_state.right_bits() == 0 && self.key_state.left_bits() == 0 {
                         self.practice.advance_step();
                     }
@@ -1431,17 +1470,9 @@ impl TutorState {
                         && self.practice.step_idx > 0;
 
                     if space_dropped {
-                        self.practice.reset_word();
-                        self.last_was_botch = true;
-                        if !all_off {
-                            self.errored = true;
-                        }
+                        self.goof(all_off, prev_step_idx);
                     } else if is_key_down && has_extra_acc {
-                        self.practice.reset_word();
-                        self.last_was_botch = true;
-                        if !all_off {
-                            self.errored = true;
-                        }
+                        self.goof(all_off, prev_step_idx);
                     } else if acc_matches && hand_touched {
                         let first_down_ok = target.accepted_leads.is_empty()
                             || self
@@ -1449,20 +1480,12 @@ impl TutorState {
                                 .map(|fd| target.accepted_leads.test(fd))
                                 .unwrap_or(false);
                         if !first_down_ok {
-                            self.practice.reset_word();
-                            self.last_was_botch = true;
-                            if !all_off {
-                                self.errored = true;
-                            }
+                            self.goof(all_off, prev_step_idx);
                         } else {
                             self.practice.advance_step();
                         }
                     } else if hand_touched && target_hands_empty && !is_key_down {
-                        self.practice.reset_word();
-                        self.last_was_botch = true;
-                        if !all_off {
-                            self.errored = true;
-                        }
+                        self.goof(all_off, prev_step_idx);
                     }
                 }
             }

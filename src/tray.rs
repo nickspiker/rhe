@@ -446,6 +446,13 @@ struct TrayApp {
     tutor_drag_start_size: (u32, u32),
     tutor_drag_start_window_pos: (i32, i32),
     tutor_drag_start_screen_pos: (f64, f64),
+    /// Cumulative cursor screen position during a drag, updated from
+    /// raw `DeviceEvent::MouseMotion` deltas. Lets us track the cursor
+    /// even when it leaves the window — `WindowEvent::CursorMoved`
+    /// stops firing on macOS once the cursor crosses the window edge,
+    /// which is exactly when a drag-to-resize / drag-to-move actually
+    /// needs the data.
+    tutor_drag_screen_cursor: (f64, f64),
 
     // Frame/redraw counters for the debug HUD.
     tutor_frame_counter: u64,
@@ -736,6 +743,19 @@ impl TrayApp {
             .as_ref()
             .map(|s| s.errored)
             .unwrap_or(false);
+        // Word-complete signal: current step is "release everything"
+        // (target.right == 0, target.left == 0, target.word == false).
+        // The user has typed the whole word and just needs to lift the
+        // last keys to commit. Repaints the formerly-red error text in
+        // bright green so the visual cue is unmistakable.
+        let drill_complete = self
+            .tutor_state
+            .as_ref()
+            .and_then(|s| s.practice.current_step())
+            .map(|step| {
+                step.target.right == 0 && step.target.left == 0 && !step.target.word
+            })
+            .unwrap_or(false);
         let is_brief_mode = self
             .tutor_state
             .as_ref()
@@ -938,7 +958,7 @@ impl TrayApp {
             }
 
             // Big centred target word — red on error, white otherwise.
-            let word_colour = if drill_errored { 0xFFFF0000 } else { theme::TARGET_WORD };
+            let word_colour = if drill_errored { 0xFFFF0000 } else if drill_complete { 0xFF00FF00 } else { theme::TARGET_WORD };
             text.draw_text_center_u32(
                 pixels,
                 width,
@@ -958,7 +978,7 @@ impl TrayApp {
             // same line shows in phoneme mode, signalling "one-shot
             // chord shortcut, not a sounded-out spelling."
             if is_brief_mode && !word_text.is_empty() {
-                let logo_colour = if drill_errored { 0xFFFF0000 } else { theme::LOGO_TEXT };
+                let logo_colour = if drill_errored { 0xFFFF0000 } else if drill_complete { 0xFF00FF00 } else { theme::LOGO_TEXT };
                 crate::tutor::ui::compositor::TutorApp::draw_logo_text(
                     pixels,
                     text,
@@ -992,7 +1012,7 @@ impl TrayApp {
                     true,
                 );
                 let cur_x = layout.target_cx - cur_w / 2.0;
-                let phon_colour = if drill_errored { 0xFFFF0000 } else { theme::SENTENCE_CURRENT };
+                let phon_colour = if drill_errored { 0xFFFF0000 } else if drill_complete { 0xFF00FF00 } else { theme::SENTENCE_CURRENT };
                 text.draw_text_left_u32(
                     pixels,
                     width,
@@ -1024,7 +1044,7 @@ impl TrayApp {
                         "Bona Nova",
                         true,
                     );
-                    let fut_colour = if drill_errored { 0xFFFF0000 } else { theme::SENTENCE_FUTURE };
+                    let fut_colour = if drill_errored { 0xFFFF0000 } else if drill_complete { 0xFF00FF00 } else { theme::SENTENCE_FUTURE };
                     text.draw_text_left_u32(
                         pixels,
                         width,
@@ -1056,7 +1076,7 @@ impl TrayApp {
                         true,
                     );
                     let xl = x_right - w;
-                    let past_colour = if drill_errored { 0xFFFF0000 } else { theme::SENTENCE_PAST };
+                    let past_colour = if drill_errored { 0xFFFF0000 } else if drill_complete { 0xFF00FF00 } else { theme::SENTENCE_PAST };
                     text.draw_text_left_u32(
                         pixels,
                         width,
@@ -1629,90 +1649,6 @@ impl TrayApp {
         }
         let _ = window.request_inner_size(PhysicalSize::new(nw, nh));
     }
-
-    /// macOS: poll mouse position and button state directly from AppKit. winit stops delivering CursorMoved when the cursor leaves the window during a drag, so we query NSEvent directly. Returns true if the drag ended (caller should request redraw).
-    #[cfg(target_os = "macos")]
-    fn poll_macos_drag(&mut self) -> bool {
-        use std::ffi::{c_char, c_void};
-
-        let Some(window) = self.tutor_window.as_ref() else {
-            return false;
-        };
-
-        #[repr(C)]
-        #[derive(Clone, Copy)]
-        struct NSPoint {
-            x: f64,
-            y: f64,
-        }
-
-        unsafe extern "C" {
-            fn objc_msgSend(receiver: *const c_void, sel: *const c_void) -> usize;
-            fn sel_registerName(name: *const c_char) -> *const c_void;
-            fn objc_getClass(name: *const c_char) -> *const c_void;
-        }
-
-        unsafe {
-            let cls = objc_getClass(b"NSEvent\0".as_ptr() as *const c_char);
-            let sel_loc = sel_registerName(b"mouseLocation\0".as_ptr() as *const c_char);
-            let mouse_location: extern "C" fn(*const c_void, *const c_void) -> NSPoint =
-                std::mem::transmute(objc_msgSend as *const ());
-            let ns_point = mouse_location(cls, sel_loc);
-
-            let sel_btn = sel_registerName(b"pressedMouseButtons\0".as_ptr() as *const c_char);
-            let buttons = objc_msgSend(cls, sel_btn);
-            let left_held = buttons & 1 != 0;
-
-            // Convert AppKit coords (logical, bottom-left) → physical top-left
-            let scale = window.scale_factor();
-            let screen_cls = objc_getClass(b"NSScreen\0".as_ptr() as *const c_char);
-            let sel_main = sel_registerName(b"mainScreen\0".as_ptr() as *const c_char);
-            let main_screen = objc_msgSend(screen_cls, sel_main) as *const c_void;
-            #[repr(C)]
-            #[derive(Clone, Copy)]
-            struct NSRect {
-                origin: NSPoint,
-                size: NSPoint,
-            }
-            let sel_frame = sel_registerName(b"frame\0".as_ptr() as *const c_char);
-            let screen_frame: extern "C" fn(*const c_void, *const c_void) -> NSRect =
-                std::mem::transmute(objc_msgSend as *const ());
-            let frame = screen_frame(main_screen, sel_frame);
-            let screen_h = (frame.size.y * scale) as f64;
-
-            let phys_x = ns_point.x * scale;
-            let phys_y = screen_h - ns_point.y * scale;
-
-            if let Ok(wp) = window.outer_position() {
-                self.tutor_cursor =
-                    PhysicalPosition::new(phys_x - wp.x as f64, phys_y - wp.y as f64);
-            }
-
-            if !left_held {
-                self.tutor_dragging_resize = false;
-                self.tutor_dragging_move = false;
-                self.tutor_mouse_pressed = false;
-                self.tutor_resize_edge = None;
-                return true;
-            }
-
-            if self.tutor_dragging_resize {
-                self.apply_resize();
-            } else if self.tutor_dragging_move {
-                if let Ok(wp) = window.outer_position() {
-                    let sx = wp.x as f64 + self.tutor_cursor.x;
-                    let sy = wp.y as f64 + self.tutor_cursor.y;
-                    let dx = (sx - self.tutor_drag_start_screen_pos.0) as i32;
-                    let dy = (sy - self.tutor_drag_start_screen_pos.1) as i32;
-                    let nx = self.tutor_drag_start_window_pos.0 + dx;
-                    let ny = self.tutor_drag_start_window_pos.1 + dy;
-                    let _ = window.set_outer_position(PhysicalPosition::new(nx, ny));
-                }
-            }
-        }
-        false
-    }
-
     fn handle_keyboard(&mut self, event: KeyEvent) {
         // Track Ctrl via the key event directly — ModifiersChanged can
         // skip events on some Wayland compositors until after the
@@ -1940,6 +1876,57 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
         // Linux: tray built on the gtk thread by spawn_linux_tray_thread.
     }
 
+    /// macOS-only: raw mouse-motion deltas during a drag. CursorMoved
+    /// stops firing once the cursor leaves the window, but the press
+    /// originated inside so AppKit still routes the eventual mouse-up
+    /// to us — meanwhile we keep computing window-relative cursor by
+    /// adding raw deltas onto an absolute screen-cursor we seeded at
+    /// drag start. Replaces the previous 8ms NSEvent polling loop in
+    /// `about_to_wait`. Linux's compositor handles drag/resize via
+    /// xdg protocols, so this hook is a no-op there.
+    #[cfg(target_os = "macos")]
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        if !self.tutor_dragging_resize && !self.tutor_dragging_move {
+            return;
+        }
+        let winit::event::DeviceEvent::MouseMotion { delta } = event else {
+            return;
+        };
+        self.tutor_drag_screen_cursor.0 += delta.0;
+        self.tutor_drag_screen_cursor.1 += delta.1;
+
+        let Some(window) = self.tutor_window.as_ref() else {
+            return;
+        };
+
+        if self.tutor_dragging_move {
+            let dx = (self.tutor_drag_screen_cursor.0 - self.tutor_drag_start_screen_pos.0) as i32;
+            let dy = (self.tutor_drag_screen_cursor.1 - self.tutor_drag_start_screen_pos.1) as i32;
+            let nx = self.tutor_drag_start_window_pos.0 + dx;
+            let ny = self.tutor_drag_start_window_pos.1 + dy;
+            let _ = window.set_outer_position(PhysicalPosition::new(nx, ny));
+            return;
+        }
+
+        if self.tutor_dragging_resize {
+            // Recompute window-relative cursor from current window
+            // position so the resize math sees the right cursor for
+            // edges that move the window (NW / N / W / SW / NE).
+            if let Ok(wp) = window.outer_position() {
+                self.tutor_cursor = PhysicalPosition::new(
+                    self.tutor_drag_screen_cursor.0 - wp.x as f64,
+                    self.tutor_drag_screen_cursor.1 - wp.y as f64,
+                );
+            }
+            self.apply_resize();
+        }
+    }
+
     fn window_event(&mut self, _event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         let Some(window) = self.tutor_window.as_ref() else {
             return;
@@ -2079,6 +2066,10 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                         wp.x as f64 + self.tutor_cursor.x,
                         wp.y as f64 + self.tutor_cursor.y,
                     );
+                    // Seed the running screen cursor so the macOS
+                    // device_event handler has a starting absolute
+                    // position to add deltas onto.
+                    self.tutor_drag_screen_cursor = self.tutor_drag_start_screen_pos;
                 }
 
                 if let Some(dir) = self.resize_edge_at_cursor() {
@@ -2161,21 +2152,11 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
             return;
         }
 
-        // macOS: poll mouse during resize/move drag — winit stops
-        // delivering CursorMoved when the cursor leaves the window.
-        #[cfg(target_os = "macos")]
-        if self.tutor_dragging_resize || self.tutor_dragging_move {
-            let ended = self.poll_macos_drag();
-            if ended {
-                if let Some(w) = self.tutor_window.as_ref() {
-                    w.request_redraw();
-                }
-            }
-            event_loop.set_control_flow(ControlFlow::WaitUntil(
-                std::time::Instant::now() + std::time::Duration::from_millis(8),
-            ));
-            return;
-        }
+        // (macOS drag tracking moved off polling onto
+        // ApplicationHandler::device_event — DeviceEvent::MouseMotion
+        // delivers raw cursor deltas regardless of where the cursor
+        // is relative to the window, which is exactly when a
+        // resize/move drag needs the data.)
 
         // Zoom hint auto-fade. While the hint is armed, schedule a
         // wake at its deadline so we redraw and clear it without
@@ -2461,6 +2442,7 @@ pub fn run_tray(
         tutor_drag_start_size: (0, 0),
         tutor_drag_start_window_pos: (0, 0),
         tutor_drag_start_screen_pos: (0.0, 0.0),
+        tutor_drag_screen_cursor: (0.0, 0.0),
         tutor_frame_counter: 0,
         tutor_redraw_counter: 0,
         tutor_ctrl_held: false,
