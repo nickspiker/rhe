@@ -2,3 +2,4 @@
 /dist
 tutor_debug.log
 *.sha256
+data/symbol_frequency*.csv

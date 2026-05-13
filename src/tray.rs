@@ -561,27 +561,16 @@ impl TrayApp {
             w_ref.request_redraw();
         }
 
-        // Build the drill state on first open. Wiki stream blocks for
-        // its first article (then prefetches the next in the
-        // background); falls back to bundled Alice text when the
-        // network isn't reachable.
-        if self.tutor_state.is_none() {
+        // Lazy-load the dictionary + brief table so source switchers
+        // (Tutor / Test Text / Brown Corpus / dropped file) don't
+        // each reload them. Source content itself is the caller's
+        // responsibility — `open_tutor` no longer picks a default,
+        // so the menu handler that triggered the open is the one
+        // that decides Wikipedia vs Test Text vs Brown Corpus etc.
+        if self.tutor_word_lookup.is_none() {
             let cmudict = crate::data::load_cmudict();
-            let lookup = WordLookup::new(&cmudict);
-            let brief_table = crate::briefs::load_briefs();
-
-            let stream = SentenceStream::new();
-            let initial = stream.initial();
-            let lines: Vec<String> = if initial.is_empty() {
-                crate::tutor::drill::brown_corpus_lines()
-            } else {
-                initial
-            };
-            let practice = build_practice(&lookup, &brief_table, lines, false);
-            self.tutor_state = Some(TutorState::new(practice));
-            self.tutor_wiki_stream = Some(stream);
-            self.tutor_word_lookup = Some(lookup);
-            self.tutor_brief_table = Some(brief_table);
+            self.tutor_word_lookup = Some(WordLookup::new(&cmudict));
+            self.tutor_brief_table = Some(crate::briefs::load_briefs());
         }
     }
 
@@ -1122,10 +1111,16 @@ impl TrayApp {
         // ahead of cell rendering so the immutable tutor_state borrow
         // doesn't conflict with the mutable text_renderer borrow that
         // comes after.
-        let label_data: Option<(_, [String; 10], _, _, _)> =
+        let label_data: Option<(_, [String; 10], _, _, _, _)> =
             if let Some(state) = self.tutor_state.as_ref() {
                 let target = state.practice.current_target().copied().unwrap_or_default();
                 let key_state = state.key_state.clone();
+                // Mod-tap recovery is wired in `TutorState::tick` only for phoneme mode with word held — the engine's `Event::Mod` handler pops one phoneme there. Symbol/Number/Brief modes don't have that affordance, so the errored-state visual hint differs.
+                let mod_tap_recovers = matches!(
+                    state.practice.mode,
+                    crate::tutor::drill::WordMode::Phoneme
+                ) && key_state.word
+                    && state.practice.step_idx > 0;
                 let held_mask = key_state_to_mask(&key_state);
                 let held_word = key_state.word;
                 let first_down = state.tutor_first_down;
@@ -1139,6 +1134,12 @@ impl TrayApp {
                 let mode_bits = self.mode_flags.load(Ordering::Relaxed);
                 let in_number_mode = mode_bits & crate::interpreter::MODE_FLAG_NUMBER != 0;
                 let has_number_context = mode_bits & crate::interpreter::MODE_FLAG_HAS_NUMBER != 0;
+                // Symbol-mode hints fire the moment the user's input commits to symbol entry, NOT the moment the drill plans for it. Two engine signals:
+                // - `pending_symbol_entry`: SM has consumed `+word +mod -word` and thumb is still live, so the next chord press will fire `Event::SymbolMode`.
+                // - `MODE_FLAG_SYMBOL`: interpreter is in Mode::Symbol (post-SymbolMode entry, pre chord-fire).
+                // Either window means "next press emits a Greek/rando glyph" — same behavior the engine will use for brief hints later.
+                let in_symbol_mode = (mode_bits & crate::interpreter::MODE_FLAG_SYMBOL != 0)
+                    || state.pending_symbol_entry();
                 let phonemes = PhonemeTable::new();
                 let briefs = self.tutor_brief_table.as_ref();
                 const CELL_SCANS: [u8; 10] = [
@@ -1164,22 +1165,31 @@ impl TrayApp {
                             b,
                             in_number_mode,
                             has_number_context,
+                            in_symbol_mode,
                         )
                     } else {
                         String::new()
                     }
                 });
-                Some((target, labels, key_state, errored, ()))
+                Some((target, labels, key_state, errored, (), mod_tap_recovers))
             } else {
                 None
             };
 
-        if let Some((target, labels, key_state, errored, _)) = label_data.as_ref() {
-            // Errored frames render as if there were no target — every
-            // cell goes idle, the cue being "everything dark, release
-            // and try again" rather than a specific red highlight.
+        if let Some((target, labels, key_state, errored, _, mod_tap_recovers)) = label_data.as_ref()
+        {
+            // Errored frames repurpose the target highlight as a recovery cue. Mid-word phoneme goofs (mod_tap_recovers) point at the thumb cell with word still held — pressing+releasing mod backspaces one phoneme and clears errored. Other errored states (step 0, brief mode, etc.) render with no highlighted target so the user just releases everything to reset.
             let target = if *errored {
-                crate::tutor::drill::Target::default()
+                if *mod_tap_recovers {
+                    crate::tutor::drill::Target {
+                        right: 1 << 4,
+                        left: 0,
+                        word: true,
+                        accepted_leads: crate::key_mask::KeyMask::EMPTY,
+                    }
+                } else {
+                    crate::tutor::drill::Target::default()
+                }
             } else {
                 *target
             };
@@ -1792,6 +1802,31 @@ impl TrayApp {
     fn on_menu_click(&mut self, event_loop: &ActiveEventLoop, id: MenuId) {
         if id == self.ids.tutor {
             self.open_tutor(event_loop);
+            // (Re)load Wikipedia content every time the user picks
+            // "Tutor". Without this, a previous Test Text / Brown
+            // Corpus / dropped-file session leaves `tutor_state`
+            // populated with that source — and the open-tutor path
+            // would skip the wiki init, leaving the user staring at
+            // the wrong source. Symmetric with how Test Text and
+            // Brown Corpus always switch to their own source.
+            if let (Some(lookup), Some(briefs)) = (
+                self.tutor_word_lookup.as_ref(),
+                self.tutor_brief_table.as_ref(),
+            ) {
+                let stream = SentenceStream::new();
+                let initial = stream.initial();
+                let lines: Vec<String> = if initial.is_empty() {
+                    crate::tutor::drill::brown_corpus_lines()
+                } else {
+                    initial
+                };
+                let practice = build_practice(lookup, briefs, lines, false);
+                self.tutor_state = Some(TutorState::new(practice));
+                self.tutor_wiki_stream = Some(stream);
+                if let Some(w) = self.tutor_window.as_ref() {
+                    w.request_redraw();
+                }
+            }
         } else if id == self.ids.test_text {
             self.open_tutor(event_loop);
             if self.tutor_word_lookup.is_none() {
@@ -2241,7 +2276,7 @@ fn build_mac_tray(
 
     // Rebuild MenuItems with the IDs we pre-allocated so that the
     // winit thread can match click events.
-    let tutor_item = MenuItem::with_id(ids.tutor.clone(), "Open Tutor", true, None);
+    let tutor_item = MenuItem::with_id(ids.tutor.clone(), "Tutor", true, None);
     let test_item = MenuItem::with_id(ids.test_text.clone(), "Test Text", true, None);
     let brown_item = MenuItem::with_id(ids.brown_corpus.clone(), "Brown Corpus", true, None);
     let mode_item = MenuItem::with_id(
@@ -2310,7 +2345,7 @@ fn spawn_linux_tray_thread(
         let initial_fallback = FallbackMode::from_u8(fallback.load(Ordering::Relaxed));
         let is_autospell = initial_fallback == FallbackMode::Autospell;
 
-        let tutor_item = MenuItem::with_id(ids.tutor.clone(), "Open Tutor", true, None);
+        let tutor_item = MenuItem::with_id(ids.tutor.clone(), "Tutor", true, None);
         let test_item = MenuItem::with_id(ids.test_text.clone(), "Test Text", true, None);
         let brown_item = MenuItem::with_id(ids.brown_corpus.clone(), "Brown Corpus", true, None);
         let mode_item = MenuItem::with_id(

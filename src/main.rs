@@ -125,8 +125,11 @@ fn run() {
                     ),
                     state_machine::Event::SpaceUp => tlog!("engine: SpaceUp"),
                     state_machine::Event::Backspace => tlog!("engine: Backspace"),
-                    state_machine::Event::Mod => tlog!("engine: Mod"),
+                    state_machine::Event::Mod { activity_in_session } => {
+                        tlog!("engine: Mod (activity_in_session={})", activity_in_session)
+                    }
                     state_machine::Event::UndoPhoneme => tlog!("engine: UndoPhoneme"),
+                    state_machine::Event::SymbolMode => tlog!("engine: SymbolMode"),
                 }
 
                 if let Some(action) = interp.process(&sm_event) {
@@ -251,8 +254,11 @@ fn run() {
                     ),
                     state_machine::Event::SpaceUp => tlog!("engine: SpaceUp"),
                     state_machine::Event::Backspace => tlog!("engine: Backspace"),
-                    state_machine::Event::Mod => tlog!("engine: Mod"),
+                    state_machine::Event::Mod { activity_in_session } => {
+                        tlog!("engine: Mod (activity_in_session={})", activity_in_session)
+                    }
                     state_machine::Event::UndoPhoneme => tlog!("engine: UndoPhoneme"),
+                    state_machine::Event::SymbolMode => tlog!("engine: SymbolMode"),
                 }
                 if let Some(action) = interp.process(&sm_event) {
                     use output::TextOutput;
@@ -370,8 +376,11 @@ fn run() {
                     ),
                     state_machine::Event::SpaceUp => tlog!("engine: SpaceUp"),
                     state_machine::Event::Backspace => tlog!("engine: Backspace"),
-                    state_machine::Event::Mod => tlog!("engine: Mod"),
+                    state_machine::Event::Mod { activity_in_session } => {
+                        tlog!("engine: Mod (activity_in_session={})", activity_in_session)
+                    }
                     state_machine::Event::UndoPhoneme => tlog!("engine: UndoPhoneme"),
+                    state_machine::Event::SymbolMode => tlog!("engine: SymbolMode"),
                 }
                 if let Some(action) = interp.process(&sm_event) {
                     use output::TextOutput;

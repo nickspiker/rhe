@@ -76,6 +76,7 @@ pub struct PracticeWord {
     pub suffix_label: Option<String>, // e.g. "~ing" for display
     pub number_steps: Option<Vec<Step>>, // spelled-digit path: entry + finger+mod + commit
     pub number_fallback_steps: Option<Vec<Step>>, // digit-then-form path: entry + digit + commit + form chord
+    pub symbol_steps: Option<Vec<Step>>, // symbol-mode path: +word+mod -word +word -mod +chord(s) + commit
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -86,6 +87,8 @@ pub enum WordMode {
     Number,
     /// Digit-then-form fallback: user committed a digit (e.g. "2") in number mode without adding the spelled-form mod, then needs to apply a form chord to convert "2" → "two". Reached automatically from `Number` mode when the matcher detects the user releasing the digit finger without joining mod.
     NumberFallback,
+    /// Symbol-mode session: entered via the `+word +mod -word +chord` gesture. The triggering chord fires the symbol via `crate::layout::symbols::chord_to_glyph`; mode reverts to Normal immediately after — one symbol per gesture.
+    Symbol,
 }
 
 #[derive(Default, Clone)]
@@ -146,6 +149,7 @@ impl Practice {
                 .number_fallback_steps
                 .as_deref()
                 .or(word.number_steps.as_deref()),
+            WordMode::Symbol => word.symbol_steps.as_deref(),
         }
     }
 
@@ -211,6 +215,8 @@ impl Practice {
                 WordMode::Brief
             } else if w.number_steps.is_some() && w.phoneme_steps.is_empty() {
                 WordMode::Number
+            } else if w.symbol_steps.is_some() && w.phoneme_steps.is_empty() {
+                WordMode::Symbol
             } else if w.suffix_steps.is_some() {
                 WordMode::Suffix
             } else {
@@ -228,6 +234,17 @@ impl Practice {
 #[cfg(feature = "lang-en")]
 pub const TEST_SENTENCES: &[&str] = &[
     // ─── Recent features ─────────────────────────────────────────────
+    // Symbol mode right-hand consonants: each Greek letter routes thru crate::layout::symbols::chord_to_glyph (κ on K-chord, π on P-chord, etc.) — phoneme positions you already know.
+    "type π and τ and σ for symbols",
+    "use κ for kappa or λ for lambda often",
+    // Symbol mode left-hand vowels: α ε ι ο υ on Ah/Eh/Ih/Ow/Iy chord shapes — sound mnemonic ("ah"=α, "eh"=ε, "ih"=ι, "oh"=ο, "ee"=υ).
+    "we use α and ε for math notation",
+    "and ι and ο and υ for vowels",
+    // Symbol mode left-hand randos: @ # $ ~ ; etc. on the multi-finger left chords. Frequency-stable units: ° £ €.
+    "send mail to nick @ home dot com",
+    "the temperature is 72 ° today",
+    "price is $ 5 or £ 4 or € 5",
+    "use # for hash and ~ for home",
     // Pristine zero gesture: +word+mod then -word-mod, in any order.
     "the count is zero and one and two and three and four and five",
     // one/won ordered bundle on R-RING+R-thumb.
@@ -726,6 +743,82 @@ pub fn build_number_steps(word: &str) -> Option<Vec<Step>> {
     Some(steps)
 }
 
+/// Build the per-step drill sequence for a symbol-mode "word" (one or more glyphs mapped via `crate::layout::symbols::chord_to_glyph`). Returns `None` if any character isn't a known symbol.
+///
+/// Symbol mode is one-shot: each char gets its own 4-step gesture. For multi-char words the gestures are concatenated end-to-end.
+///
+/// Per-char step sequence (mirrors `+word +mod -word +chord ... all-off`):
+/// 0. `+word +mod` — word + R-thumb both held, in either order. The strict-state matcher's pressed_in_target gate accepts the partial state where only one is held without erroring, so press order is up to the user.
+/// 1. `-word` — thumb only; SM defers `[Mod, SpaceUp]` pending disambiguation.
+/// 2. `+chord` — thumb still held, chord finger(s) press; SM drops the deferred bundle and fires `SymbolMode`. Word stays released — the symbol session lives in word-up brief territory and fires the chord on combined-hands all-zero.
+/// 3. all-off — release word, thumb, and chord together; chord fires; interpreter emits the symbol with a trailing space and reverts to Normal.
+#[cfg(feature = "lang-en")]
+pub fn build_symbol_steps(word: &str) -> Option<Vec<Step>> {
+    if word.is_empty() {
+        return None;
+    }
+    // Resolve every char to its chord first — bail before allocating anything if even one char isn't a known symbol.
+    let chords: Vec<(u8, u8, bool, char)> = word
+        .chars()
+        .map(|c| {
+            let (right, left, modkey) = crate::layout::symbols::glyph_to_chord(c)?;
+            Some((right, left, modkey, c))
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    let word_and_thumb = Target {
+        right: 1 << 4,
+        left: 0,
+        word: true,
+        accepted_leads: KeyMask::EMPTY,
+    };
+    let thumb_only = Target {
+        right: 1 << 4,
+        left: 0,
+        word: false,
+        accepted_leads: KeyMask::EMPTY,
+    };
+
+    let mut steps: Vec<Step> = Vec::new();
+    for (right, left, modkey, c) in chords {
+        // Mod-bearing chord shapes are unreachable in symbol mode today (see `crate::layout::symbols::chord_to_glyph`). The `glyph_to_chord` table currently lists none, so this is defensive.
+        let chord_right = right | if modkey { 1 << 4 } else { 0 };
+        // Step 0: +word +mod (word + thumb both held; either order)
+        steps.push(Step {
+            target: word_and_thumb,
+            ..Step::default()
+        });
+        // Step 1: -word (thumb only) — defers Mod + SpaceUp
+        steps.push(Step {
+            target: thumb_only,
+            ..Step::default()
+        });
+        // Step 2: +chord (thumb + chord, word released) — fires SymbolMode
+        steps.push(Step {
+            target: Target {
+                right: chord_right | (1 << 4),
+                left,
+                word: false,
+                accepted_leads: KeyMask::EMPTY,
+            },
+            number_glyph: Some(c.to_string()),
+            ..Step::default()
+        });
+        // Step 3: all-off — chord fires, symbol emitted, mode reverts
+        steps.push(Step {
+            target: Target::default(),
+            ..Step::default()
+        });
+    }
+
+    Some(steps)
+}
+
+#[cfg(not(feature = "lang-en"))]
+pub fn build_symbol_steps(_word: &str) -> Option<Vec<Step>> {
+    None
+}
+
 /// Look up the brief chord for `word` (lowercase, alphabetic) in the brief table and build the standard 2-step drill (chord, all-off) — same shape as the inline brief lookup in `build_practice`'s phoneme branch. Returns `None` if the word has no brief.
 fn brief_steps_for_word(word: &str, brief_table: &BriefTable) -> Option<Vec<Step>> {
     let mut chord_for_word: Option<(u8, u8)> = None;
@@ -782,6 +875,20 @@ pub fn build_practice(
             let mut sentence: Vec<PracticeWord> = Vec::new();
 
             for &word_str in group {
+                if let Some(symbol_steps) = build_symbol_steps(word_str) {
+                    sentence.push(PracticeWord {
+                        word: word_str.to_string(),
+                        phoneme_steps: Vec::new(),
+                        brief_steps: None,
+                        suffix_steps: None,
+                        suffix_label: None,
+                        number_steps: None,
+                        number_fallback_steps: None,
+                        symbol_steps: Some(symbol_steps),
+                    });
+                    continue;
+                }
+
                 if let Some(number_steps) = build_number_steps(word_str) {
                     sentence.push(PracticeWord {
                         word: word_str.to_string(),
@@ -791,6 +898,7 @@ pub fn build_practice(
                         suffix_label: None,
                         number_steps: Some(number_steps),
                         number_fallback_steps: None,
+                        symbol_steps: None,
                     });
                     continue;
                 }
@@ -828,6 +936,7 @@ pub fn build_practice(
                         suffix_label: None,
                         number_steps: Some(number_steps),
                         number_fallback_steps,
+                        symbol_steps: None,
                     });
                     continue;
                 }
@@ -841,6 +950,7 @@ pub fn build_practice(
                         suffix_label: None,
                         number_steps: Some(number_steps),
                         number_fallback_steps: None,
+                        symbol_steps: None,
                     });
                     continue;
                 }
@@ -1023,6 +1133,7 @@ pub fn build_practice(
                     suffix_label,
                     number_steps: None,
                     number_fallback_steps: None,
+                    symbol_steps: None,
                 });
             }
 
@@ -1121,6 +1232,11 @@ impl TutorState {
         }
     }
 
+    /// True when the user's input has committed to symbol-mode entry — the SM is post-`+word +mod -word` with thumb still live, and the next chord-finger press will fire `Event::SymbolMode`. The tutor reads this to flip cell hints to Greek/rando labels at the trigger moment.
+    pub fn pending_symbol_entry(&self) -> bool {
+        self.sm.pending_symbol_entry()
+    }
+
     /// A wrong key for the current step. Mark the drill as botched and
     /// either reset immediately (if the user already has hands clear,
     /// no errored period to wait through) or defer the actual rollback
@@ -1182,13 +1298,57 @@ impl TutorState {
 
         let mut step_advanced_by_mod = false;
         for sm_event in self.sm.feed(rhe_event) {
-            if matches!(sm_event, crate::state_machine::Event::Mod) {
+            if matches!(sm_event, crate::state_machine::Event::Mod { .. }) {
                 let is_mod_advance_step = self
                     .practice
                     .current_step()
                     .map_or(false, |s| s.advance_on_mod);
                 if is_mod_advance_step {
                     self.practice.advance_step();
+                    step_advanced_by_mod = true;
+                } else if self.practice.mode == WordMode::Phoneme && self.key_state.word {
+                    // Phoneme-mode mod-alone (thumb tap while word
+                    // held): the engine deletes the last buffered
+                    // phoneme. Mirror in the drill.
+                    //
+                    // step_idx > 0:
+                    // - Errored: the goofed step's wrong phoneme is
+                    //   what got popped. Clear errored without
+                    //   changing step_idx so the user retries the
+                    //   same target. Bypasses the requires_word_release
+                    //   gate that normally blocks errored-clear while
+                    //   word is still held.
+                    // - Not errored: the most recently confirmed
+                    //   phoneme is what got popped. Roll step_idx
+                    //   back to the start of that phoneme. Phoneme
+                    //   step layout alternates chord/release, so an
+                    //   even step_idx (just released, ready for next
+                    //   chord) rolls back two; an odd step_idx (just
+                    //   typed a chord) rolls back one.
+                    //
+                    // step_idx == 0: nothing to undo, but still clear
+                    // accumulators so the residual thumb bit doesn't
+                    // trip the post-release goof on the next tick.
+                    if self.practice.step_idx > 0 {
+                        if self.errored {
+                            self.errored = false;
+                            self.pending_reset = false;
+                            self.requires_word_release = false;
+                            self.last_was_botch = false;
+                        } else {
+                            let target_step = if self.practice.step_idx % 2 == 0 {
+                                self.practice.step_idx.saturating_sub(2)
+                            } else {
+                                self.practice.step_idx - 1
+                            };
+                            self.practice.step_idx = target_step;
+                        }
+                    }
+                    self.touched_right = 0;
+                    self.touched_left = 0;
+                    self.tutor_first_down = None;
+                    self.chord_right_acc = 0;
+                    self.chord_left_acc = 0;
                     step_advanced_by_mod = true;
                 }
             }
@@ -1231,16 +1391,33 @@ impl TutorState {
                 let is_number_word = self.practice.current_word().map_or(false, |w| {
                     w.number_steps.is_some() && w.phoneme_steps.is_empty()
                 });
-                self.practice.mode = if is_number_word {
-                    WordMode::Number
-                } else {
-                    WordMode::Phoneme
-                };
-                self.practice.step_idx = 0;
-                self.fingers_during_word = false;
+                let is_symbol_word = self.practice.current_word().map_or(false, |w| {
+                    w.symbol_steps.is_some() && w.phoneme_steps.is_empty()
+                });
+                // Multi-symbol words concatenate one 5-step gesture
+                // per char, so a `+word` mid-PracticeWord (step_idx > 0)
+                // is the start of the next char's gesture, not a
+                // restart of the current one.
+                let in_symbol_gesture = is_symbol_word
+                    && self.practice.mode == WordMode::Symbol
+                    && self.practice.step_idx > 0;
+                if !in_symbol_gesture {
+                    self.practice.mode = if is_symbol_word {
+                        WordMode::Symbol
+                    } else if is_number_word {
+                        WordMode::Number
+                    } else {
+                        WordMode::Phoneme
+                    };
+                    self.practice.step_idx = 0;
+                    self.fingers_during_word = false;
+                }
             } else if rhe_event.scan == scan::WORD
                 && rhe_event.direction == KeyDirection::Up
-                && matches!(self.practice.mode, WordMode::Phoneme | WordMode::Number)
+                && matches!(
+                    self.practice.mode,
+                    WordMode::Phoneme | WordMode::Number | WordMode::Symbol
+                )
                 && self.practice.step_idx == 0
             {
                 if !self.fingers_during_word {
@@ -1266,6 +1443,12 @@ impl TutorState {
                 // Phoneme mode catches this further down via
                 // `space_dropped`; number mode needs its own check
                 // because its matcher is state-based, not acc-based.
+                //
+                // Symbol mode is excluded: its gesture has a
+                // legitimate -word at step 2 (target word=f), so the
+                // generic check would false-positive there. The
+                // Symbol matcher's pressed-in-target rule + greedy
+                // advance catches mis-releases without it.
                 self.goof(all_off, prev_step_idx);
             }
 
@@ -1372,6 +1555,74 @@ impl TutorState {
                         }
                     }
                 }
+            } else if self.practice.mode == WordMode::Symbol {
+                // Symbol mode: pure state matching with greedy
+                // advance. The gesture cycles through targets that
+                // alternate between word-held and word-released
+                // states (e.g. step 2 has target word=f, step 3
+                // word=t), so a single tick can satisfy multiple
+                // step transitions when the state lines up. Greedy
+                // advance walks the step index forward as long as
+                // each new target is already met.
+                //
+                // Errors: if the user pressed a key that isn't in
+                // the current target after greedy advance, that's a
+                // wrong-key goof. If they released a target-bearing
+                // key without the target being fully met, that's a
+                // dropped-chord goof. Releasing word, thumb, or
+                // chord keys at the legitimate transition points
+                // doesn't trigger either branch because greedy
+                // advance has already moved past them.
+                let mut advanced_this_tick = false;
+                loop {
+                    let target = match self.practice.current_target() {
+                        Some(t) => *t,
+                        None => break,
+                    };
+                    if self.key_state.right_bits() == target.right
+                        && self.key_state.left_bits() == target.left
+                        && self.key_state.word == target.word
+                    {
+                        self.practice.advance_step();
+                        advanced_this_tick = true;
+                    } else {
+                        break;
+                    }
+                }
+                if !advanced_this_tick {
+                    if let Some(target) = self.practice.current_target() {
+                        let target = *target;
+                        if is_key_down {
+                            let pressed_in_target = if let Some(bit) =
+                                scan::right_bit(rhe_event.scan)
+                            {
+                                (target.right & (1u8 << bit)) != 0
+                            } else if let Some(bit) = scan::left_bit(rhe_event.scan) {
+                                (target.left & (1u8 << bit)) != 0
+                            } else if rhe_event.scan == scan::WORD {
+                                target.word
+                            } else {
+                                false
+                            };
+                            if !pressed_in_target {
+                                self.goof(all_off, prev_step_idx);
+                            }
+                        } else {
+                            let regress_right = scan::right_bit(rhe_event.scan)
+                                .map(|bit| (target.right & (1u8 << bit)) != 0)
+                                .unwrap_or(false);
+                            let regress_left = scan::left_bit(rhe_event.scan)
+                                .map(|bit| (target.left & (1u8 << bit)) != 0)
+                                .unwrap_or(false);
+                            let target_met = self.key_state.right_bits() == target.right
+                                && self.key_state.left_bits() == target.left
+                                && self.key_state.word == target.word;
+                            if (regress_right || regress_left) && !target_met {
+                                self.goof(all_off, prev_step_idx);
+                            }
+                        }
+                    }
+                }
             } else if let Some(target) = self.practice.current_target() {
                 let target = *target;
                 let step = self.practice.current_step().unwrap();
@@ -1464,6 +1715,16 @@ impl TutorState {
                         || (target.left == 0 && self.touched_left != 0)
                         || (self.key_state.word && !target.word);
 
+                    // Thumb-only press in progress: candidate mod-tap
+                    // gesture (engine reads as `Event::Mod`, which the
+                    // sm_event loop above treats as phoneme-undo).
+                    // Suppress the goof so the user reaches thumb-up;
+                    // if they DO press a non-thumb key before releasing,
+                    // chord_*_acc grows past thumb-only and the gate
+                    // re-engages naturally.
+                    let thumb_only_acc =
+                        self.chord_right_acc == (1u8 << 4) && self.chord_left_acc == 0;
+
                     let space_dropped = rhe_event.scan == scan::WORD
                         && rhe_event.direction == KeyDirection::Up
                         && target.word
@@ -1471,7 +1732,7 @@ impl TutorState {
 
                     if space_dropped {
                         self.goof(all_off, prev_step_idx);
-                    } else if is_key_down && has_extra_acc {
+                    } else if is_key_down && has_extra_acc && !thumb_only_acc {
                         self.goof(all_off, prev_step_idx);
                     } else if acc_matches && hand_touched {
                         let first_down_ok = target.accepted_leads.is_empty()
@@ -1605,7 +1866,17 @@ pub fn cell_label(
     briefs: &BriefTable,
     in_number_mode: bool,
     has_number_context: bool,
+    in_symbol_mode: bool,
 ) -> String {
+    if in_symbol_mode {
+        // Symbol mode shows what each cell would emit on its own — single-finger lookup against the symbol-mode table, ignoring held_mask. The session is one-shot so there's no accumulating chord context to combine with; the user reads each cell's label as "this finger alone = this glyph". For multi-finger symbols (κ on R-IDX+R-MID, π on R-IDX+R-MID+R-PINKY, etc.) the cell highlighting still tells them which fingers to combine.
+        let mut candidate = KeyMask::EMPTY;
+        candidate.set(cell_scan);
+        let chord = ChordKey::from_mask(candidate);
+        return crate::layout::symbols::chord_to_glyph(chord)
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+    }
     if in_number_mode {
         let mod_held = held_mask.test(scan::R_THUMB);
         let mut candidate = KeyMask::EMPTY;
@@ -1788,6 +2059,7 @@ mod tests {
                 suffix_label: None,
                 number_steps: Some(build_pristine_zero_steps()),
                 number_fallback_steps: None,
+                symbol_steps: None,
             }]],
             sentence_idx: 0,
             word_idx: 0,
@@ -1852,6 +2124,200 @@ mod tests {
         assert!(!s.errored);
     }
 
+    // ─── Symbol-mode drill ───
+
+    #[test]
+    fn symbol_steps_shape_for_single_letter() {
+        // π is on the all-4-right chord (effort rank 4) under the arXiv-frequency layout — it's the 5th-most-common Greek consonant in math/physics writing.
+        let steps = build_symbol_steps("π").expect("π should map");
+        // 0:+word+mod 1:-word 2:+chord(thumb+chord, word=f) 3:all-off
+        assert_eq!(steps.len(), 4);
+        // Step 0: word + thumb (in either press order).
+        assert_eq!(steps[0].target.right, 1 << 4);
+        assert!(steps[0].target.word);
+        // Step 1: thumb only (-word).
+        assert_eq!(steps[1].target.right, 1 << 4);
+        assert!(!steps[1].target.word);
+        // Step 2: thumb + π-chord (all 4 right fingers), word released.
+        assert_eq!(steps[2].target.right, 0b1111 | (1 << 4));
+        assert!(!steps[2].target.word);
+        assert_eq!(steps[2].number_glyph.as_deref(), Some("π"));
+        // Step 3: full all-off.
+        assert_eq!(steps[3].target.right, 0);
+        assert_eq!(steps[3].target.left, 0);
+        assert!(!steps[3].target.word);
+    }
+
+    #[test]
+    fn symbol_steps_skip_unknown_chars() {
+        // "hello" has no symbol mapping for any char.
+        assert!(build_symbol_steps("hello").is_none());
+        // Mixed (Greek + ASCII) also returns None — symbol-mode is
+        // all-or-nothing per word.
+        assert!(build_symbol_steps("πa").is_none());
+    }
+
+    fn pi_practice() -> Practice {
+        let symbol_steps = build_symbol_steps("π").expect("π builds");
+        let word = PracticeWord {
+            word: "π".to_string(),
+            phoneme_steps: Vec::new(),
+            brief_steps: None,
+            suffix_steps: None,
+            suffix_label: None,
+            number_steps: None,
+            number_fallback_steps: None,
+            symbol_steps: Some(symbol_steps),
+        };
+        Practice {
+            sentences: vec![vec![word]],
+            sentence_idx: 0,
+            word_idx: 0,
+            step_idx: 0,
+            mode: WordMode::Symbol,
+            wrapped: false,
+        }
+    }
+
+    /// Canonical symbol gesture for π drills cleanly: enter symbol mode via `+word +mod -word +chord`, with thumb still held when the chord finger(s) press, then release everything.
+    #[test]
+    fn pi_symbol_drills_clean() {
+        let mut state = TutorState::new(pi_practice());
+        for &(scan, direction) in &[
+            (scan::WORD, KeyDirection::Down),
+            (scan::R_THUMB, KeyDirection::Down), // step 0 satisfied (word+thumb)
+            (scan::WORD, KeyDirection::Up),      // → step 1 (thumb only)
+            // π chord (all 4 right fingers) with thumb still held, word released → step 2 satisfied.
+            (scan::R_IDX, KeyDirection::Down),
+            (scan::R_MID, KeyDirection::Down),
+            (scan::R_RING, KeyDirection::Down),
+            (scan::R_PINKY, KeyDirection::Down),
+            // Release everything (chord + thumb) → step 3 (all-off).
+            (scan::R_IDX, KeyDirection::Up),
+            (scan::R_MID, KeyDirection::Up),
+            (scan::R_RING, KeyDirection::Up),
+            (scan::R_PINKY, KeyDirection::Up),
+            (scan::R_THUMB, KeyDirection::Up),
+        ] {
+            state.tick(RheKeyEvent { scan, direction });
+        }
+        assert!(!state.errored, "symbol π should drill without botching");
+    }
+
+    /// Press order independence for step 0 (word + thumb): thumb first then word should drill just as clean as word first then thumb. The strict-state matcher's pressed_in_target gate covers the partial-state ticks without erroring.
+    #[test]
+    fn pi_symbol_thumb_first_drills_clean() {
+        let mut state = TutorState::new(pi_practice());
+        for &(scan, direction) in &[
+            (scan::R_THUMB, KeyDirection::Down), // partial state — gate accepts
+            (scan::WORD, KeyDirection::Down),    // → step 0 satisfied
+            (scan::WORD, KeyDirection::Up),      // → step 1 (thumb only)
+            (scan::R_IDX, KeyDirection::Down),
+            (scan::R_MID, KeyDirection::Down),
+            (scan::R_RING, KeyDirection::Down),
+            (scan::R_PINKY, KeyDirection::Down), // → step 2 satisfied
+            (scan::R_IDX, KeyDirection::Up),
+            (scan::R_MID, KeyDirection::Up),
+            (scan::R_RING, KeyDirection::Up),
+            (scan::R_PINKY, KeyDirection::Up),
+            (scan::R_THUMB, KeyDirection::Up),   // → step 3 (all-off)
+        ] {
+            state.tick(RheKeyEvent { scan, direction });
+        }
+        assert!(!state.errored, "thumb-first symbol entry should drill clean");
+    }
+
+    /// Pressing a wrong finger inside symbol mode (during the chord step) should goof — the user diverged from the target chord. L_PINKY is on a left-hand chord shape (not part of π's right-hand all-4 target).
+    #[test]
+    fn symbol_wrong_chord_botches() {
+        let mut state = TutorState::new(pi_practice());
+        for &(scan, direction) in &[
+            (scan::WORD, KeyDirection::Down),
+            (scan::R_THUMB, KeyDirection::Down),
+            (scan::WORD, KeyDirection::Up),
+            (scan::L_PINKY, KeyDirection::Down),
+        ] {
+            state.tick(RheKeyEvent { scan, direction });
+        }
+        assert!(state.errored, "wrong finger in symbol chord should goof");
+    }
+
+    fn single_symbol_practice(c: char) -> Practice {
+        let symbol_steps = build_symbol_steps(&c.to_string())
+            .unwrap_or_else(|| panic!("no symbol mapping for {}", c));
+        let word = PracticeWord {
+            word: c.to_string(),
+            phoneme_steps: Vec::new(),
+            brief_steps: None,
+            suffix_steps: None,
+            suffix_label: None,
+            number_steps: None,
+            number_fallback_steps: None,
+            symbol_steps: Some(symbol_steps),
+        };
+        Practice {
+            sentences: vec![vec![word]],
+            sentence_idx: 0,
+            word_idx: 0,
+            step_idx: 0,
+            mode: WordMode::Symbol,
+            wrapped: false,
+        }
+    }
+
+    /// α (alpha) on the L_MID chord (M = effort rank 3 = 4th-easiest single finger).
+    #[test]
+    fn alpha_symbol_drills_clean() {
+        let mut state = TutorState::new(single_symbol_practice('α'));
+        for &(scan, direction) in &[
+            (scan::WORD, KeyDirection::Down),
+            (scan::R_THUMB, KeyDirection::Down),
+            (scan::WORD, KeyDirection::Up),
+            (scan::L_MID, KeyDirection::Down),
+            (scan::L_MID, KeyDirection::Up),
+            (scan::R_THUMB, KeyDirection::Up),
+        ] {
+            state.tick(RheKeyEvent { scan, direction });
+        }
+        assert!(!state.errored, "α should drill cleanly");
+    }
+
+    /// @ on L_PINKY (P = effort rank 2 = 3rd-easiest single finger). High-frequency ASCII rando, ranked above α since `@` shows up everywhere in modern text.
+    #[test]
+    fn at_sign_symbol_drills_clean() {
+        let mut state = TutorState::new(single_symbol_practice('@'));
+        for &(scan, direction) in &[
+            (scan::WORD, KeyDirection::Down),
+            (scan::R_THUMB, KeyDirection::Down),
+            (scan::WORD, KeyDirection::Up),
+            (scan::L_PINKY, KeyDirection::Down),
+            (scan::L_PINKY, KeyDirection::Up),
+            (scan::R_THUMB, KeyDirection::Up),
+        ] {
+            state.tick(RheKeyEvent { scan, direction });
+        }
+        assert!(!state.errored, "@ should drill cleanly");
+    }
+
+    /// ° on L_IDX (I = effort rank 0 = the easiest chord). Frequency scan rank 2 across runs — clearest "yes, this glyph deserves the easiest slot" signal in the data.
+    #[test]
+    fn degree_symbol_drills_clean() {
+        let mut state = TutorState::new(single_symbol_practice('°'));
+        for &(scan, direction) in &[
+            (scan::WORD, KeyDirection::Down),
+            (scan::R_THUMB, KeyDirection::Down),
+            (scan::WORD, KeyDirection::Up),
+            (scan::L_IDX, KeyDirection::Down),
+            (scan::L_IDX, KeyDirection::Up),
+            (scan::R_THUMB, KeyDirection::Up),
+        ] {
+            state.tick(RheKeyEvent { scan, direction });
+        }
+        assert!(!state.errored, "° should drill cleanly");
+    }
+
+    // (Round-trip glyph↔chord coverage lives in `layout::en::symbols::tests::forward_reverse_roundtrip` — the test there iterates the actual table arrays so it doesn't drift when entries are added or moved.)
+
     // ─── Three-path drill for digit words (e.g. "two") ───
     //
     // build_practice produces brief_steps + number_steps +
@@ -1893,6 +2359,7 @@ mod tests {
             suffix_label: None,
             number_steps: Some(number_steps),
             number_fallback_steps: Some(number_fallback_steps),
+            symbol_steps: None,
         };
         Practice {
             sentences: vec![vec![word]],
@@ -1982,6 +2449,7 @@ mod tests {
             suffix_label: None,
             number_steps: Some(number_steps),
             number_fallback_steps: Some(number_fallback_steps),
+            symbol_steps: None,
         };
         Practice {
             sentences: vec![vec![word]],
@@ -2029,6 +2497,7 @@ mod tests {
             suffix_label: None,
             number_steps: Some(number_steps),
             number_fallback_steps: Some(number_fallback_steps),
+            symbol_steps: None,
         };
         let initial_mode = match Some(&word) {
             Some(w) if w.brief_steps.is_some() => WordMode::Brief,
@@ -2099,5 +2568,167 @@ mod tests {
             (scan::L_IDX, KeyDirection::Up),   // step 6 (-form) ✓
         ]);
         assert!(!s.errored, "full Path 3 should drill clean");
+    }
+
+    // ─── Phoneme-mode mod-undo (thumb tap deletes one phoneme) ───
+    //
+    // Build a tiny 2-phoneme practice from raw chord targets so the
+    // test doesn't need a CMU dictionary. K = right 0b0011 (R_IDX +
+    // R_MID); T = right 0b0101 (R_IDX + R_RING) — picked just to be
+    // distinct, exact bits don't matter, only that they alternate
+    // correctly through the 5-step phoneme layout (chord, release,
+    // chord, release, commit).
+
+    fn kt_practice() -> Practice {
+        let chord_step = |right: u8| Step {
+            target: Target {
+                right,
+                left: 0,
+                word: true,
+                accepted_leads: KeyMask::EMPTY,
+            },
+            ..Step::default()
+        };
+        let release_step = || Step {
+            target: Target {
+                right: 0,
+                left: 0,
+                word: true,
+                accepted_leads: KeyMask::EMPTY,
+            },
+            ..Step::default()
+        };
+        let phoneme_steps = vec![
+            chord_step(0b0011), // step 0: phoneme[0] chord
+            release_step(),     // step 1: release
+            chord_step(0b0101), // step 2: phoneme[1] chord
+            release_step(),     // step 3: release
+            Step {
+                target: Target::default(), // step 4: commit (all-off)
+                space_only: true,
+                ..Step::default()
+            },
+        ];
+        let word = PracticeWord {
+            word: "kt".to_string(),
+            phoneme_steps,
+            brief_steps: None,
+            suffix_steps: None,
+            suffix_label: None,
+            number_steps: None,
+            number_fallback_steps: None,
+            symbol_steps: None,
+        };
+        Practice {
+            sentences: vec![vec![word]],
+            sentence_idx: 0,
+            word_idx: 0,
+            step_idx: 0,
+            mode: WordMode::Phoneme,
+            wrapped: false,
+        }
+    }
+
+    /// After a goof at step 2 (phoneme[1] target), pressing mod alone
+    /// while word is still held should clear errored and leave step_idx
+    /// at the same step so the user can retry.
+    #[test]
+    fn phoneme_mode_mod_undo_clears_errored() {
+        let mut state = TutorState::new(kt_practice());
+        // Type phoneme[0] correctly.
+        for &(scan, direction) in &[
+            (scan::WORD, KeyDirection::Down),    // step 0 stays (target K)
+            (scan::R_IDX, KeyDirection::Down),
+            (scan::R_MID, KeyDirection::Down),   // K complete → step 1
+            (scan::R_IDX, KeyDirection::Up),
+            (scan::R_MID, KeyDirection::Up),     // release → step 2
+        ] {
+            state.tick(RheKeyEvent { scan, direction });
+        }
+        assert_eq!(state.practice.step_idx, 2, "should be at phoneme[1] target");
+        assert!(!state.errored);
+
+        // Goof phoneme[1]: press wrong chord (R_PINKY isn't part of T).
+        state.tick(RheKeyEvent {
+            scan: scan::R_PINKY,
+            direction: KeyDirection::Down,
+        });
+        assert!(state.errored, "wrong chord should goof");
+        let goofed_step = state.practice.step_idx;
+
+        // Release the wrong chord (errored stays — requires_word_release blocks while word held).
+        state.tick(RheKeyEvent {
+            scan: scan::R_PINKY,
+            direction: KeyDirection::Up,
+        });
+        assert!(state.errored, "still errored while word held");
+
+        // Mod-tap (thumb down + up) while word held should ungoof.
+        state.tick(RheKeyEvent {
+            scan: scan::R_THUMB,
+            direction: KeyDirection::Down,
+        });
+        state.tick(RheKeyEvent {
+            scan: scan::R_THUMB,
+            direction: KeyDirection::Up,
+        });
+        assert!(!state.errored, "mod tap should clear errored");
+        assert_eq!(
+            state.practice.step_idx, goofed_step,
+            "step_idx stays at goofed step for retry"
+        );
+    }
+
+    /// Mod-tap mid-word without an error rolls step_idx back by one
+    /// phoneme so the user can retype the previous syllable.
+    #[test]
+    fn phoneme_mode_mod_undo_rolls_back_one_phoneme() {
+        let mut state = TutorState::new(kt_practice());
+        // Type phoneme[0] (K) and release: lands on step 2.
+        for &(scan, direction) in &[
+            (scan::WORD, KeyDirection::Down),
+            (scan::R_IDX, KeyDirection::Down),
+            (scan::R_MID, KeyDirection::Down),
+            (scan::R_IDX, KeyDirection::Up),
+            (scan::R_MID, KeyDirection::Up),
+        ] {
+            state.tick(RheKeyEvent { scan, direction });
+        }
+        assert_eq!(state.practice.step_idx, 2);
+        assert!(!state.errored);
+
+        // Mod-tap should roll back to step 0 (start of phoneme[0]).
+        state.tick(RheKeyEvent {
+            scan: scan::R_THUMB,
+            direction: KeyDirection::Down,
+        });
+        state.tick(RheKeyEvent {
+            scan: scan::R_THUMB,
+            direction: KeyDirection::Up,
+        });
+        assert!(!state.errored);
+        assert_eq!(state.practice.step_idx, 0, "one phoneme undone");
+    }
+
+    /// Mod-tap at step 0 (no phonemes typed) is a no-op — clears any
+    /// transient acc state but doesn't underflow step_idx or goof.
+    #[test]
+    fn phoneme_mode_mod_undo_at_step_zero_no_op() {
+        let mut state = TutorState::new(kt_practice());
+        state.tick(RheKeyEvent {
+            scan: scan::WORD,
+            direction: KeyDirection::Down,
+        });
+        // Mod-tap before typing any phoneme.
+        state.tick(RheKeyEvent {
+            scan: scan::R_THUMB,
+            direction: KeyDirection::Down,
+        });
+        state.tick(RheKeyEvent {
+            scan: scan::R_THUMB,
+            direction: KeyDirection::Up,
+        });
+        assert!(!state.errored, "step-0 mod tap should not goof");
+        assert_eq!(state.practice.step_idx, 0);
     }
 }

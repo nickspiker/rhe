@@ -19,7 +19,13 @@ pub enum Event {
     /// Solo word press-and-release (no other key was live at any point during the press) = backspace.
     Backspace,
     /// Mod (right thumb) was pressed and released within a word-held session with no other chord finger ever joining the live set. Fires on thumb-release, or on word-release if word released first while the gesture was still eligible. Word can stay held across multiple `Mod` events (number-mode entry then decimal point); the state machine just flags each occurrence and the interpreter decides what each one means.
-    Mod,
+    ///
+    /// `activity_in_session` is true if any chord finger was pressed earlier in the same word-held session. The interpreter uses this to distinguish a pristine number-mode entry (`+word +mod -mod ...`, activity=false) from a mid-word mod-tap after the user already typed something (activity=true). The latter can be a phoneme-undo (when something is in the phoneme buffer) or a goof-recovery no-op (buffer empty); in neither case does it enter Number mode, which would otherwise leave the tutor's cell hints showing digits while the drill is still in phoneme mode.
+    Mod {
+        activity_in_session: bool,
+    },
+    /// Symbol-mode entry. Fires when the user does the `+word +mod -word +word` gesture: the word-release-while-mod-held that prefixes a `Mod`+`SpaceUp` (the pristine-zero shortcut) gets repurposed when the user re-presses word before thumb releases. The deferred `SpaceUp` is dropped, this event fires instead, and the interpreter switches to a symbol-typing sub-session that lasts until the word releases.
+    SymbolMode,
     /// Undo last phoneme (reserved for future gesture).
     UndoPhoneme,
 }
@@ -46,6 +52,12 @@ pub struct StateMachine {
     mod_alone: bool,
     /// Scancode of the first key pressed since the last fire. Used to disambiguate ordered briefs. Reset when the accumulator clears.
     first_down: Option<u8>,
+    /// Set on `-word` while `mod_alone`. Defers BOTH `Event::Mod` and `Event::SpaceUp` — without disambiguation yet, we don't know whether to fire those (pristine-zero) or fire `Event::SymbolMode` instead (the new short symbol-mode entry). The next event disambiguates: a chord finger pressed while thumb still held → drop both deferred events, fire SymbolMode; anything else → flush `[Mod, SpaceUp]` and process the event normally.
+    pending_zero_commit: bool,
+    /// Companion to `pending_zero_commit`: tracks whether the deferred bundle includes a `Mod` event. Always set together with `pending_zero_commit` in `handle_word(Up)`'s mod-alone branch; cleared together when symbol-mode entry takes over (Mod is dropped — symbol mode skips Number entry entirely) or when the flush path emits both.
+    pending_mod_commit: bool,
+    /// Snapshot of `activity_during_word` captured when the deferred Mod was queued, so the eventual Mod event reports the activity state from BEFORE the queueing (not from the post-flush moment, by which point activity has been cleared). Lets the interpreter distinguish pristine-zero (activity=false) from a deferred mid-word mod-tap.
+    pending_mod_activity: bool,
 }
 
 impl StateMachine {
@@ -57,10 +69,68 @@ impl StateMachine {
             activity_during_word: false,
             mod_alone: false,
             first_down: None,
+            pending_zero_commit: false,
+            pending_mod_commit: false,
+            pending_mod_activity: false,
         }
     }
 
+    /// True when the SM is mid-`+word +mod -word` gesture with thumb still live — the next chord-finger press will fire `Event::SymbolMode`. The tutor reads this to flip cell hints to Greek/rando labels at the moment the user commits to symbol-mode entry, before the SM has actually emitted the SymbolMode event.
+    pub fn pending_symbol_entry(&self) -> bool {
+        self.pending_zero_commit && self.live.test(scan::R_THUMB)
+    }
+
     pub fn feed(&mut self, event: KeyEvent) -> Vec<Event> {
+        if self.pending_zero_commit {
+            // Previous tick was `-word` while thumb was held alone:
+            // we deferred `[Mod, SpaceUp]` pending disambiguation.
+            // Now this event resolves the gesture.
+            //
+            // A chord finger going DOWN while thumb is still live →
+            // symbol-mode entry (`+word +mod -word +chord ...`). Drop
+            // both deferred events, fire `SymbolMode`, and seed accum
+            // with the just-pressed finger so it leads the chord. The
+            // session lives in word-released brief territory: word_held
+            // stays false, the chord fires on combined-hands all-zero,
+            // and the still-held thumb stays in `live` until the user
+            // releases it (silent — try_fire on thumb-up sees empty
+            // hand-accum or non-empty live and short-circuits).
+            if event.direction == KeyDirection::Down
+                && event.scan != scan::WORD
+                && event.scan != scan::R_THUMB
+                && self.live.test(scan::R_THUMB)
+            {
+                self.pending_zero_commit = false;
+                self.pending_mod_commit = false;
+                self.live.set(event.scan);
+                self.accum = KeyMask::EMPTY;
+                self.accum.set(event.scan);
+                self.first_down = Some(event.scan);
+                self.mod_alone = false;
+                return vec![Event::SymbolMode];
+            }
+            // Anything else → flush the deferred bundle, then process
+            // the event normally. Pristine-zero (`+word +mod -word
+            // -mod`) lands here on the `-mod` event: emits `[Mod,
+            // SpaceUp]` (then any chord try_fire from -mod). The
+            // interpreter sees the same event sequence it always did
+            // — `Mod` arms Number mode, `SpaceUp` exits with "zero ".
+            self.pending_zero_commit = false;
+            let mut events = Vec::new();
+            if self.pending_mod_commit {
+                self.pending_mod_commit = false;
+                events.push(Event::Mod {
+                    activity_in_session: self.pending_mod_activity,
+                });
+            }
+            events.push(Event::SpaceUp);
+            events.extend(self.feed_inner(event));
+            return events;
+        }
+        self.feed_inner(event)
+    }
+
+    fn feed_inner(&mut self, event: KeyEvent) -> Vec<Event> {
         if event.scan == scan::WORD {
             self.handle_word(event.direction)
         } else {
@@ -102,8 +172,10 @@ impl StateMachine {
                     if self.accum.is_empty() {
                         self.first_down = None;
                     }
-                    events.push(Event::Mod);
-                    events.push(Event::SpaceUp);
+                    // Defer BOTH Mod and SpaceUp pending the next event. Symbol-mode entry (chord finger pressed while thumb still live) drops both — that path skips Number entry entirely. Anything else (typically `-mod` for pristine zero) flushes the bundle and processes normally. Snapshot `activity` so the eventual emitted Mod reports the activity state from THIS moment, not from after the flush (by which point we've cleared it).
+                    self.pending_zero_commit = true;
+                    self.pending_mod_commit = true;
+                    self.pending_mod_activity = activity;
                 } else if activity {
                     events.push(Event::SpaceUp);
                 } else if (self.live & BOTH_HANDS).is_empty() {
@@ -147,13 +219,17 @@ impl StateMachine {
                 // mod again inside this same word-held session (for a
                 // decimal).
                 if self.word_held && scan == crate::scan::R_THUMB && self.mod_alone {
+                    // Capture activity BEFORE the assignment below so the emitted Mod reflects whether any finger pressed during this word session up to this moment, not the post-fire state.
+                    let activity_before = self.activity_during_word;
                     self.mod_alone = false;
                     self.activity_during_word = true;
                     self.accum.clear(crate::scan::R_THUMB);
                     if self.accum.is_empty() {
                         self.first_down = None;
                     }
-                    return vec![Event::Mod];
+                    return vec![Event::Mod {
+                        activity_in_session: activity_before,
+                    }];
                 }
                 self.try_fire(scan)
             }
@@ -456,7 +532,7 @@ mod tests {
                 word(KeyDirection::Up),
             ],
         );
-        assert_eq!(events, vec![Event::Mod, Event::SpaceUp]);
+        assert_eq!(events, vec![Event::Mod { activity_in_session: false }, Event::SpaceUp]);
     }
 
     #[test]
@@ -477,7 +553,7 @@ mod tests {
                 r_thumb(KeyDirection::Up),
             ],
         );
-        assert_eq!(events, vec![Event::Mod, Event::SpaceUp]);
+        assert_eq!(events, vec![Event::Mod { activity_in_session: false }, Event::SpaceUp]);
     }
 
     #[test]
@@ -499,7 +575,19 @@ mod tests {
                 word(KeyDirection::Up),
             ],
         );
-        assert_eq!(events, vec![Event::Mod, Event::Mod, Event::SpaceUp]);
+        // First Mod: activity_in_session=false (clean session). Second Mod fires after the first set activity_during_word=true (Mod itself counts as activity for word-up commit purposes), so it carries activity_in_session=true. The interpreter is already in Number mode at that point and emits a decimal — the activity flag only gates the Normal→Number transition.
+        assert_eq!(
+            events,
+            vec![
+                Event::Mod {
+                    activity_in_session: false
+                },
+                Event::Mod {
+                    activity_in_session: true
+                },
+                Event::SpaceUp,
+            ]
+        );
     }
 
     #[test]
@@ -540,7 +628,7 @@ mod tests {
                 r_thumb(KeyDirection::Up),
             ],
         );
-        assert_eq!(events, vec![Event::Mod]);
+        assert_eq!(events, vec![Event::Mod { activity_in_session: false }]);
         assert!(sm.accum.is_empty());
     }
 
@@ -563,7 +651,7 @@ mod tests {
         );
         // Expect: Mod, Chord{r_idx, no mod}, SpaceUp.
         assert_eq!(events.len(), 3);
-        assert_eq!(events[0], Event::Mod);
+        assert_eq!(events[0], Event::Mod { activity_in_session: false });
         let Event::Chord { key, .. } = &events[1] else {
             panic!("expected Chord, got {:?}", events[1]);
         };

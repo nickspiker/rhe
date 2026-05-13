@@ -30,13 +30,32 @@ use super::chords::ChordKey;
 use crate::key_mask::KeyMask;
 use crate::scan;
 
-/// Which of the ten positions (0..=9) a single-finger chord occupies, after optionally ignoring the mod/thumb bit. Returns `None` if the chord isn't a single-finger press on one of the ten number-mode positions.
+/// Which of the ten positions (0..=9) a chord occupies, after optionally ignoring the mod/thumb bit. Returns `None` if the chord isn't a recognized number-mode chord shape.
+///
+/// Two chord shapes per position for digits 4 and 5: the inner-index stretch keys (QWERTY G/H) for standard keyboards that have those rows, plus an all-4-home-row-fingers chord (matching the M phoneme on the right and the Uw phoneme on the left) for stripped-down "rheboard" hardware that omits the inner-index keys. Both shapes coexist in software — software users get the choice; rheboard users get a complete number layout without the extra physical keys. Single-finger chords map to the other eight positions.
 fn position(key: ChordKey, ignore_mod: bool) -> Option<u8> {
     let mut mask = key.mask();
     if ignore_mod {
         let mut clear = KeyMask::EMPTY;
         clear.set(scan::R_THUMB);
         mask &= !clear;
+    }
+    // All-4-home-row chords for digits 4 and 5 (rheboard layout). Checked before the single-finger fallback so multi-finger doesn't get rejected by `count_ones() != 1`.
+    let all_four_right = KeyMask::EMPTY
+        .with(scan::R_IDX)
+        .with(scan::R_MID)
+        .with(scan::R_RING)
+        .with(scan::R_PINKY);
+    if mask == all_four_right {
+        return Some(4);
+    }
+    let all_four_left = KeyMask::EMPTY
+        .with(scan::L_IDX)
+        .with(scan::L_MID)
+        .with(scan::L_RING)
+        .with(scan::L_PINKY);
+    if mask == all_four_left {
+        return Some(5);
     }
     if mask.count_ones() != 1 {
         return None;
@@ -82,6 +101,52 @@ pub fn chord_to_digit_word(key: ChordKey) -> Option<&'static str> {
     }
     let pos = position(key, true)?;
     Some(DIGIT_WORDS[pos as usize])
+}
+
+/// Glyph for a multi-finger single-hand chord (no mod) inside number mode. Right-hand chords mirror the lowercase Greek consonants from `crate::layout::symbols::chord_to_glyph` for effort ranks 5-14 — the chord shape per Greek letter is identical across symbol and number mode, so muscle memory transfers. The five most-frequent Greek consonants (λ β μ ρ π) sit on symbol-mode effort ranks 0-4 (single-finger or all-4), which are digits in number mode — those letters are reachable only via symbol mode.
+///
+/// Left-hand chords carry brackets and math operators that don't fit on the single-finger+mod operator slots; placement is independent of symbol mode (different glyph set).
+///
+/// All-4-home-row chords are excluded from both halves because they're claimed by digits 4 (right) and 5 (left) under the rheboard-friendly position map.
+///
+/// Returns `None` for single-finger chords (those are digits), mod-bearing chords (those are arithmetic operators or spelled digits), cross-hand rolls (ambiguous), and any chord shape not in the static table below.
+pub fn chord_to_multi_glyph(key: ChordKey) -> Option<&'static str> {
+    if key.has_mod() {
+        return None;
+    }
+    let right = key.right_bits();
+    let left = key.left_bits();
+    if right != 0 && left != 0 {
+        return None;
+    }
+    if right.count_ones() <= 1 && left.count_ones() <= 1 {
+        return None;
+    }
+    Some(match (right, left) {
+        // Right-hand Greek consonants (effort 5-14, matching `symbols::RIGHT_BY_EFFORT`).
+        (0b0110, 0) => "σ", // 5  M+R
+        (0b0011, 0) => "ω", // 6  I+M
+        // 7 (I+M+R, 0b0111) — None in symbol-mode table; left empty here too.
+        (0b1001, 0) => "τ", // 8  I+P
+        (0b0101, 0) => "δ", // 9  I+R
+        (0b1100, 0) => "η", // 10 R+P
+        (0b1110, 0) => "ψ", // 11 M+R+P
+        (0b1010, 0) => "κ", // 12 M+P
+        (0b1101, 0) => "φ", // 13 I+R+P
+        (0b1011, 0) => "ζ", // 14 I+M+P
+        // Left-hand brackets and math operators. Independent placement (different glyph set, no symbol-mode parallel).
+        (0, 0b0011) => "[",
+        (0, 0b0110) => "]",
+        (0, 0b0101) => "{",
+        (0, 0b1001) => "}",
+        (0, 0b1100) => "<",
+        (0, 0b1010) => ">",
+        (0, 0b0111) => "√",
+        (0, 0b1110) => "∞",
+        (0, 0b1011) => "∂",
+        (0, 0b1101) => "∫",
+        _ => return None,
+    })
 }
 
 const DIGITS: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
@@ -199,5 +264,132 @@ mod tests {
     #[test]
     fn digit_word_thumb_only_none() {
         assert_eq!(chord_to_digit_word(single(scan::R_THUMB)), None);
+    }
+
+    fn double(a: u8, b: u8) -> ChordKey {
+        ChordKey::from_mask(KeyMask::EMPTY.with(a).with(b))
+    }
+
+    #[test]
+    fn multi_glyph_right_hand_greek() {
+        // R-IDX + R-MID (effort 6, I+M) → ω in the new layout.
+        assert_eq!(chord_to_multi_glyph(double(scan::R_IDX, scan::R_MID)), Some("ω"));
+        // R-MID + R-RING (effort 5, M+R) → σ.
+        assert_eq!(
+            chord_to_multi_glyph(double(scan::R_MID, scan::R_RING)),
+            Some("σ")
+        );
+        // R-IDX + R-PINKY (effort 8, I+P) → τ.
+        assert_eq!(
+            chord_to_multi_glyph(double(scan::R_IDX, scan::R_PINKY)),
+            Some("τ")
+        );
+        // π is on effort rank 4 (all-4-right) in symbol mode; that chord is digit 4 in number mode, so π is NOT reachable here.
+    }
+
+    #[test]
+    fn multi_glyph_left_hand_brackets() {
+        assert_eq!(chord_to_multi_glyph(double(scan::L_IDX, scan::L_MID)), Some("["));
+        assert_eq!(chord_to_multi_glyph(double(scan::L_MID, scan::L_RING)), Some("]"));
+        assert_eq!(chord_to_multi_glyph(double(scan::L_IDX, scan::L_RING)), Some("{"));
+    }
+
+    #[test]
+    fn multi_glyph_single_finger_none() {
+        // Single-finger chords are digits, not multi-glyphs.
+        assert_eq!(chord_to_multi_glyph(single(scan::R_IDX)), None);
+        assert_eq!(chord_to_multi_glyph(single(scan::L_PINKY)), None);
+    }
+
+    #[test]
+    fn multi_glyph_with_mod_none() {
+        // Mod-bearing chords are arithmetic ops or spelled words.
+        let mut m = KeyMask::EMPTY;
+        m.set(scan::R_IDX);
+        m.set(scan::R_MID);
+        m.set(scan::R_THUMB);
+        assert_eq!(chord_to_multi_glyph(ChordKey::from_mask(m)), None);
+    }
+
+    #[test]
+    fn multi_glyph_cross_hand_none() {
+        // Cross-hand rolls aren't currently mapped (ambiguous mnemonic).
+        assert_eq!(chord_to_multi_glyph(double(scan::R_IDX, scan::L_IDX)), None);
+    }
+
+    fn all_four_right() -> ChordKey {
+        ChordKey::from_mask(
+            KeyMask::EMPTY
+                .with(scan::R_IDX)
+                .with(scan::R_MID)
+                .with(scan::R_RING)
+                .with(scan::R_PINKY),
+        )
+    }
+
+    fn all_four_left() -> ChordKey {
+        ChordKey::from_mask(
+            KeyMask::EMPTY
+                .with(scan::L_IDX)
+                .with(scan::L_MID)
+                .with(scan::L_RING)
+                .with(scan::L_PINKY),
+        )
+    }
+
+    fn all_four_right_with_mod() -> ChordKey {
+        ChordKey::from_mask(
+            KeyMask::EMPTY
+                .with(scan::R_IDX)
+                .with(scan::R_MID)
+                .with(scan::R_RING)
+                .with(scan::R_PINKY)
+                .with(scan::R_THUMB),
+        )
+    }
+
+    fn all_four_left_with_mod() -> ChordKey {
+        ChordKey::from_mask(
+            KeyMask::EMPTY
+                .with(scan::L_IDX)
+                .with(scan::L_MID)
+                .with(scan::L_RING)
+                .with(scan::L_PINKY)
+                .with(scan::R_THUMB),
+        )
+    }
+
+    /// Rheboard layout: all-4-right home row = digit 4 (replacing the inner-index stretch that the rheboard hardware doesn't have). Standard keyboards keep R_IDX_INNER as an alternate path — both produce '4'.
+    #[test]
+    fn digit_4_via_all_four_right() {
+        assert_eq!(chord_to_digit(all_four_right()), Some('4'));
+        assert_eq!(chord_to_digit(single(scan::R_IDX_INNER)), Some('4'));
+    }
+
+    #[test]
+    fn digit_5_via_all_four_left() {
+        assert_eq!(chord_to_digit(all_four_left()), Some('5'));
+        assert_eq!(chord_to_digit(single(scan::L_IDX_INNER)), Some('5'));
+    }
+
+    /// All-4 + mod still emits the position-4/5 operator, same as the inner-index + mod path.
+    #[test]
+    fn symbol_4_5_via_all_four_with_mod() {
+        assert_eq!(chord_to_symbol(all_four_right_with_mod()), Some(')'));
+        assert_eq!(chord_to_symbol(all_four_left_with_mod()), Some('('));
+    }
+
+    /// Spelled-word path: all-4 + mod (finger-first via `first_down`) gives "four" / "five", same as inner-index + mod.
+    #[test]
+    fn digit_word_4_5_via_all_four_with_mod() {
+        assert_eq!(chord_to_digit_word(all_four_right_with_mod()), Some("four"));
+        assert_eq!(chord_to_digit_word(all_four_left_with_mod()), Some("five"));
+    }
+
+    /// All-4-home-row chords are NOT in the multi-glyph table (they're digits now). Catches future drift if someone re-adds µ or ∇ on those shapes.
+    #[test]
+    fn multi_glyph_excludes_all_four() {
+        assert_eq!(chord_to_multi_glyph(all_four_right()), None);
+        assert_eq!(chord_to_multi_glyph(all_four_left()), None);
     }
 }

@@ -7,3 +7,4 @@ pub mod chords;
 pub mod number_forms;
 pub mod ordered_briefs;
 pub mod suffixes;
+pub mod symbols;
