@@ -8,6 +8,9 @@ use std::collections::HashMap;
 /// Phoneme dictionary: maps a sequence of phonemes → word. Under `lang-en` it's built from CMU dict + frequency data; under `lang-mri` it's permanently empty (every lookup misses, engine falls through to autospell).
 pub struct PhonemeDictionary {
     entries: HashMap<Vec<Phoneme>, String>,
+    /// All words sharing a phoneme sequence, sorted by descending frequency.
+    /// Used by the homophone toggle to cycle through alternate spellings.
+    homophones: HashMap<Vec<Phoneme>, Vec<String>>,
 }
 
 /// Walk CMU dict text, yielding `(lowercase_word, phonemes)` for every well-formed entry. Skips comment lines (`;;;`), strips variant markers (`WORD(2)` → `word`), drops stress digits from each phoneme, and filters entries that contain no recognised phonemes. Both consumers below build over this single iterator so the parsing rules live in exactly one place. ARPABET-specific; only compiled under `lang-en`.
@@ -38,6 +41,7 @@ impl PhonemeDictionary {
     pub fn empty() -> Self {
         Self {
             entries: HashMap::new(),
+            homophones: HashMap::new(),
         }
     }
 
@@ -69,14 +73,57 @@ impl PhonemeDictionary {
                 .or_insert_with(|| (word, word_freq));
         }
 
+        // Build the homophones map: for each phoneme sequence, collect
+        // ALL words sorted by descending frequency.
+        let mut all_words: HashMap<Vec<Phoneme>, Vec<(String, u64)>> = HashMap::new();
+        for (word, phonemes) in iter_entries(cmudict_text) {
+            let word_freq = freq.get(&word).copied().unwrap_or(0);
+            all_words
+                .entry(phonemes)
+                .or_default()
+                .push((word, word_freq));
+        }
+        // Deduplicate (CMU dict can have variant pronunciations for the
+        // same word) and sort by frequency descending.
+        let mut homophones: HashMap<Vec<Phoneme>, Vec<String>> = HashMap::new();
+        for (phonemes, mut words) in all_words {
+            // Deduplicate by word, keeping highest freq per word
+            let mut best: HashMap<String, u64> = HashMap::new();
+            for (w, f) in &words {
+                best.entry(w.clone())
+                    .and_modify(|existing| {
+                        if *f > *existing {
+                            *existing = *f;
+                        }
+                    })
+                    .or_insert(*f);
+            }
+            words = best.into_iter().map(|(w, f)| (w, f)).collect();
+            words.sort_by(|a, b| b.1.cmp(&a.1));
+            let sorted: Vec<String> = words.into_iter().map(|(w, _)| w).collect();
+            if sorted.len() > 1 {
+                homophones.insert(phonemes, sorted);
+            }
+        }
+
         let dict: HashMap<Vec<Phoneme>, String> =
             entries.into_iter().map(|(k, (word, _))| (k, word)).collect();
-        Self { entries: dict }
+        Self {
+            entries: dict,
+            homophones,
+        }
     }
 
     /// Look up a phoneme sequence → word. Always misses under `lang-mri`.
     pub fn lookup(&self, phonemes: &[Phoneme]) -> Option<&str> {
         self.entries.get(phonemes).map(|s| s.as_str())
+    }
+
+    /// Get all homophones for a phoneme sequence, sorted by descending
+    /// frequency. Returns None if the sequence has no homophones (single
+    /// spelling only). Used by the homophone toggle.
+    pub fn homophones(&self, phonemes: &[Phoneme]) -> Option<&[String]> {
+        self.homophones.get(phonemes).map(|v| v.as_slice())
     }
 }
 
@@ -116,5 +163,17 @@ mod tests {
         // "to" and "too" have same pronunciation — higher freq wins
         let dict = PhonemeDictionary::build("TO  T UW1\nTOO  T UW1\n", "to 5000\ntoo 100\n");
         assert_eq!(dict.lookup(&[Phoneme::T, Phoneme::Uw]), Some("to"));
+    }
+
+    #[test]
+    fn homophones_list() {
+        let dict = PhonemeDictionary::build(
+            "TO  T UW1\nTOO  T UW1\nTWO  T UW1\nCAT  K AE1 T\n",
+            "to 5000\ntoo 100\ntwo 3000\ncat 500\n",
+        );
+        let alts = dict.homophones(&[Phoneme::T, Phoneme::Uw]).unwrap();
+        assert_eq!(alts, &["to", "two", "too"]); // sorted by freq desc
+        // Single-spelling words have no homophones entry
+        assert!(dict.homophones(&[Phoneme::K, Phoneme::Ae, Phoneme::T]).is_none());
     }
 }

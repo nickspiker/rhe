@@ -121,6 +121,9 @@ pub struct Interpreter {
     phoneme_session: bool,
     /// True from the moment number-mode is entered until any chord/decimal/symbol is processed. The "pristine" exit (mode-entered + word-released with no other input) is the spelled-zero shortcut; this flag distinguishes it from the symbol-then-exit case (where the buffer is also empty but pristine is false).
     number_session_pristine: bool,
+    /// Phoneme sequence of the last word emitted via the phoneme path.
+    /// Used by the homophone toggle to cycle through alternate spellings.
+    last_phonemes: Option<Vec<Phoneme>>,
 }
 
 impl Interpreter {
@@ -145,6 +148,7 @@ impl Interpreter {
             last_number: None,
             phoneme_session: false,
             number_session_pristine: false,
+            last_phonemes: None,
         }
     }
 
@@ -182,6 +186,26 @@ impl Interpreter {
             prior_number_state,
         });
         Action::Replace { before, after }
+    }
+
+    /// Cycle the last phoneme-path word to the next homophone spelling.
+    /// Returns None if no homophone context is armed.
+    fn try_homophone_toggle(&mut self) -> Option<Action> {
+        let phonemes = self.last_phonemes.as_ref()?;
+        let alts = self.dictionary.homophones(phonemes)?;
+        // Find the current word in emit_history (most recent Emit entry).
+        let current = match self.emit_history.last() {
+            Some(HistoryEntry::Emit { text, .. }) => text.trim_end().to_string(),
+            Some(HistoryEntry::Replace { after, .. }) => after.trim_end().to_string(),
+            None => return None,
+        };
+        // Find current word in the homophones list and rotate to next.
+        let idx = alts.iter().position(|w| w == &current)?;
+        let next_idx = (idx + 1) % alts.len();
+        let next_word = &alts[next_idx];
+        let before = format!("{} ", current);
+        let after = format!("{} ", next_word);
+        Some(self.record_replace(before, after))
     }
 
     pub fn process(&mut self, event: &Event) -> Option<Action> {
@@ -269,8 +293,16 @@ impl Interpreter {
                         }
                         // No number context — fall through to suffix.
                     }
+                    // Homophone toggle: right=0b1110 + mod, no left keys.
+                    if key.right_bits() == 0b1110
+                        && key.left_bits() == 0
+                        && key.has_mod()
+                    {
+                        return self.try_homophone_toggle();
+                    }
                     // Any non-form brief-mode chord clears context.
                     self.last_number = None;
+                    self.last_phonemes = None;
                     // Materialize into an owned String up front so
                     // the immutable borrow of self.briefs is dropped
                     // before we call record_* which wants &mut self.
@@ -279,6 +311,7 @@ impl Interpreter {
                         if let Some(suffix) = s.strip_prefix('\x01') {
                             self.record_replace(" ".to_string(), suffix.to_string())
                         } else {
+                            self.last_phonemes = None;
                             self.record_emit(s)
                         }
                     })
@@ -396,8 +429,16 @@ impl Interpreter {
                 let mode = FallbackMode::from_u8(self.fallback.load(Ordering::Relaxed));
                 let text = if mode == FallbackMode::Ipa {
                     let ipa: String = phonemes.iter().map(|p| p.to_ipa()).collect();
+                    self.last_phonemes = None;
                     format!("{} ", ipa)
                 } else if let Some(word) = self.dictionary.lookup(&phonemes) {
+                    // Arm the homophone toggle if this phoneme sequence
+                    // has alternate spellings.
+                    if self.dictionary.homophones(&phonemes).is_some() {
+                        self.last_phonemes = Some(phonemes);
+                    } else {
+                        self.last_phonemes = None;
+                    }
                     format!("{} ", word)
                 } else {
                     let fallback: String = match mode {
@@ -406,6 +447,7 @@ impl Interpreter {
                         }
                         FallbackMode::Ipa => unreachable!(),
                     };
+                    self.last_phonemes = None;
                     format!("{} ", fallback)
                 };
                 Some(self.record_emit(text))

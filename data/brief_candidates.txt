@@ -76,8 +76,8 @@
  me                      6444985    2     23
  there                   6297056    3     24  # ordered brief (slot already claimed)
  here                    6277182    3     25  # ordered brief (slot already claimed)
- like                    5966054    3     26
- want                    5852535    4     27
+ like                    5966054    3     26  # ordered brief (slot already claimed)
+ want                    5852535    4     27  # ordered brief (slot already claimed)
  get                     5766386    3     28
  think                   5518419    4     29  # ordered brief (slot already claimed)
 #he                      5516364    2     30  # excluded: gender ; gender
@@ -92,10 +92,10 @@
  do                      4419883    2     39  # ordered brief (slot already claimed)
  come                    4407838    3     40
  no                      4374975    2     41  # ordered brief (slot already claimed)
- well                    4319818    3     42
+ well                    4319818    3     42  # ordered brief (slot already claimed)
  be                      4210868    2     43  # ordered brief (slot already claimed)
  are                     4203821    2     44
- will                    3939614    3     45
+ will                    3939614    3     45  # ordered brief (slot already claimed)
  got                     3936778    3     46
  know                    3892394    2     47  # ordered brief (slot already claimed), homophone of "no"(4374975)
  gonna                   3564570    4     48
@@ -104,25 +104,25 @@
  really                  3524130    4     51  # ordered brief (slot already claimed)
  because                 3520448    5     52
  did                     3485528    3     53
- good                    3483460    3     54
+ good                    3483460    3     54  # ordered brief (slot already claimed)
  little                  3478088    5     55
  so                      3434152    2     56
- let                     3410524    3     57
+ let                     3410524    3     57  # ordered brief (slot already claimed)
 #his                     3332722    3     58  # excluded: gender
  yes                     3268100    3     59
  anything                3201030    6     60
  everything              3118770    7     61
  when                    3063462    3     62
  they                    3060204    2     63
- understand              2921680    9     64
- time                    2907416    3     65
+ understand              2921680    9     64  # ordered brief (slot already claimed)
+ time                    2907416    3     65  # ordered brief (slot already claimed)
  okay                    2857768    3     66  # ordered brief (slot already claimed)
  very                    2836959    4     67
- back                    2810048    3     68
+ back                    2810048    3     68  # ordered brief (slot already claimed)
  never                   2792493    4     69
 #she                     2778359    2     70  # excluded: gender
  go                      2738504    2     71  # ordered brief (slot already claimed)
- look                    2696934    3     72
+ look                    2696934    3     72  # ordered brief (slot already claimed)
  would                   2680140    3     73  # ordered brief (slot already claimed)
  only                    2662089    4     74
  them                    2655018    3     75
@@ -132,8 +132,8 @@
  then                    2551004    3     79
  had                     2549074    3     80
  been                    2530300    3     81
- please                  2526360    4     82
- out                     2510010    2     83
+ please                  2526360    4     82  # ordered brief (slot already claimed)
+ out                     2510010    2     83  # ordered brief (slot already claimed)
  nothing                 2489660    5     84
  up                      2459855    2     85
  sorry                   2454057    4     86
@@ -148,22 +148,22 @@
  could                   2223674    3     95
  doing                   2196435    4     96  # +ing→do(4419883) defer
 #her                     2154982    2     97  # excluded: gender
- remember                2149746    7     98
+ remember                2149746    7     98  # ordered brief (slot already claimed)
  how                     2140365    2     99
- need                    2080262    3    100  # +ed→ne(4128) keep
+ need                    2080262    3    100  # ordered brief (slot already claimed), +ed→ne(4128) keep
  has                     2070620    3    101
  more                    2020780    3    102
  always                  2013668    5    103
  someone                 2005810    6    104
  yeah                    2000641    2    105
- help                    1998858    4    106
+ help                    1998858    4    106  # ordered brief (slot already claimed)
  first                   1969161    4    107
  into                    1967241    4    108
  wanted                  1962550    6    109
  down                    1957932    3    110
  make                    1927770    3    111
  still                   1918620    4    112
- find                    1879560    4    113
+ find                    1879560    4    113  # ordered brief (slot already claimed)
  happened                1878515    6    114  # +ed→happen(186041) keep
  as                      1792220    2    115
  see                     1781493    2    116  # ordered brief (slot already claimed)
@@ -173,16 +173,16 @@
  must                    1742793    4    120
  who                     1734491    2    121
  why                     1722797    2    122
- stop                    1722048    4    123
+ stop                    1722048    4    123  # ordered brief (slot already claimed)
  after                   1718283    4    124  # +er→aft(1253) keep
- actually                1677570    7    125
- love                    1660648    3    126
+ actually                1677570    7    125  # ordered brief (slot already claimed)
+ love                    1660648    3    126  # ordered brief (slot already claimed)
  should                  1647422    3    127
- mean                    1642550    3    128
+ mean                    1642550    3    128  # ordered brief (slot already claimed)
  said                    1637756    3    129
- great                   1637304    4    130
- give                    1623838    3    131
- believe                 1615496    5    132
+ great                   1637304    4    130  # ordered brief (slot already claimed)
+ give                    1623838    3    131  # ordered brief (slot already claimed)
+ believe                 1615496    5    132  # ordered brief (slot already claimed)
  thanks                  1582760    5    133  # ordered brief (slot already claimed), +s→thank(773577)
 #last                    1582185    4    134
  better                  1560984    4    135  # +er→bett(64) keep
@@ -196,29 +196,29 @@
  much                    1477198    3    143
  everyone                1476192    7    144
  family                  1472715    6    145
- listen                  1463164    5    146
+ listen                  1463164    5    146  # ordered brief (slot already claimed)
  another                 1461684    5    147
  an                      1449181    2    148
  years                   1445580    4    149  # ordered brief (slot already claimed), +s→year(208705) keep
  already                 1439185    6    150
  probably                1419152    8    151
- sure                    1418780    3    152
+ sure                    1418780    3    152  # ordered brief (slot already claimed)
  money                   1414929    4    153
  around                  1414389    4    154
- beautiful               1405677    8    155
+ beautiful               1405677    8    155  # ordered brief (slot already claimed)
  thing                   1395056    3    156
  problem                 1393950    7    157
  these                   1366256    3    158
  talking                 1350516    5    159  # +ing→talk(567036)
  us                      1346903    2    160
  next                    1342292    5    161
- place                   1334589    4    162
- exactly                 1326591    8    163  # +ly→exact(18213) keep
+ place                   1334589    4    162  # ordered brief (slot already claimed)
+ exactly                 1326591    8    163  # ordered brief (slot already claimed), +ly→exact(18213) keep
  getting                 1324744    5    164  # +ing→get(2883193) defer
  everybody               1319724    8    165
- excuse                  1319130    7    166
+ excuse                  1319130    7    166  # ordered brief (slot already claimed)
  were                    1315964    2    167
- important               1315088    9    168
+ important               1315088    9    168  # ordered brief (slot already claimed)
 #father                  1312611    4    169  # excluded: gender
  looking                 1306200    5    170  # +ing→look(1348467) defer
 #woman                   1298692    5    171  # excluded: gender
@@ -233,131 +233,131 @@
  their                   1202342    3    180  # ordered brief (slot already claimed), homophone of "there"(3148528)
  myself                  1202300    6    181
  our                     1191941    2    182  # ordered brief (slot already claimed)
- kind                    1176726    4    183
+ kind                    1176726    4    183  # ordered brief (slot already claimed)
  every                   1165560    4    184
  without                 1162036    5    185
- being                   1159584    4    186  # +ing→be(4210868) defer
- other                   1154394    3    187
+ being                   1159584    4    186  # ordered brief (slot already claimed), +ing→be(4210868) defer
+ other                   1154394    3    187  # ordered brief (slot already claimed)
  say                     1153915    2    188
  friends                 1152320    6    189  # ordered brief (slot already claimed), +s→friend(308204)
  wait                    1149504    3    190  # ordered brief (slot already claimed)
  hey                     1149292    2    191
-#call                    1145994    3    192
+#call                    1145994    3    192  # ordered brief (slot already claimed)
  course                  1145448    4    193
  won                     1143242    3    194  # ordered brief (slot already claimed), homophone of "one"(2263956)
  anyone                  1141660    6    195
  left                    1135761    4    196
- talk                    1134072    3    197
+ talk                    1134072    3    197  # ordered brief (slot already claimed)
  enough                  1130919    4    198
  away                    1128536    3    199
  than                    1122028    3    200
 #mother                  1118538    4    201  # excluded: gender
- thought                 1117084    3    202
- home                    1113788    3    203
+ thought                 1117084    3    202  # ordered brief (slot already claimed)
+ home                    1113788    3    203  # ordered brief (slot already claimed)
  night                   1112636    3    204  # ordered brief (slot already claimed)
- world                   1111860    4    205
- put                     1104492    3    206
+ world                   1111860    4    205  # ordered brief (slot already claimed)
+ put                     1104492    3    206  # ordered brief (slot already claimed)
  today                   1099185    4    207
  by                      1090424    2    208  # ordered brief (slot already claimed)
  business                1079275    6    209
  those                   1056808    3    210
- different               1047942    7    211
+ different               1047942    7    211  # ordered brief (slot already claimed)
 #brother                 1039508    5    212  # excluded: gender
  pretty                  1038000    5    213
- music                   1036025    6    214
+ music                   1036025    6    214  # ordered brief (slot already claimed)
  haven                   1033852    5    215
  somebody                1029576    7    216
  start                   1025668    5    217  # ordered brief (slot already claimed)
  too                     1022558    2    218  # ordered brief (slot already claimed), homophone of "to"(17099834)
  found                   1012146    4    219
- way                     1000182    2    220
+ way                     1000182    2    220  # ordered brief (slot already claimed)
 #keep                     996784    3    221
  long                     992534    3    222  # ordered brief (slot already claimed)
  tonight                  986056    5    223
  thinking                 979375    6    224  # ordered brief (slot already claimed), +ing→think(1839473) defer
- second                   968435    6    225
+ second                   968435    6    225  # ordered brief (slot already claimed)
  went                     965472    4    226
- leave                    956564    3    227
+ leave                    956564    3    227  # ordered brief (slot already claimed)
 #husband                  956364    7    228  # excluded: gender
  does                     956348    3    229
  many                     944550    4    230
- mind                     938781    4    231
+ mind                     938781    4    231  # ordered brief (slot already claimed)
  children                 937086    7    232
  fucking                  931380    5    233  # +ing→fuck(260121)
  started                  926070    7    234  # ordered brief (slot already claimed), +ed→start(256417)
  best                     921213    4    235
- name                     911086    3    236
+ name                     911086    3    236  # ordered brief (slot already claimed)
  until                    900684    5    237
  whatever                 900410    6    238
  ever                     888176    3    239  # +er→ev(1278) keep
- feel                     888028    3    240
+ feel                     888028    3    240  # ordered brief (slot already claimed)
  police                   885520    5    241
- guys                     884482    3    242  # +s→guy(435832)
- minutes                  875455    6    243  # ordered brief (slot already claimed), +s→minute(188958)
+ guys                     884482    3    242  # ordered brief (slot already claimed), +s→guy(435832)
+ minutes                  875455    6    243  # +s→minute(188958)
  baby                     871488    4    244
  made                     867800    3    245
- old                      863822    3    246
+ old                      863822    3    246  # ordered brief (slot already claimed)
  wants                    860596    5    247  # +s→want(1950845) defer
- most                     849018    4    248
+ most                     849018    4    248  # ordered brief (slot already claimed)
  question                 845820    7    249  # ordered brief (slot already claimed)
  which                    844966    3    250  # ordered brief (slot already claimed)
- big                      834436    3    251
+ big                      834436    3    251  # ordered brief (slot already claimed)
  against                  825165    6    252
  having                   824424    5    253  # ordered brief (slot already claimed), +ing→have(4764010) defer
- lot                      823320    3    254
+ lot                      823320    3    254  # ordered brief (slot already claimed)
  done                     817520    3    255
- nice                     810994    3    256
+ nice                     810994    3    256  # ordered brief (slot already claimed)
  once                     809112    4    257
 #girl                     805114    3    258  # excluded: gender
  ready                    801804    4    259
  fine                     801060    3    260
- moment                   799975    6    261  # +ment→mo(8810) keep
+ moment                   799975    6    261  # ordered brief (slot already claimed), +ment→mo(8810) keep
  off                      799351    2    262
- called                   793764    4    263  # +ed→call(572997) defer
- doctor                   793696    5    264
+ called                   793764    4    263  # ordered brief (slot already claimed), +ed→call(572997) defer
+ doctor                   793696    5    264  # ordered brief (slot already claimed)
  used                     790698    4    265
- idea                     789291    4    266
- hold                     787101    4    267
- happy                    786423    4    268
+ idea                     789291    4    266  # ordered brief (slot already claimed)
+ hold                     787101    4    267  # ordered brief (slot already claimed)
+ happy                    786423    4    268  # ordered brief (slot already claimed)
  am                       785830    2    269
  nobody                   785070    6    270
  also                     779409    4    271
- house                    777170    3    272
+ house                    777170    3    272  # ordered brief (slot already claimed)
  ok                       776676    3    273  # ordered brief (slot already claimed), homophone of "okay"(1428884)
  through                  776254    3    274  # ordered brief (slot already claimed)
  working                  772688    5    275  # ordered brief (slot already claimed), +ing→work(611677) defer
- sometimes                772674    7    276  # +s→sometime(17142) keep
- person                   770608    5    277
- supposed                 765585    6    278  # +ed→suppose(73465) keep
+ sometimes                772674    7    276  # ordered brief (slot already claimed), +s→sometime(17142) keep
+ person                   770608    5    277  # ordered brief (slot already claimed)
+ supposed                 765585    6    278  # ordered brief (slot already claimed), +ed→suppose(73465) keep
  two                      764564    2    279  # ordered brief (slot already claimed), homophone of "to"(17099834)
  since                    763281    4    280
  between                  762600    6    281
- stay                     757452    3    282
+ stay                     757452    3    282  # ordered brief (slot already claimed)
 #dad                      757080    3    283  # excluded: gender
- minute                   755832    5    284  # ordered brief (slot already claimed)
+ minute                   755832    5    284
  crazy                    755068    5    285
- forget                   754512    5    286
+ forget                   754512    5    286  # ordered brief (slot already claimed)
  came                     748972    3    287
  happen                   744164    5    288
- matter                   743436    4    289  # +er→matt(24245) keep
+ matter                   743436    4    289  # ordered brief (slot already claimed), +er→matt(24245) keep
  behind                   742345    6    290
- bring                    742029    4    291
+ bring                    742029    4    291  # ordered brief (slot already claimed)
  almost                   742025    6    292
  wrong                    741898    3    293
- bad                      739992    3    294
+ bad                      739992    3    294  # ordered brief (slot already claimed)
  anymore                  734515    6    295
  might                    734290    3    296
  three                    733252    3    297  # (number-mode gesture)
- drink                    730320    5    298
+ drink                    730320    5    298  # ordered brief (slot already claimed)
  wanna                    729327    4    299
- hard                     728613    4    300
+ hard                     728613    4    300  # ordered brief (slot already claimed)
  alone                    721425    4    301
  hear                     721330    3    302  # ordered brief (slot already claimed), homophone of "here"(3138591)
- school                   720528    4    303
- trouble                  716175    6    304
+ school                   720528    4    303  # ordered brief (slot already claimed)
+ trouble                  716175    6    304  # ordered brief (slot already claimed)
  taking                   710668    5    305  # ordered brief (slot already claimed), +ing→take(1312232) defer
  saying                   709800    4    306  # +ing→say(1153915) defer
- ask                      708646    3    307
+ ask                      708646    3    307  # ordered brief (slot already claimed)
  hands                    705164    5    308  # ordered brief (slot already claimed), +s→hand(206247)
  welcome                  701635    6    309
  looks                    701442    4    310  # +s→look(1348467) defer
@@ -365,73 +365,73 @@
  inside                   696324    5    312
 #gentlemen                693280    9    313  # excluded: gender
  gotta                    691053    4    314
- open                     689007    4    315
- hospital                 686532    8    316
+ open                     689007    4    315  # ordered brief (slot already claimed)
+ hospital                 686532    8    316  # ordered brief (slot already claimed)
  killed                   684891    4    317  # ordered brief (slot already claimed), +ed→kill(339509)
  else                     681512    3    318
  kill                     679018    3    319  # ordered brief (slot already claimed)
- absolutely               678848    9    320  # +ly→absolute(10696) keep
+ absolutely               678848    9    320  # ordered brief (slot already claimed), +ly→absolute(10696) keep
  making                   676148    5    321  # +ing→make(963885) defer
  anybody                  675492    7    322
  afraid                   675096    5    323
  lost                     667194    4    324
- anyway                   666808    5    325
+ anyway                   666808    5    325  # ordered brief (slot already claimed)
  party                    664548    5    326
  care                     661912    3    327  # ordered brief (slot already claimed)
- parents                  661236    7    328  # +s→parent(10204) keep
+ parents                  661236    7    328  # ordered brief (slot already claimed), +s→parent(10204) keep
  congratulations          661011   14    329  # +s→congratulation(553) keep
- car                      660522    3    330
+ car                      660522    3    330  # ordered brief (slot already claimed)
 #himself                  658488    7    331  # excluded: gender
  stupid                   657485    6    332
  story                    656160    5    333
 #president                655840    9    334  # excluded: title
- number                   653036    5    335  # +er→numb(3088) keep
+ number                   653036    5    335  # ordered brief (slot already claimed), +er→numb(3088) keep
 #son                      651994    3    336  # excluded: gender, ordered brief (slot already claimed)
  try                      651496    3    337
  waiting                  650284    5    338  # +ing→wait(574752) defer
  company                  648438    7    339
- heart                    641742    4    340
+ heart                    641742    4    340  # ordered brief (slot already claimed)
  possible                 636480    7    341
- dead                     635178    3    342
- married                  631268    5    343  # +ed→marry(73938) keep
+ dead                     635178    3    342  # ordered brief (slot already claimed)
+ married                  631268    5    343  # ordered brief (slot already claimed), +ed→marry(73938) keep
  country                  628655    6    344
  later                    626634    4    345
 #mr                       626564    5    346  # excluded: gender
 #captain                  624370    6    347  # excluded: title
- stand                    621564    5    348
+ stand                    621564    5    348  # ordered brief (slot already claimed)
 #sir                      619500    2    349  # excluded: title
  hand                     618741    4    350  # ordered brief (slot already claimed)
  day                      617674    2    351  # ordered brief (slot already claimed)
- control                  616692    7    352
+ control                  616692    7    352  # ordered brief (slot already claimed)
 #sister                   616380    5    353  # excluded: gender
 #mom                      610278    3    354  # excluded: gender
 #hell                     608550    3    355  # excluded: religion
 #women                    603212    5    356  # excluded: gender
  wonderful                599319    8    357  # +ful→wonder(82903)
- job                      597822    3    358
+ job                      597822    3    358  # ordered brief (slot already claimed)
  real                     589072    3    359  # ordered brief (slot already claimed)
  playing                  586460    5    360  # ordered brief (slot already claimed), +ing→play(233865)
- completely               582216    9    361  # +ly→complete(40210)
- room                     580412    3    362
+ completely               582216    9    361  # ordered brief (slot already claimed), +ly→complete(40210)
+ room                     580412    3    362  # ordered brief (slot already claimed)
  questions                580209    8    363  # ordered brief (slot already claimed), +s→question(140970)
- promise                  579540    6    364
- water                    579042    4    365  # +er→wat(763) keep
- reason                   577596    5    366
- part                     576744    4    367
+ promise                  579540    6    364  # ordered brief (slot already claimed)
+ water                    579042    4    365  # ordered brief (slot already claimed), +er→wat(763) keep
+ reason                   577596    5    366  # ordered brief (slot already claimed)
+ part                     576744    4    367  # ordered brief (slot already claimed)
  kids                     576150    4    368  # ordered brief (slot already claimed), +s→kid(187858)
  information              574720    9    369
  definitely               572192    9    370  # +ly→definite(3634) keep
- security                 572024    9    371
- stuff                    571887    4    372
+ security                 572024    9    371  # ordered brief (slot already claimed)
+ stuff                    571887    4    372  # ordered brief (slot already claimed)
  under                    568041    4    373  # +er→und(1601) keep
- move                     567614    3    374
- trust                    565308    5    375
+ move                     567614    3    374  # ordered brief (slot already claimed)
+ trust                    565308    5    375  # ordered brief (slot already claimed)
  seen                     564840    3    376  # ordered brief (slot already claimed)
  live                     562092    3    377  # ordered brief (slot already claimed)
- miss                     561860    3    378
- perfect                  561145    6    379
- change                   560886    4    380
- couple                   555984    5    381
+ miss                     561860    3    378  # ordered brief (slot already claimed)
+ perfect                  561145    6    379  # ordered brief (slot already claimed)
+ change                   560886    4    380  # ordered brief (slot already claimed)
+ couple                   555984    5    381  # ordered brief (slot already claimed)
  special                  551720    6    382
  shit                     546624    3    383
  perhaps                  546200    6    384
@@ -440,74 +440,74 @@
 #both                     541440    3    387
  front                    541364    5    388
  heard                    539702    3    389
- head                     533688    3    390
+ head                     533688    3    390  # ordered brief (slot already claimed)
  times                    529566    4    391  # +s→time(1453708) defer
  means                    522933    4    392  # +s→mean(821275) defer
- point                    522615    4    393
- door                     522236    3    394
+ point                    522615    4    393  # ordered brief (slot already claimed)
+ door                     522236    3    394  # ordered brief (slot already claimed)
  such                     522208    3    395
- interesting              520656    9    396  # +ing→interest(39252)
- fuck                     520242    3    397
- months                   518928    5    398  # +s→month(71163)
- bit                      517858    3    399
+ interesting              520656    9    396  # ordered brief (slot already claimed), +ing→interest(39252)
+ fuck                     520242    3    397  # ordered brief (slot already claimed)
+ months                   518928    5    398  # ordered brief (slot already claimed), +s→month(71163)
+ bit                      517858    3    399  # ordered brief (slot already claimed)
  took                     517616    3    400
  makes                    516843    4    401  # +s→make(963885) defer
  yet                      515894    3    402
  asked                    515220    4    403  # +ed→ask(354323) defer
- become                   514864    5    404
+ become                   514864    5    404  # ordered brief (slot already claimed)
 #men                      514638    3    405  # excluded: gender
  whole                    514218    3    406  # ordered brief (slot already claimed)
- human                    512975    6    407
- use                      512158    3    408
+ human                    512975    6    407  # ordered brief (slot already claimed)
+ use                      512158    3    408  # ordered brief (slot already claimed)
  while                    511940    3    409
  outside                  509004    5    410
  new                      508486    2    411  # ordered brief (slot already claimed)
 #wife                     508076    3    412  # excluded: gender
  body                     506394    4    413
  days                     506342    3    414  # ordered brief (slot already claimed), +s→day(617674) defer
- explain                  506208    7    415
- sleep                    504309    4    416
+ explain                  506208    7    415  # ordered brief (slot already claimed)
+ sleep                    504309    4    416  # ordered brief (slot already claimed)
  happens                  504235    6    417  # +s→happen(186041)
- chance                   503943    4    418
+ chance                   503943    4    418  # ordered brief (slot already claimed)
  yesterday                502938    7    419
  quite                    500940    4    420
- guess                    500640    3    421
- close                    500031    4    422
- finally                  499520    6    423  # +ly→final(45614) keep
+ guess                    500640    3    421  # ordered brief (slot already claimed)
+ close                    500031    4    422  # ordered brief (slot already claimed)
+ finally                  499520    6    423  # ordered brief (slot already claimed), +ly→final(45614) keep
 #chuckles                 498035    6    424  # excluded: stage_direction, +s→chuckle(6141) keep
- relationship             496152   10    425
+ relationship             496152   10    425  # ordered brief (slot already claimed)
  meet                     494932    3    426  # ordered brief (slot already claimed)
  comes                    493509    4    427  # +s→come(2203919) defer
 #daughter                 489213    4    428  # excluded: gender
  least                    488715    4    429
- run                      488400    3    430
- feeling                  488260    5    431  # +ing→feel(444014) defer
+ run                      488400    3    430  # ordered brief (slot already claimed)
+ feeling                  488260    5    431  # ordered brief (slot already claimed), +ing→feel(444014) defer
  interested               488232    9    432  # +ed→interest(39252)
  living                   486208    5    433  # ordered brief (slot already claimed), +ing→liv(3848) keep
  gone                     480164    3    434
  seriously                479668    8    435  # ordered brief (slot already claimed), +ly→serious(108774)
 #girls                    477183    4    436  # excluded: gender, +s→girl(402557) defer
- rest                     476928    4    437
- end                      474774    3    438
- million                  472570    6    439
- phone                    470492    3    440
+ rest                     476928    4    437  # ordered brief (slot already claimed)
+ end                      474774    3    438  # ordered brief (slot already claimed)
+ million                  472570    6    439  # ordered brief (slot already claimed)
+ phone                    470492    3    440  # ordered brief (slot already claimed)
  leaving                  468200    5    441  # +ing→leave(478282) defer
  running                  467892    5    442  # +ing→run(244200) defer
  play                     467730    3    443  # ordered brief (slot already claimed)
  alright                  466516    5    444
  few                      462750    3    445
  happening                462312    7    446  # +ing→happen(186041) defer
- situation                462203    8    447
+ situation                462203    8    447  # ordered brief (slot already claimed)
  somewhere                461325    6    448
  taken                    460944    5    449
- decided                  460098    7    450  # +ed→decide(44806)
+ decided                  460098    7    450  # ordered brief (slot already claimed), +ed→decide(44806)
  ago                      459502    3    451
  child                    455592    4    452
- hope                     453986    3    453
+ hope                     453986    3    453  # ordered brief (slot already claimed)
  speak                    452781    4    454  # ordered brief (slot already claimed)
- face                     450964    3    455
+ face                     450964    3    455  # ordered brief (slot already claimed)
  careful                  448335    6    456  # ordered brief (slot already claimed), +ful→care(330956) defer
- secret                   446180    6    457
+ secret                   446180    6    457  # ordered brief (slot already claimed)
  truth                    445167    4    458
  blood                    443739    4    459
  able                     441615    4    460
@@ -515,84 +515,84 @@
 #american                 439845    8    462  # excluded: nationality
  evidence                 438678    7    463
  gets                     438192    4    464  # +s→get(2883193) defer
- turn                     437126    3    465
- sounds                   436560    5    466  # +s→sound(105298)
-#guy                      435832    2    467  # excluded: gender
+ turn                     437126    3    465  # ordered brief (slot already claimed)
+ sounds                   436560    5    466  # ordered brief (slot already claimed), +s→sound(105298)
+#guy                      435832    2    467  # excluded: gender, ordered brief (slot already claimed)
  accident                 431697    8    468
- scared                   431624    5    469  # +ed→scare(23192) keep
+ scared                   431624    5    469  # ordered brief (slot already claimed), +ed→scare(23192) keep
  government               431522    8    470
 #uncle                    431304    5    471  # excluded: gender
- case                     430548    3    472
- experience               430416   10    473
+ case                     430548    3    472  # ordered brief (slot already claimed)
+ experience               430416   10    473  # ordered brief (slot already claimed)
  says                     430180    3    474
  true                     429546    3    475
- break                    429321    4    476
- certainly                428610    7    477  # +ly→certain(61050)
+ break                    429321    4    476  # ordered brief (slot already claimed)
+ certainly                428610    7    477  # ordered brief (slot already claimed), +ly→certain(61050)
  impossible               428216    9    478
  city                     427719    4    479
- soon                     426558    3    480
+ soon                     426558    3    480  # ordered brief (slot already claimed)
  problems                 424431    8    481  # +s→problem(232325) defer
- detective                424431    8    482  # +ive→detect(4113) keep
+ detective                424431    8    482  # ordered brief (slot already claimed), +ive→detect(4113) keep
  christmas                423744    7    483
- office                   423420    4    484
+ office                   423420    4    484  # ordered brief (slot already claimed)
  difficult                422828    8    485
- worry                    422658    3    486
+ worry                    422658    3    486  # ordered brief (slot already claimed)
  brought                  421983    4    487
  apartment                421712    9    488  # +ment→apart(42417)
  yours                    421659    4    489  # ordered brief (slot already claimed)
- expect                   417684    7    490
+ expect                   417684    7    490  # ordered brief (slot already claimed)
  year                     417410    3    491  # ordered brief (slot already claimed)
  terrible                 416994    7    492
- watch                    415898    3    493
+ watch                    415898    3    493  # ordered brief (slot already claimed)
  cannot                   415652    5    494
  speaking                 413845    6    495  # ordered brief (slot already claimed), +ing→speak(150927)
  asking                   411896    5    496  # +ing→ask(354323) defer
  darling                  411200    6    497
- seems                    410097    4    498  # +s→seem(98575)
+ seems                    410097    4    498  # ordered brief (slot already claimed), +s→seem(98575)
  honey                    406893    4    499
  tried                    406203    4    500  # +ed→tri(355) keep
- answer                   402264    4    501
+ answer                   402264    4    501  # ordered brief (slot already claimed)
  amazing                  401335    6    502  # +ing→amaze(1206) keep
- protect                  399048    7    503
+ protect                  399048    7    503  # ordered brief (slot already claimed)
  continues                397472    9    504  # +s→continue(51279)
- sit                      396298    3    505
- send                     395997    4    506
- dangerous                395844    7    507  # +ous→danger(39518)
+ sit                      396298    3    505  # ordered brief (slot already claimed)
+ send                     395997    4    506  # ordered brief (slot already claimed)
+ dangerous                395844    7    507  # ordered brief (slot already claimed), +ous→danger(39518)
 #girlfriend               395325    8    508  # excluded: gender
- laughing                 393680    5    509  # +ing→laugh(56460)
+ laughing                 393680    5    509  # ordered brief (slot already claimed), +ing→laugh(56460)
  attention                392526    7    510
- street                   392028    5    511
- young                    389620    3    512
- meeting                  389312    5    513  # +ing→meet(247466) defer
- report                   389120    6    514
+ street                   392028    5    511  # ordered brief (slot already claimed)
+ young                    389620    3    512  # ordered brief (slot already claimed)
+ meeting                  389312    5    513  # ordered brief (slot already claimed), +ing→meet(247466) defer
+ report                   389120    6    514  # ordered brief (slot already claimed)
  along                    384660    4    515
- strange                  384315    6    516
- general                  384080    6    517
- late                     383978    3    518
- immediately              383504    9    519  # +ly→immediate(8061) keep
+ strange                  384315    6    516  # ordered brief (slot already claimed)
+ general                  384080    6    517  # ordered brief (slot already claimed)
+ late                     383978    3    518  # ordered brief (slot already claimed)
+ immediately              383504    9    519  # ordered brief (slot already claimed), +ly→immediate(8061) keep
  department               382383   10    520  # +ment→depart(2640) keep
  evening                  381284    5    521
 #master                   380524    5    522  # excluded: hierarchy, +er→mast(1115) keep
 #lieutenant               380247    8    523  # excluded: title
- present                  379842    7    524
+ present                  379842    7    524  # ordered brief (slot already claimed)
  needs                    379194    4    525  # +s→need(1040131) defer
- death                    378000    3    526
- clear                    377190    4    527
- order                    376338    4    528  # +er→ord(201) keep
+ death                    378000    3    526  # ordered brief (slot already claimed)
+ clear                    377190    4    527  # ordered brief (slot already claimed)
+ order                    376338    4    528  # ordered brief (slot already claimed), +er→ord(201) keep
  kid                      375716    3    529  # ordered brief (slot already claimed)
- fact                     374985    4    530
- mistake                  374785    6    531
- obviously                374689    8    532  # +ly→obvious(24230) keep
+ fact                     374985    4    530  # ordered brief (slot already claimed)
+ mistake                  374785    6    531  # ordered brief (slot already claimed)
+ obviously                374689    8    532  # ordered brief (slot already claimed), +ly→obvious(24230) keep
 #lord                     374640    4    533  # excluded: religion
  may                      373526    2    534
  gave                     372890    3    535
- building                 372460    6    536  # +ing→build(40738)
+ building                 372460    6    536  # ordered brief (slot already claimed), +ing→build(40738)
 #six                      372261    4    537  # excluded: number_mode_alias ; (number-mode gesture)
  funny                    371772    4    538
  black                    371154    4    539
  alive                    368499    4    540
  damn                     368456    3    541  # ordered brief (slot already claimed)
- system                   368390    6    542
+ system                   368390    6    542  # ordered brief (slot already claimed)
  responsible              367810   11    543
 #five                     367252    3    544  # excluded: number_mode_alias ; (number-mode gesture, also weird to brief)
  responsibility           366379   14    545
@@ -600,17 +600,17 @@
  longer                   364140    5    547  # ordered brief (slot already claimed), +er→long(496267) defer
  calling                  363472    5    548  # +ing→call(572997) defer
  knows                    363326    3    549  # ordered brief (slot already claimed), +s→know(3892394) defer
- totally                  362390    6    550  # +ly→total(29264) keep
- personal                 362286    7    551
- quiet                    362208    5    552
+ totally                  362390    6    550  # ordered brief (slot already claimed), +ly→total(29264) keep
+ personal                 362286    7    551  # ordered brief (slot already claimed)
+ quiet                    362208    5    552  # ordered brief (slot already claimed)
  its                      361188    3    553  # +s→it(13631703) defer
  ahead                    360885    4    554
- imagine                  359365    6    555
- continue                 358953    8    556
+ imagine                  359365    6    555  # ordered brief (slot already claimed)
+ continue                 358953    8    556  # ordered brief (slot already claimed)
  appreciate               358806    8    557
 #america                  358218    7    558  # excluded: proper_noun_place
  instead                  357855    6    559
- return                   357804    5    560
+ return                   357804    5    560  # ordered brief (slot already claimed)
  afternoon                356796    7    561
  shut                     356756    3    562
  hit                      355540    3    563
@@ -627,10 +627,10 @@
  straight                 349512    5    574
  show                     347408    2    575
  future                   347328    5    576
- standing                 347196    7    577  # +ing→stand(155391) defer
+ standing                 347196    7    577  # ordered brief (slot already claimed), +ing→stand(155391) defer
  respect                  345882    7    578
  history                  345595    6    579
- changed                  344532    5    580  # +ed→change(186962) defer
+ changed                  344532    5    580  # ordered brief (slot already claimed), +ed→change(186962) defer
  ridiculous               343089   10    581
  station                  342855    6    582
  except                   342200    6    583
@@ -649,7 +649,7 @@
  fun                      331386    3    596
  anywhere                 329905    6    597
 #word                     329876    3    598
- giving                   328340    5    599  # +ing→give(811919) defer
+ giving                   328340    5    599  # ordered brief (slot already claimed), +ing→give(811919) defer
  unfortunately            328339   12    600  # +ly→unfortunate(9101) keep
  set                      328330    3    601
  shall                    328324    3    602
@@ -658,7 +658,7 @@
  position                 326694    7    605
  simple                   325450    6    606
  especially               324888    7    607
- moving                   324772    5    608  # +ing→move(283807) defer
+ moving                   324772    5    608  # ordered brief (slot already claimed), +ing→move(283807) defer
  figure                   324192    5    609
  single                   323070    6    610
  hurt                     322842    3    611
@@ -671,8 +671,8 @@
  week                     318888    3    618  # ordered brief (slot already claimed)
 #boyfriend                318744    7    619  # excluded: gender
  normal                   318380    6    620  # +al→norm(3707) keep
- sound                    315894    4    621
- needed                   315680    5    622  # +ed→need(1040131) defer
+ sound                    315894    4    621  # ordered brief (slot already claimed)
+ needed                   315680    5    622  # ordered brief (slot already claimed), +ed→need(1040131) defer
  fire                     315064    3    623
  game                     315002    3    624
 #laughs                   314739    4    625  # excluded: stage_direction, +s→laugh(56460)
@@ -686,13 +686,13 @@
  goodbye                  310056    5    633
  apparently               309640    9    634  # +ly→apparent(3257) keep
  read                     309334    3    635  # ordered brief (slot already claimed)
- missing                  309304    5    636  # +ing→miss(280930) defer
+ missing                  309304    5    636  # ordered brief (slot already claimed), +ing→miss(280930) defer
  cut                      308814    3    637
  glad                     308544    4    638
  wedding                  307760    5    639  # +ing→wedd(33) keep
  drive                    307308    4    640
  kidding                  306976    5    641  # +ing→kidd(464) keep
-#officer                  304060    5    642  # excluded: title
+#officer                  304060    5    642  # excluded: title, ordered brief (slot already claimed)
  murder                   303399    4    643
  prison                   302905    6    644
  decision                 302676    7    645
@@ -713,12 +713,12 @@
  cold                     297096    4    660
  bastard                  296660    6    661
  forward                  295320    6    662
- watching                 294800    5    663  # +ing→watch(207949) defer
+ watching                 294800    5    663  # ordered brief (slot already claimed), +ing→watch(207949) defer
  words                    294726    4    664  # +s→word(164938)
- suppose                  293860    5    665
+ suppose                  293860    5    665  # ordered brief (slot already claimed)
  opportunity              293688    9    666
  dance                    292017    4    667
- others                   289893    4    668  # +s→other(577197) defer
+ others                   289893    4    668  # ordered brief (slot already claimed), +s→other(577197) defer
  follow                   289587    4    669
  shot                     289544    3    670
  sense                    289326    4    671
@@ -726,10 +726,10 @@
  pregnant                 289030    8    673
  birthday                 288560    5    674
  forgive                  287660    5    675
- seconds                  287616    7    676  # +s→second(193687) defer
+ seconds                  287616    7    676  # ordered brief (slot already claimed), +s→second(193687) defer
  incredible               286074   10    677
  war                      285650    3    678
- promised                 285354    7    679  # +ed→promise(115908) defer
+ promised                 285354    7    679  # ordered brief (slot already claimed), +ed→promise(115908) defer
  dream                    285267    4    680
  walk                     284110    3    681
  unless                   283916    5    682
@@ -756,7 +756,7 @@
  huh                      274656    2    703
  forever                  274040    5    704
  thinks                   273416    5    705  # +s→think(1839473) defer
- listening                273384    7    706  # +ing→listen(365791) defer
+ listening                273384    7    706  # ordered brief (slot already claimed), +ing→listen(365791) defer
  power                    273222    3    707  # +er→pow(2638) keep
  message                  273220    5    708
  entire                   273128    5    709
@@ -764,18 +764,18 @@
  worked                   272313    4    711  # +ed→work(611677) defer
  realize                  271530    6    712
  comfortable              271404   10    713  # +able→comfort(13536) keep
- looked                   271323    4    714  # +ed→look(1348467) defer
+ looked                   271323    4    714  # ordered brief (slot already claimed), +ed→look(1348467) defer
  table                    270808    5    715
  across                   270380    5    716
  coffee                   268950    4    717
- lovely                   268944    5    718  # +ly→love(830324) defer
+ lovely                   268944    5    718  # ordered brief (slot already claimed), +ly→love(830324) defer
  team                     268716    3    719
- drinking                 268620    7    720  # +ing→drink(182580) defer
+ drinking                 268620    7    720  # ordered brief (slot already claimed), +ing→drink(182580) defer
  middle                   266936    5    721
  weeks                    266775    4    722  # +s→week(159444)
  accept                   266455    6    723
  gun                      266144    3    724
- using                    266012    5    725
+ using                    266012    5    725  # ordered brief (slot already claimed)
  besides                  265550    6    726  # +s→beside(11813) keep
 #boys                     265188    3    727  # excluded: gender, +s→boy(302508) defer
  line                     264866    3    728
@@ -789,11 +789,11 @@
  hurry                    260364    3    736
  full                     259470    3    737
  save                     258780    3    738
- loved                    258414    4    739  # +ed→love(830324) defer
+ loved                    258414    4    739  # ordered brief (slot already claimed), +ed→love(830324) defer
  sweetheart               258349    8    740
  fantastic                258304    9    741
  surprised                258108    7    742  # +ed→surprise(62170)
- sitting                  258084    5    743  # +ing→sit(198149) defer
+ sitting                  258084    5    743  # ordered brief (slot already claimed), +ing→sit(198149) defer
  excellent                257943    8    744
  marriage                 257860    5    745
  innocent                 257772    7    746
@@ -801,7 +801,7 @@
  forgot                   256676    5    748
  ourselves                256386    7    749
  hate                     256306    3    750
- turned                   255837    4    751  # +ed→turn(218563) defer
+ turned                   255837    4    751  # ordered brief (slot already claimed), +ed→turn(218563) defer
  drop                     255558    4    752
  food                     255314    3    753
  step                     254646    4    754
@@ -810,7 +810,7 @@
  necessary                252868    8    757
  clean                    252714    4    758
  according                252156    7    759  # +ing→accord(1508) keep
- sleeping                 251785    6    760  # +ing→sleep(168103) defer
+ sleeping                 251785    6    760  # ordered brief (slot already claimed), +ing→sleep(168103) defer
  dog                      251538    3    761
  ground                   251440    5    762
 #grunting                 251196    7    763  # excluded: stage_direction, +ing→grunt(3681) keep
@@ -827,16 +827,16 @@
  restaurant               245882    8    774
  pick                     245396    3    775
  quick                    244644    4    776
- certain                  244200    5    777
+ certain                  244200    5    777  # ordered brief (slot already claimed)
  cause                    242528    3    778
  state                    242454    4    779
  support                  241755    6    780
  smart                    241588    5    781
 #grunts                   241265    6    782  # excluded: stage_direction, +s→grunt(3681) keep
- complete                 241260    7    783
+ complete                 241260    7    783  # ordered brief (slot already claimed)
  partner                  241235    6    784
 #inspector                241094    8    785  # excluded: title
- stopped                  240800    5    786  # +ed→stop(574016) defer
+ stopped                  240800    5    786  # ordered brief (slot already claimed), +ed→stop(574016) defer
  emergency                240513    8    787
  thousand                 239670    6    788
  um                       238853    2    789  # homophone of "'m"(4386306)
@@ -848,15 +848,15 @@
  lose                     237424    3    795
  service                  237108    5    796
 #king                     236460    3    797  # excluded: gender
- interest                 235512    7    798
+ interest                 235512    7    798  # ordered brief (slot already claimed)
  angry                    234992    5    799
  weird                    234951    4    800
 #sighs                    234820    3    801  # excluded: stage_direction, +s→sigh(6086) keep
- holding                  234690    6    802  # +ing→hold(262367) defer
+ holding                  234690    6    802  # ordered brief (slot already claimed), +ing→hold(262367) defer
  fighting                 234628    5    803  # +ing→fight(159911) defer
  complicated              234620   11    804  # +ed→complicate(1205) keep
  agent                    234432    5    805
- worried                  234249    4    806  # +ed→worry(211329) defer
+ worried                  234249    4    806  # ordered brief (slot already claimed), +ed→worry(211329) defer
  boss                     233472    3    807
  excited                  231840    7    808  # +ed→excite(1133) keep
  killing                  231560    5    809  # +ing→kill(339509) defer
@@ -882,21 +882,21 @@
  consider                 222990    7    829
  visit                    222552    5    830
  wondering                222138    7    831  # +ing→wonder(82903) defer
- marry                    221814    4    832
+ marry                    221814    4    832  # ordered brief (slot already claimed)
  meant                    221787    4    833
- expecting                221408    9    834  # +ing→expect(69614) defer
+ expecting                221408    9    834  # ordered brief (slot already claimed), +ing→expect(69614) defer
  dark                     221310    4    835
  window                   221140    5    836
  criminal                 221018    8    837
  movie                    219210    4    838
 #gentleman                218760    9    839  # excluded: gender
- perfectly                218407    8    840
+ perfectly                218407    8    840  # ordered brief (slot already claimed)
 #commander                218070    7    841  # excluded: title, +er→command(29479)
  otherwise                217980    6    842
  professional             217845   10    843  # +al→profession(7420) keep
  pictures                 217750    6    844  # +s→picture(83461)
  sick                     217192    3    845
- expected                 217120    9    846  # +ed→expect(69614) defer
+ expected                 217120    9    846  # ordered brief (slot already claimed), +ed→expect(69614) defer
  university               216711   10    847
  machine                  216560    5    848
  director                 216470    6    849
@@ -916,9 +916,9 @@
  condition                214368    8    863
  competition              214245   10    864
  film                     214221    4    865
- feelings                 214215    6    866  # +s→feeling(122065) defer
+ feelings                 214215    6    866  # ordered brief (slot already claimed), +s→feeling(122065) defer
  die                      214062    2    867
- month                    213489    4    868
+ month                    213489    4    868  # ordered brief (slot already claimed)
  language                 213414    7    869
  lying                    213294    4    870  # +ing→ly(760) keep
  red                      213178    3    871  # ordered brief (slot already claimed), homophone of "read"(154667)
@@ -934,13 +934,13 @@
  destroy                  210390    6    881
  upset                    210260    5    882
  round                    210129    4    883
- helping                  209160    6    884  # +ing→help(666286) defer
+ helping                  209160    6    884  # ordered brief (slot already claimed), +ing→help(666286) defer
  witness                  208765    6    885  # +ness→wit(3379) keep
  possibly                 206652    7    886
  win                      205912    3    887
  broke                    205887    4    888
  favorite                 205765    6    889
- places                   205205    6    890  # +s→place(444863) defer
+ places                   205205    6    890  # ordered brief (slot already claimed), +s→place(444863) defer
 #brothers                 205125    6    891  # excluded: gender, +s→brother(259877) defer
  starts                   205060    6    892  # +s→start(256417) defer
  eventually               204111   10    893
@@ -948,7 +948,7 @@
  hair                     203704    3    895
  students                 203238    8    896  # +s→student(32987)
  village                  203168    5    897
- talked                   202998    4    898  # +ed→talk(567036) defer
+ talked                   202998    4    898  # ordered brief (slot already claimed), +ed→talk(567036) defer
  figured                  202950    6    899  # +ed→figure(81048)
  brilliant                202804    8    900
  practice                 202650    7    901
@@ -971,7 +971,7 @@
  eat                      197654    2    918
 #york                     197640    4    919  # excluded: proper_noun_place
  army                     197385    4    920
- seem                     197150    3    921
+ seem                     197150    3    921  # ordered brief (slot already claimed)
  secretary                196984    9    922
  itself                   196650    6    923
  singing                  196576    5    924  # +ing→sing(69575)
@@ -983,7 +983,7 @@
  following                195680    6    930  # +ing→follow(96529) defer
  hang                     195556    3    931
  bathroom                 195475    6    932
- putting                  195188    5    933  # +ing→putt(581) keep
+ putting                  195188    5    933  # ordered brief (slot already claimed), +ing→putt(581) keep
  space                    194973    4    934
  horrible                 194952    7    935
  test                     194907    4    936
@@ -1015,7 +1015,7 @@
  enjoy                    189882    4    962
  crime                    189252    4    963
  honestly                 189006    7    964  # +ly→honest(56234)
- staying                  188964    5    965  # +ing→stay(378726) defer
+ staying                  188964    5    965  # ordered brief (slot already claimed), +ing→stay(378726) defer
  dreams                   188840    5    966  # +s→dream(95089) defer
  pay                      188822    2    967
  horse                    188769    4    968
@@ -1043,7 +1043,7 @@
  bet                      183146    3    990
  particular               183120    9    991
  star                     182709    4    992
- final                    182456    5    993
+ final                    182456    5    993  # ordered brief (slot already claimed)
  justice                  182405    6    994
  escape                   182212    5    995
  agree                    182148    4    996
@@ -1063,8 +1063,8 @@
  nervous                  179652    5   1010
  beat                     179574    3   1011
  eyes                     179260    2   1012  # +s→eye(81953) keep
- decide                   179224    5   1013
- clearly                  179185    6   1014  # +ly→clear(125730) defer
+ decide                   179224    5   1013  # ordered brief (slot already claimed)
+ clearly                  179185    6   1014  # ordered brief (slot already claimed), +ly→clear(125730) defer
  destroyed                178734    7   1015  # +ed→destroy(42078)
  list                     178671    4   1016
  universe                 178590    7   1017
@@ -1083,11 +1083,11 @@
  several                  176160    6   1030
  park                     176139    4   1031
  fall                     175524    3   1032
- personally               175406    8   1033
+ personally               175406    8   1033  # ordered brief (slot already claimed)
  dress                    175287    4   1034
  action                   175192    5   1035
- orders                   175144    5   1036  # +s→order(125446) defer
- missed                   174972    4   1037  # +ed→miss(280930) defer
+ orders                   175144    5   1036  # ordered brief (slot already claimed), +s→order(125446) defer
+ missed                   174972    4   1037  # ordered brief (slot already claimed), +ed→miss(280930) defer
  created                  174804    7   1038  # +ed→create(29323)
  realized                 174486    7   1039  # +ed→realize(54306)
  stories                  173960    6   1040  # +s→storie(4) keep
@@ -1097,8 +1097,8 @@
  saved                    173001    4   1044  # +ed→save(129390) defer
  killer                   172665    4   1045  # +er→kill(339509) defer
  begin                    172520    5   1046
- hardly                   172410    6   1047  # +ly→hard(242871) defer
- feels                    172164    4   1048  # +s→feel(444014) defer
+ hardly                   172410    6   1047  # ordered brief (slot already claimed), +ly→hard(242871) defer
+ feels                    172164    4   1048  # ordered brief (slot already claimed), +s→feel(444014) defer
  road                     171502    3   1049
  calm                     171276    3   1050
  enemy                    171196    5   1051
@@ -1129,8 +1129,8 @@
  dancing                  167455    6   1076  # +ing→dance(97339) defer
  throw                    167358    3   1077
  admit                    167268    5   1078
- closed                   167204    5   1079
- happiness                167064    7   1080
+ closed                   167204    5   1079  # ordered brief (slot already claimed)
+ happiness                167064    7   1080  # ordered brief (slot already claimed)
  property                 166890    7   1081
  including                166691    8   1082  # +ing→include(7716) keep
  feet                     166590    3   1083
@@ -1142,12 +1142,12 @@
  challenge                165495    6   1089
  keeping                  165484    5   1090  # +ing→keep(498392) defer
  market                   165405    6   1091
- moved                    165288    4   1092  # +ed→move(283807) defer
+ moved                    165288    4   1092  # ordered brief (slot already claimed), +ed→move(283807) defer
  prove                    165237    4   1093
  energy                   165160    5   1094
  worth                    165118    3   1095
- bringing                 165100    6   1096  # +ing→bring(247343) defer
- helped                   164940    5   1097  # +ed→help(666286) defer
+ bringing                 165100    6   1096  # ordered brief (slot already claimed), +ing→bring(247343) defer
+ helped                   164940    5   1097  # ordered brief (slot already claimed), +ed→help(666286) defer
  dude                     164380    3   1098
  writing                  164140    5   1099  # +ing→write(94964) defer
  monster                  164095    6   1100
@@ -1159,7 +1159,7 @@
  ringing                  162072    5   1106  # +ing→ring(66018)
  planning                 162000    6   1107  # +ing→plan(118129) defer
  medicine                 161748    7   1108
- breaking                 161605    6   1109  # +ing→break(143107) defer
+ breaking                 161605    6   1109  # ordered brief (slot already claimed), +ing→break(143107) defer
  hiding                   161548    5   1110  # +ing→hide(60133)
 #noticed                  161505    6   1111  # +ed→notice(43315)
  screams                  161365    6   1112  # +s→scream(19681)
@@ -1187,12 +1187,12 @@
  basically                158766    7   1134
  loves                    158253    4   1135  # +s→love(830324) defer
  carry                    158202    4   1136
- danger                   158072    5   1137
+ danger                   158072    5   1137  # ordered brief (slot already claimed)
  act                      158040    3   1138
  empty                    157928    5   1139
  level                    157904    5   1140
- green                    157671    4   1141
- liked                    157455    4   1142  # +ed→like(2983027) defer
+ green                    157671    4   1141  # ordered brief (slot already claimed)
+ liked                    157455    4   1142  # ordered brief (slot already claimed), +ed→like(2983027) defer
  memory                   157324    5   1143
  acting                   157304    5   1144  # +ing→act(79020) defer
  target                   157075    6   1145
@@ -1200,9 +1200,9 @@
  plans                    156568    5   1147  # +s→plan(118129) defer
  breathing                156530    6   1148  # +ing→breathe(32841)
  evil                     156525    4   1149
- numbers                  156425    6   1150  # +s→number(163259) defer
+ numbers                  156425    6   1150  # ordered brief (slot already claimed), +s→number(163259) defer
  suicide                  156305    6   1151
- closer                   156088    5   1152
+ closer                   156088    5   1152  # ordered brief (slot already claimed)
 #groans                   155468    5   1153  # excluded: stage_direction, +s→groan(2586) keep
  credit                   155145    6   1154
  huge                     154743    4   1155
@@ -1212,7 +1212,7 @@
  store                    154476    4   1159
  choice                   154394    3   1160
  losing                   154340    5   1161  # +ing→lose(118712) defer
- likes                    154002    4   1162  # +s→like(2983027) defer
+ likes                    154002    4   1162  # ordered brief (slot already claimed), +s→like(2983027) defer
  lawyer                   153996    4   1163
 #chief                    153902    3   1164
  pain                     153598    3   1165
@@ -1229,8 +1229,8 @@
  shooting                 151656    5   1176  # +ing→shoot(106067) defer
  wake                     151552    3   1177
  worse                    151190    3   1178
- hoping                   151076    5   1179  # +ing→hope(226993) defer
- finding                  150980    6   1180  # +ing→find(626520) defer
+ hoping                   151076    5   1179  # ordered brief (slot already claimed), +ing→hope(226993) defer
+ finding                  150980    6   1180  # ordered brief (slot already claimed), +ing→find(626520) defer
  flowers                  150796    5   1181  # +s→flower(19199)
  famous                   150536    5   1182
  exciting                 150312    7   1183  # +ing→excite(1133) keep
@@ -1250,7 +1250,7 @@
  ship                     148448    3   1197
  caught                   148120    3   1198
  stolen                   148090    6   1199
- willing                  147752    5   1200  # +ing→will(1969807) defer
+ willing                  147752    5   1200  # ordered brief (slot already claimed), +ing→will(1969807) defer
  pants                    147664    5   1201  # +s→pant(1285) keep
  sell                     147604    3   1202  # ordered brief (slot already claimed)
  command                  147395    6   1203
@@ -1261,7 +1261,7 @@
 #cheering                 146892    5   1208  # excluded: stage_direction, +ing→cheer(14507) keep
  common                   146792    5   1209
  bottom                   146720    5   1210
- believed                 146685    6   1211  # +ed→believe(403874) defer
+ believed                 146685    6   1211  # ordered brief (slot already claimed), +ed→believe(403874) defer
  gift                     146673    4   1212
 #german                   146440    5   1213  # excluded: nationality
  truck                    146421    4   1214
@@ -1277,7 +1277,7 @@
 #devil                    144756    5   1224  # excluded: religion
  wind                     144189    4   1225
  flying                   144092    5   1226  # +ing→fly(56595)
- gives                    143700    4   1227  # +s→give(811919) defer
+ gives                    143700    4   1227  # ordered brief (slot already claimed), +s→give(811919) defer
  cheers                   143457    4   1228  # +s→cheer(14507) keep
  upon                     143097    4   1229
  agreed                   143008    5   1230  # +ed→agree(60716)
@@ -1290,7 +1290,7 @@
  stars                    142196    5   1237  # +s→star(60903)
  faster                   142188    5   1238  # +er→fast(99084) defer
 #daniel                   142020    6   1239  # excluded: proper_noun_person
- opening                  141930    6   1240  # +ing→open(229669) defer
+ opening                  141930    6   1240  # ordered brief (slot already claimed), +ing→open(229669) defer
  wear                     141910    3   1241  # ordered brief (slot already claimed), homophone of "where"(1322226)
  suggest                  141065    6   1242
  arrest                   140982    4   1243
@@ -1302,7 +1302,7 @@
  high                     140078    2   1249  # homophone of "hi"(320316)
  telephone                140058    7   1250
  gotten                   140004    5   1251
- lots                     139710    4   1252  # +s→lot(411660) defer
+ lots                     139710    4   1252  # ordered brief (slot already claimed), +s→lot(411660) defer
  process                  139650    6   1253
  wow                      139593    2   1254
  hanging                  139232    5   1255  # +ing→hang(97778) defer
@@ -1310,19 +1310,19 @@
  advice                   139092    5   1257
  jump                     139074    4   1258
  received                 138640    6   1259  # +ed→receive(18100)
- secrets                  138420    7   1260  # +s→secret(89236) defer
+ secrets                  138420    7   1260  # ordered brief (slot already claimed), +s→secret(89236) defer
  murdered                 138396    5   1261  # +ed→murder(101133) defer
  beyond                   138380    5   1262
  bag                      138372    3   1263
  horses                   137710    6   1264  # +s→horse(62923) defer
- blue                     137678    3   1265
+ blue                     137678    3   1265  # ordered brief (slot already claimed)
  near                     137580    3   1266
  cousin                   137580    5   1267
  ancient                  137550    6   1268
  worst                    137535    4   1269
  river                    137502    4   1270
  trial                    137500    5   1271  # +al→tri(355) keep
- humans                   137472    7   1272  # +s→human(102595) defer
+ humans                   137472    7   1272  # ordered brief (slot already claimed), +s→human(102595) defer
  delicious                137406    7   1273
  handsome                 137310    6   1274
  saturday                 137170    6   1275
@@ -1336,7 +1336,7 @@
  bye                      136276    2   1283  # ordered brief (slot already claimed), homophone of "by"(1090424)
  arms                     136170    4   1284  # +s→arm(41726)
  buy                      136137    2   1285  # ordered brief (slot already claimed), homophone of "by"(1090424)
- turns                    136122    4   1286  # +s→turn(218563) defer
+ turns                    136122    4   1286  # ordered brief (slot already claimed), +s→turn(218563) defer
 #angel                    135688    5   1287  # excluded: religion
 #spanish                  135305    6   1288  # excluded: nationality
  garden                   135220    6   1289
@@ -1355,11 +1355,11 @@
  crap                     133587    4   1302
  paid                     133052    3   1303
  rings                    132993    4   1304  # +s→ring(66018)
- named                    132792    4   1305  # +ed→name(455543) defer
+ named                    132792    4   1305  # ordered brief (slot already claimed), +ed→name(455543) defer
  ran                      132354    3   1306
  picked                   132342    4   1307  # +ed→pick(122698) defer
  signal                   132190    6   1308
- millions                 132054    7   1309  # +s→million(94514) defer
+ millions                 132054    7   1309  # ordered brief (slot already claimed), +s→million(94514) defer
  ring                     132036    3   1310
  risk                     132015    4   1311
  dropped                  131988    5   1312  # +ed→drop(85186) defer
@@ -1374,11 +1374,11 @@
  fair                     130948    3   1321
  arrived                  130920    4   1322  # +ed→arrive(19306) keep
  nearly                   130920    5   1323  # +ly→near(68790) defer
- sending                  130920    6   1324  # +ing→send(131999) defer
+ sending                  130920    6   1324  # ordered brief (slot already claimed), +ing→send(131999) defer
  sun                      130896    3   1325  # ordered brief (slot already claimed), homophone of "son"(325997)
  fool                     130864    3   1326
  remind                   130855    6   1327
- streets                  130335    6   1328  # +s→street(98007) defer
+ streets                  130335    6   1328  # ordered brief (slot already claimed), +s→street(98007) defer
  silence                  130265    6   1329
  smoke                    130263    4   1330
  dressed                  130188    5   1331  # +ed→dress(58429)
@@ -1389,20 +1389,20 @@
  smile                    129885    4   1336
  guard                    129810    4   1337
  members                  129685    6   1338  # +s→member(27112)
- returned                 129300    6   1339  # +ed→return(89451) defer
+ returned                 129300    6   1339  # ordered brief (slot already claimed), +ed→return(89451) defer
  patients                 129258    7   1340  # +s→patient(45828) defer
  spot                     129237    4   1341
  committed                129102    7   1342  # +ed→commit(15921)
  sexual                   128994    7   1343
  join                     128912    3   1344
- ideas                    128728    5   1345  # +s→idea(263097) defer
+ ideas                    128728    5   1345  # ordered brief (slot already claimed), +s→idea(263097) defer
  fear                     128704    3   1346
  center                   128584    5   1347  # +er→cent(5364) keep
  peace                    128524    3   1348  # ordered brief (slot already claimed), homophone of "piece"(84224)
- drinks                   128215    6   1349  # +s→drink(182580) defer
+ drinks                   128215    6   1349  # ordered brief (slot already claimed), +s→drink(182580) defer
  stomach                  127500    6   1350
  science                  127332    5   1351
- changes                  127280    6   1352  # +s→change(186962) defer
+ changes                  127280    6   1352  # ordered brief (slot already claimed), +s→change(186962) defer
  details                  127255    6   1353  # +s→detail(15745)
  earlier                  127221    4   1354
  divorce                  127165    6   1355
@@ -1419,9 +1419,9 @@
  bunch                    126192    4   1366
  truly                    126056    5   1367
 #survive                  125760    5   1368
- bigger                   125619    4   1369
+ bigger                   125619    4   1369  # ordered brief (slot already claimed)
  honor                    125444    3   1370
- names                    125316    4   1371  # +s→name(455543) defer
+ names                    125316    4   1371  # ordered brief (slot already claimed), +s→name(455543) defer
  artist                   125280    6   1372
  sweetie                  125180    5   1373
  steal                    125160    4   1374
@@ -1449,27 +1449,27 @@
  form                     122499    4   1396
  sold                     122388    4   1397
  silly                    122274    4   1398  # +ly→sil(509) keep
- build                    122214    4   1399
+ build                    122214    4   1399  # ordered brief (slot already claimed)
  throat                   122157    4   1400
-#reasons                  122155    6   1401  # +s→reason(144399) defer
+#reasons                  122155    6   1401  # ordered brief (slot already claimed), +s→reason(144399) defer
  painting                 122005    6   1402  # +ing→paint(26174)
- doctors                  121900    6   1403  # +s→doctor(198424) defer
+ doctors                  121900    6   1403  # ordered brief (slot already claimed), +s→doctor(198424) defer
  nowhere                  121880    5   1404
  deep                     121876    3   1405
 #sheriff                  121832    5   1406  # excluded: title
  century                  121815    6   1407
  track                    121734    4   1408
- turning                  121680    5   1409  # +ing→turn(218563) defer
+ turning                  121680    5   1409  # ordered brief (slot already claimed), +ing→turn(218563) defer
  above                    121164    4   1410
- obvious                  121150    6   1411
+ obvious                  121150    6   1411  # ordered brief (slot already claimed)
  jealous                  121096    5   1412
  seemed                   121029    4   1413  # +ed→seem(98575) defer
- goodness                 120950    6   1414  # +ness→good(1741730) defer
+ goodness                 120950    6   1414  # ordered brief (slot already claimed), +ness→good(1741730) defer
  offer                    120888    3   1415  # +er→off(799351) defer
- meaning                  120576    5   1416  # +ing→mean(821275) defer
+ meaning                  120576    5   1416  # ordered brief (slot already claimed), +ing→mean(821275) defer
  pieces                   120488    5   1417  # +s→piece(84224) defer
  hide                     120266    3   1418
- letting                  120228    5   1419  # +ing→lett(108) keep
+ letting                  120228    5   1419  # ordered brief (slot already claimed), +ing→lett(108) keep
  began                    120196    5   1420
  genius                   120160    6   1421
  fresh                    120147    4   1422
@@ -1480,14 +1480,14 @@
  release                  119568    5   1427
  cards                    119484    5   1428  # +s→card(56659)
  treat                    119409    4   1429
- ended                    119100    5   1430  # +ed→end(237387) defer
+ ended                    119100    5   1430  # ordered brief (slot already claimed), +ed→end(237387) defer
  movies                   118968    5   1431  # +s→movie(73070) defer
  soldier                  118876    5   1432
  ticket                   118500    5   1433
  cost                     118455    4   1434
  prefer                   118424    5   1435
- surely                   118260    5   1436  # +ly→sure(709390) defer
- matters                  118156    5   1437  # +s→matter(247812) defer
+ surely                   118260    5   1436  # ordered brief (slot already claimed), +ly→sure(709390) defer
+ matters                  118156    5   1437  # ordered brief (slot already claimed), +s→matter(247812) defer
  warning                  117915    6   1438  # +ing→warn(18847)
  bedroom                  117710    6   1439
 #groaning                 117460    6   1440  # excluded: stage_direction, +ing→groan(2586) keep
@@ -1500,7 +1500,7 @@
  sunday                   117128    5   1447
  built                    117123    4   1448
  blow                     117062    3   1449
- total                    117056    5   1450
+ total                    117056    5   1450  # ordered brief (slot already claimed)
  fortune                  116895    6   1451
  band                     116754    4   1452
 #france                   116688    5   1453  # excluded: proper_noun_place
@@ -1511,7 +1511,7 @@
  bodies                   115780    5   1458
  flight                   115512    4   1459
  nature                   115488    4   1460
- opened                   115472    5   1461  # +ed→open(229669) defer
+ opened                   115472    5   1461  # ordered brief (slot already claimed), +ed→open(229669) defer
 #kevin                    115092    5   1462  # excluded: proper_noun_person
  mess                     115084    3   1463
  warm                     115065    4   1464
@@ -1525,7 +1525,7 @@
  focus                    114476    5   1472
  sad                      114358    3   1473
  belongs                  114350    6   1474  # +s→belong(31225)
- opens                    114128    5   1475  # +s→open(229669) defer
+ opens                    114128    5   1475  # ordered brief (slot already claimed), +s→open(229669) defer
  cell                     114066    3   1476  # ordered brief (slot already claimed), homophone of "sell"(73802)
  followed                 114040    5   1477  # +ed→follow(96529) defer
 #ma                       114026    2   1478  # excluded: gender
@@ -1537,12 +1537,12 @@
  share                    113708    3   1484
  guns                     113679    4   1485  # +s→gun(133072) defer
  bullet                   113508    5   1486
- lately                   113360    5   1487  # +ly→late(191989) defer
+ lately                   113360    5   1487  # ordered brief (slot already claimed), +ly→late(191989) defer
  fly                      113190    3   1488
  falling                  113164    5   1489
  season                   113160    5   1490
  glasses                  113020    6   1491
- laugh                    112920    3   1492
+ laugh                    112920    3   1492  # ordered brief (slot already claimed)
  hour                     112782    2   1493  # ordered brief (slot already claimed), homophone of "our"(1191941)
 #mum                      112562    3   1494  # excluded: gender
  officers                 112480    6   1495  # +s→officer(76015) defer
@@ -1561,7 +1561,7 @@
  deliver                  110620    6   1508
  skin                     110583    4   1509
  surgery                  110520    5   1510
- changing                 110510    6   1511  # +ing→change(186962) defer
+ changing                 110510    6   1511  # ordered brief (slot already claimed), +ing→change(186962) defer
  dare                     110262    3   1512
 #s                        110199    2   1513  # homophone of "'s"(14291013)
 #temple                   110180    6   1514  # excluded: religion
@@ -1574,10 +1574,10 @@
  seat                     109230    3   1521
  split                    109092    5   1522
  drug                     108948    4   1523
- becomes                  108840    6   1524  # +s→become(128716) defer
- closes                   108805    6   1525
+ becomes                  108840    6   1524  # ordered brief (slot already claimed), +s→become(128716) defer
+ closes                   108805    6   1525  # ordered brief (slot already claimed)
 #panting                  108555    6   1526  # excluded: stage_direction, +ing→pant(1285) keep
-#ordered                  108508    5   1527  # +ed→order(125446) defer
+#ordered                  108508    5   1527  # ordered brief (slot already claimed), +ed→order(125446) defer
  slowly                   108484    5   1528  # +ly→slow(50276)
  alarm                    108464    5   1529
  member                   108448    5   1530
@@ -1586,7 +1586,7 @@
  art                      108192    3   1533
  although                 108138    4   1534
  lights                   108117    4   1535  # +s→light(126657) defer
- brings                   108020    5   1536  # +s→bring(247343) defer
+ brings                   108020    5   1536  # ordered brief (slot already claimed), +s→bring(247343) defer
  ha                       107974    2   1537
  model                    107908    5   1538
  finger                   107868    5   1539
@@ -1598,7 +1598,7 @@
  chocolate                107200    6   1545
  insane                   107152    5   1546
  charges                  106735    6   1547  # +s→charge(62746) defer
- cars                     106416    4   1548  # +s→car(330261) defer
+ cars                     106416    4   1548  # ordered brief (slot already claimed), +s→car(330261) defer
  earth                    106394    2   1549
  folks                    106293    4   1550  # +s→folk(7245) keep
  fellow                   106005    4   1551
@@ -1607,7 +1607,7 @@
  covered                  105544    5   1554  # +ed→cover(61052) defer
  leader                   105465    4   1555
  teach                    105462    3   1556
- leaves                   105450    4   1557  # +s→leave(478282) defer
+ leaves                   105450    4   1557  # ordered brief (slot already claimed), +s→leave(478282) defer
  traffic                  105420    6   1558
 #indian                   105245    6   1559  # excluded: nationality
  ghost                    105153    4   1560
@@ -1616,7 +1616,7 @@
  tells                    104619    4   1563  # +s→tell(1176290) defer
  naked                    104488    5   1564
  pulled                   104448    4   1565  # +ed→pull(89880) defer
- heading                  104392    5   1566  # +ing→head(266844) defer
+ heading                  104392    5   1566  # ordered brief (slot already claimed), +ing→head(266844) defer
  speed                    104382    4   1567
  health                   104364    4   1568
  damage                   104244    5   1569
@@ -1626,7 +1626,7 @@
  joke                     103456    3   1573
  safety                   103444    5   1574
  cop                      103402    3   1575
- harder                   103248    5   1576  # +er→hard(242871) defer
+ harder                   103248    5   1576  # ordered brief (slot already claimed), +er→hard(242871) defer
 #fbi                      103192    5   1577  # excluded: abbreviation
  fancy                    103084    5   1578
  jail                     102858    3   1579
@@ -1666,13 +1666,13 @@
  growing                   99116    5   1613  # +ing→grow(46010)
 #jason                     99012    5   1614  # excluded: proper_noun_person
 #beeping                   98680    5   1615  # excluded: stage_direction, +ing→beep(12076) keep
- points                    98636    5   1616  # +s→point(174205) defer
+ points                    98636    5   1616  # ordered brief (slot already claimed), +s→point(174205) defer
  dating                    98580    5   1617  # +ing→date(88407) defer
  breathe                   98523    4   1618
- color                     98511    4   1619
+ color                     98511    4   1619  # ordered brief (slot already claimed)
  photo                     98271    4   1620
 #santa                     98128    5   1621  # excluded: religion
- likely                    98108    5   1622  # +ly→like(2983027) defer
+ likely                    98108    5   1622  # ordered brief (slot already claimed), +ly→like(2983027) defer
  tree                      98034    3   1623
  games                     97869    4   1624  # +s→game(157501) defer
  bridge                    97764    4   1625
@@ -1683,12 +1683,12 @@
  beer                      97282    3   1630
  pocket                    97044    5   1631
  checked                   96999    4   1632  # +ed→check(176507) defer
- parts                     96744    5   1633  # +s→part(192248) defer
+ parts                     96744    5   1633  # ordered brief (slot already claimed), +s→part(192248) defer
  reach                     96442    3   1634
- older                     96390    4   1635  # +er→old(431911) defer
+ older                     96390    4   1635  # ordered brief (slot already claimed), +er→old(431911) defer
  square                    96308    5   1636
 #europe                    96168    5   1637  # excluded: proper_noun_place
- cases                     96092    5   1638  # +s→case(215274) defer
+ cases                     96092    5   1638  # ordered brief (slot already claimed), +s→case(215274) defer
  winter                    96020    5   1639  # +er→wint(36) keep
  lie                       95930    2   1640
  trick                     95811    4   1641
@@ -1714,18 +1714,18 @@
 #walter                    93040    5   1661  # excluded: proper_noun_person, +er→walt(7614) keep
  shoes                     92980    3   1662  # +s→shoe(14489) keep
  giant                     92908    5   1663
- pleased                   92632    5   1664  # +ed→pleas(567) keep
+ pleased                   92632    5   1664  # ordered brief (slot already claimed), +ed→pleas(567) keep
  easier                    92628    4   1665
  rid                       92484    3   1666
  knock                     92456    3   1667
  hurts                     92412    4   1668  # +s→hurt(161421) defer
- stops                     92344    5   1669  # +s→stop(574016) defer
+ stops                     92344    5   1669  # ordered brief (slot already claimed), +s→stop(574016) defer
 #roger                     92304    4   1670  # excluded: proper_noun_person
  repeat                    92144    5   1671
  photos                    92140    5   1672  # +s→photo(32757)
- finds                     92076    5   1673  # +s→find(626520) defer
+ finds                     92076    5   1673  # ordered brief (slot already claimed), +s→find(626520) defer
  grow                      92020    3   1674
- younger                   91844    5   1675  # +er→young(194810) defer
+ younger                   91844    5   1675  # ordered brief (slot already claimed), +er→young(194810) defer
 #aunt                      91668    3   1676  # excluded: gender
 #dr                        91647    4   1677  # excluded: title, homophone of "drive"(102436)
  proper                    91556    5   1678  # +er→prop(2523) keep
@@ -1734,7 +1734,7 @@
  knowledge                 91288    5   1681
  guests                    91220    5   1682  # +s→guest(30128)
  brown                     91185    4   1683
- heads                     91050    4   1684  # +s→head(266844) defer
+ heads                     91050    4   1684  # ordered brief (slot already claimed), +s→head(266844) defer
  moon                      90844    3   1685
  ashamed                   90492    5   1686  # +ed→ashame(42) keep
  match                     90446    3   1687
@@ -1754,7 +1754,7 @@
  saving                    88784    5   1701  # +ing→save(129390) defer
  speaks                    88724    5   1702  # +s→speak(150927) defer
  lift                      88584    4   1703
- answers                   88464    5   1704  # +s→answer(134088) defer
+ answers                   88464    5   1704  # ordered brief (slot already claimed), +s→answer(134088) defer
  proof                     88290    4   1705
  race                      88178    3   1706
  scary                     88140    5   1707
@@ -1763,11 +1763,11 @@
  nuts                      87111    4   1710  # +s→nut(8577) keep
  sexy                      87096    5   1711
  birds                     87084    4   1712  # +s→bird(37711)
- faces                     87084    5   1713  # +s→face(225482) defer
+ faces                     87084    5   1713  # ordered brief (slot already claimed), +s→face(225482) defer
  fit                       87004    3   1714
- badly                     87000    5   1715  # +ly→bad(369996) defer
+ badly                     87000    5   1715  # ordered brief (slot already claimed), +ly→bad(369996) defer
  pizza                     86708    5   1716
- clears                    86628    5   1717  # +s→clear(125730) defer
+ clears                    86628    5   1717  # ordered brief (slot already claimed), +s→clear(125730) defer
  bucks                     86526    4   1718  # +s→buck(12711) keep
  ugly                      86139    4   1719
 #ryan                      85965    4   1720  # excluded: proper_noun_person
@@ -1776,21 +1776,21 @@
  allow                     85298    3   1723
  poison                    85292    5   1724
 #nine                      85076    3   1725  # excluded: number_mode_alias
- headed                    85032    5   1726  # +ed→head(266844) defer
+ headed                    85032    5   1726  # ordered brief (slot already claimed), +ed→head(266844) defer
  babies                    84940    5   1727
  stayed                    84927    4   1728  # +ed→stay(378726) defer
- ends                      84726    4   1729  # +s→end(237387) defer
+ ends                      84726    4   1729  # ordered brief (slot already claimed), +s→end(237387) defer
  picking                   84692    5   1730  # +ing→pick(122698) defer
 #jim                       84646    3   1731  # excluded: proper_noun_person
  suit                      84630    3   1732
  bell                      84598    3   1733
  sword                     83784    4   1734
- fucked                    83649    4   1735  # +ed→fuck(260121) defer
+ fucked                    83649    4   1735  # ordered brief (slot already claimed), +ed→fuck(260121) defer
  tiny                      83487    4   1736
  desk                      83460    4   1737
  arm                       83452    3   1738
  kick                      83394    3   1739
- ways                      83350    3   1740  # +s→way(1000182) defer
+ ways                      83350    3   1740  # ordered brief (slot already claimed), +s→way(1000182) defer
  gas                       83070    3   1741
  staff                     82191    4   1742
  lines                     82149    4   1743  # +s→line(132433) defer
@@ -1820,7 +1820,7 @@
  post                      78339    4   1767
  sugar                     78330    4   1768
  law                       78264    2   1769
- doors                     78060    4   1770  # +s→door(261118) defer
+ doors                     78060    4   1770  # ordered brief (slot already claimed), +s→door(261118) defer
  block                     77355    4   1771
  showing                   77355    4   1772  # +ing→show(347408) defer
  chest                     77064    4   1773
@@ -1832,11 +1832,11 @@
 #ya                        76658    2   1779  # excluded: informal_fragment
  journey                   76554    4   1780
  van                       76446    3   1781
- thoughts                  76308    4   1782  # +s→thought(558542) defer
+ thoughts                  76308    4   1782  # ordered brief (slot already claimed), +s→thought(558542) defer
 #maria                     76266    4   1783  # excluded: proper_noun_person
  theory                    76080    4   1784
  showed                    76014    3   1785  # +ed→show(347408) defer
- sooner                    75708    4   1786  # +er→soon(213279) defer
+ sooner                    75708    4   1786  # ordered brief (slot already claimed), +er→soon(213279) defer
 #larry                     75591    4   1787  # excluded: proper_noun_person
  shame                     75586    3   1788
  whom                      75470    3   1789
@@ -1858,7 +1858,7 @@
  cook                      73062    3   1805
  nights                    72972    4   1806  # +s→night(556318) defer
 #t                         72881    2   1807
- runs                      72852    4   1808  # +s→run(244200) defer
+ runs                      72852    4   1808  # ordered brief (slot already claimed), +s→run(244200) defer
  farm                      72762    4   1809
  hall                      72708    3   1810
  main                      72584    3   1811
@@ -1891,12 +1891,12 @@
  tight                     69944    3   1838
 #kelly                     69939    4   1839  # excluded: proper_noun_person
 #alice                     69933    4   1840  # excluded: proper_noun_person
- jobs                      69804    4   1841  # +s→job(298911) defer
+ jobs                      69804    4   1841  # ordered brief (slot already claimed), +s→job(298911) defer
  grown                     69798    4   1842
  lies                      69654    3   1843  # +s→lie(95930) defer
  nor                       69642    3   1844
  woods                     69633    4   1845  # +s→wood(20570)
- scare                     69576    4   1846
+ scare                     69576    4   1846  # ordered brief (slot already claimed)
  player                    69261    4   1847  # +er→play(233865) defer
 #laura                     69150    4   1848  # excluded: proper_noun_person
  rule                      69034    3   1849
@@ -1928,7 +1928,7 @@
  raised                    65136    4   1875  # +ed→raise(38449)
  image                     65007    4   1876
  coach                     64942    3   1877
- watched                   64626    4   1878  # +ed→watch(207949) defer
+ watched                   64626    4   1878  # ordered brief (slot already claimed), +ed→watch(207949) defer
  suffer                    64488    4   1879
 #arthur                    64473    4   1880  # excluded: proper_noun_person
  plate                     64398    4   1881
@@ -2085,3 +2085,133 @@
 # ---- Custom user-added words ----
  rat
  zero
+ cyan
+ magenta
+ grey  # ordered brief (slot already claimed), homophone of "gray"(11667)
+ gray  # ordered brief (slot already claimed)
+ colour  # ordered brief (slot already claimed), homophone of "color"(32837)
+ blew  # ordered brief (slot already claimed), homophone of "blue"(68839)
+ greene  # ordered brief (slot already claimed), homophone of "green"(52557)
+ absolute  # ordered brief (slot already claimed)
+ actual  # ordered brief (slot already claimed)
+ answered  # ordered brief (slot already claimed), +ed→answer(134088) defer
+ answering  # ordered brief (slot already claimed), +ing→answer(134088) defer
+ anyways  # ordered brief (slot already claimed), +s→anyway(166702) defer
+ asks  # ordered brief (slot already claimed), +s→ask(354323) defer
+ backs  # ordered brief (slot already claimed), +s→back(1405024) defer
+ beautifully  # ordered brief (slot already claimed)
+ becoming  # ordered brief (slot already claimed), +ing→become(128716) defer
+ beings  # ordered brief (slot already claimed), +s→being(386528) defer
+ bits  # ordered brief (slot already claimed), +s→bit(258929) defer
+ breaks  # ordered brief (slot already claimed), +s→break(143107) defer
+ buildings  # ordered brief (slot already claimed), +s→building(74492) defer
+ chances  # ordered brief (slot already claimed), +s→chance(167981) defer
+ cleared  # ordered brief (slot already claimed), +ed→clear(125730) defer
+ clearing  # ordered brief (slot already claimed), +ing→clear(125730) defer
+ continued  # ordered brief (slot already claimed), +ed→continue(51279) defer
+ controlled  # ordered brief (slot already claimed), +ed→control(102782) defer
+ controls  # ordered brief (slot already claimed), +s→control(102782) defer
+ couples  # ordered brief (slot already claimed), +s→couple(138996) defer
+ deadly  # ordered brief (slot already claimed), +ly→dead(317589) defer
+ deaths  # ordered brief (slot already claimed), +s→death(189000) defer
+ detectives  # ordered brief (slot already claimed), +s→detective(60633) defer
+ differently  # ordered brief (slot already claimed)
+ exact  # ordered brief (slot already claimed)
+ excuses  # ordered brief (slot already claimed), +s→excuse(219855) defer
+ experienced  # ordered brief (slot already claimed), +ed→experience(47824) defer
+ experiences  # ordered brief (slot already claimed), +s→experience(47824) defer
+ explained  # ordered brief (slot already claimed), +ed→explain(84368) defer
+ explaining  # ordered brief (slot already claimed), +ing→explain(84368) defer
+ explains  # ordered brief (slot already claimed), +s→explain(84368) defer
+ faced  # ordered brief (slot already claimed), +ed→face(225482) defer
+ facing  # ordered brief (slot already claimed), +ing→face(225482) defer
+ facts  # ordered brief (slot already claimed), +s→fact(124995) defer
+ forgetting  # ordered brief (slot already claimed), +ing→forget(188628) defer
+ fucker  # ordered brief (slot already claimed), +er→fuck(260121) defer
+ generally  # ordered brief (slot already claimed), +ly→general(76816) defer
+ greater  # ordered brief (slot already claimed), +er→great(545768) defer
+ guessed  # ordered brief (slot already claimed), +ed→guess(250320) defer, homophone of "guest"(30128)
+ guessing  # ordered brief (slot already claimed), +ing→guess(250320) defer
+ happier  # ordered brief (slot already claimed)
+ hearts  # ordered brief (slot already claimed), +s→heart(213914) defer
+ holds  # ordered brief (slot already claimed), +s→hold(262367) defer
+ homes  # ordered brief (slot already claimed), +s→home(556894) defer
+ hoped  # ordered brief (slot already claimed), +ed→hope(226993) defer
+ hopes  # ordered brief (slot already claimed), +s→hope(226993) defer
+ hospitals  # ordered brief (slot already claimed), +s→hospital(98076) defer
+ houses  # ordered brief (slot already claimed), +s→house(388585) defer
+ humanity  # ordered brief (slot already claimed)
+ imagined  # ordered brief (slot already claimed), +ed→imagine(71873) defer
+ immediate  # ordered brief (slot already claimed)
+ importantly  # ordered brief (slot already claimed), +ly→important(164386) defer
+ kindly  # ordered brief (slot already claimed), +ly→kind(392242) defer
+ kindness  # ordered brief (slot already claimed), +ness→kind(392242) defer
+ kinds  # ordered brief (slot already claimed), +s→kind(392242) defer
+ lets  # ordered brief (slot already claimed), +s→let(1705262) defer
+ liking  # ordered brief (slot already claimed), +ing→like(2983027) defer
+ listened  # ordered brief (slot already claimed), +ed→listen(365791) defer
+ meetings  # ordered brief (slot already claimed), +s→meeting(97328) defer
+ minds  # ordered brief (slot already claimed), +s→mind(312927) defer
+ mistakes  # ordered brief (slot already claimed), +s→mistake(74957) defer
+ moments  # ordered brief (slot already claimed), +s→moment(159995) defer
+ mostly  # ordered brief (slot already claimed), +ly→most(283006) defer
+ moves  # ordered brief (slot already claimed), +s→move(283807) defer
+ musical  # ordered brief (slot already claimed), +al→music(207205) defer
+ needing  # ordered brief (slot already claimed), +ing→need(1040131) defer
+ nicely  # ordered brief (slot already claimed), +ly→nice(405497) defer
+ nicer  # ordered brief (slot already claimed)
+ offices  # ordered brief (slot already claimed)
+ outer  # ordered brief (slot already claimed), +er→out(2510010) defer
+ parent  # ordered brief (slot already claimed)
+ personality  # ordered brief (slot already claimed)
+ persons  # ordered brief (slot already claimed), +s→person(192652) defer
+ phoned  # ordered brief (slot already claimed), +ed→phone(235246) defer
+ phones  # ordered brief (slot already claimed), +s→phone(235246) defer
+ placed  # ordered brief (slot already claimed), +ed→place(444863) defer
+ pointed  # ordered brief (slot already claimed), +ed→point(174205) defer
+ pointing  # ordered brief (slot already claimed), +ing→point(174205) defer
+ presented  # ordered brief (slot already claimed)
+ presents  # ordered brief (slot already claimed), +s→present(63307) defer
+ promises  # ordered brief (slot already claimed), +s→promise(115908) defer
+ promising  # ordered brief (slot already claimed), +ing→promise(115908) defer
+ protected  # ordered brief (slot already claimed), +ed→protect(66508) defer
+ protecting  # ordered brief (slot already claimed), +ing→protect(66508) defer
+ puts  # ordered brief (slot already claimed), +s→put(552246) defer
+ quietly  # ordered brief (slot already claimed), +ly→quiet(90552) defer
+ reasonable  # ordered brief (slot already claimed), +able→reason(144399) defer
+ relationships  # ordered brief (slot already claimed), +s→relationship(55128) defer
+ remembered  # ordered brief (slot already claimed), +ed→remember(358291) defer
+ remembers  # ordered brief (slot already claimed), +s→remember(358291) defer
+ reported  # ordered brief (slot already claimed), +ed→report(77824) defer
+ reporter  # ordered brief (slot already claimed)
+ reports  # ordered brief (slot already claimed)
+ resting  # ordered brief (slot already claimed), +ing→rest(158976) defer
+ returning  # ordered brief (slot already claimed), +ing→return(89451) defer
+ returns  # ordered brief (slot already claimed), +s→return(89451) defer
+ rooms  # ordered brief (slot already claimed), +s→room(290206) defer
+ schools  # ordered brief (slot already claimed), +s→school(240176) defer
+ secretly  # ordered brief (slot already claimed)
+ secure  # ordered brief (slot already claimed)
+ sends  # ordered brief (slot already claimed), +s→send(131999) defer
+ sits  # ordered brief (slot already claimed), +s→sit(198149) defer
+ situations  # ordered brief (slot already claimed), +s→situation(66029) defer
+ sleeps  # ordered brief (slot already claimed), +s→sleep(168103) defer
+ sometime  # ordered brief (slot already claimed)
+ stands  # ordered brief (slot already claimed), +s→stand(155391) defer
+ stopping  # ordered brief (slot already claimed), +ing→stop(574016) defer
+ stranger  # ordered brief (slot already claimed)
+ stuffed  # ordered brief (slot already claimed), +ed→stuff(190629) defer
+ systems  # ordered brief (slot already claimed), +s→system(73678) defer
+ talks  # ordered brief (slot already claimed), +s→talk(567036) defer
+ timing  # ordered brief (slot already claimed), +ing→time(1453708) defer
+ troubled  # ordered brief (slot already claimed), +ed→trouble(143235) defer
+ troubles  # ordered brief (slot already claimed), +s→trouble(143235) defer
+ trusted  # ordered brief (slot already claimed), +ed→trust(141327) defer
+ turner  # ordered brief (slot already claimed), +er→turn(218563) defer
+ understanding  # ordered brief (slot already claimed), +ing→understand(365210) defer
+ useful  # ordered brief (slot already claimed), +ful→use(256079) defer
+ wanting  # ordered brief (slot already claimed), +ing→want(1950845) defer
+ waters  # ordered brief (slot already claimed), +s→water(193014) defer
+ wells  # ordered brief (slot already claimed), +s→well(2159909) defer
+ worlds  # ordered brief (slot already claimed), +s→world(370620) defer
+ worrying  # ordered brief (slot already claimed), +ing→worry(211329) defer
