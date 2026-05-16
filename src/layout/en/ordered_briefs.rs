@@ -845,11 +845,13 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     (0b1011, 0b11100, scan::L_IDX, "personal"),
     (0b1011, 0b11100, scan::L_MID, "personally"),
     (0b1011, 0b11100, scan::R_RING, "personality"),
-    // fuck(260,121) / fucked(27,883) / fucker(8,421)
-    (0b1010, 0b10100, scan::R_THUMB, "fuck"),
-    (0b1010, 0b10100, scan::L_PINKY, "fuck"),
-    (0b1010, 0b10100, scan::L_MID, "fucked"),
-    (0b1010, 0b10100, scan::R_RING, "fucker"),
+    // fuck family — on fucking's auto-brief chord (0b1110, 0b00110)
+    // 5 fingers: L-pinky, R-mid, L-mid, R-ring, L-ring
+    (0b1110, 0b00110, scan::L_PINKY, "fuck"),
+    (0b1110, 0b00110, scan::R_MID, "fucking"),
+    (0b1110, 0b00110, scan::L_MID, "fucked"),
+    (0b1110, 0b00110, scan::R_RING, "fucker"),
+    (0b1110, 0b00110, scan::L_RING, "fucks"),
     // reason(144,399) / reasons(24,431) / reasonable(11,835)
     (0b1100, 0b11111, scan::R_THUMB, "reason"),
     (0b1100, 0b11111, scan::R_PINKY, "reason"),
@@ -1372,11 +1374,7 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     (0b0110, 0b11110, scan::L_MID, "stuff"),
     (0b0110, 0b11110, scan::R_RING, "stuffed"),
     (0b0110, 0b11110, scan::L_RING, "stuffed"),
-    // person(192,652) / persons(6,965)
-    (0b1001, 0b11000, scan::R_THUMB, "person"),
-    (0b1001, 0b11000, scan::R_PINKY, "person"),
-    (0b1001, 0b11000, scan::L_PINKY, "person"),
-    (0b1001, 0b11000, scan::L_IDX, "persons"),
+    // person — no ride-alongs (persons is overly formal; people is the normal plural)
     // anyway(166,702) / anyways(6,926)
     (0b1110, 0b01001, scan::R_PINKY, "anyway"),
     (0b1110, 0b01001, scan::L_PINKY, "anyway"),
@@ -1388,10 +1386,7 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     (0b0001, 0b11010, scan::R_PINKY, "couple"),
     (0b0001, 0b11010, scan::L_IDX, "couple"),
     (0b0001, 0b11010, scan::R_MID, "couples"),
-    // out(2,510,010) / outer(6,677)
-    (0b0110, 0b00010, scan::R_MID, "out"),
-    (0b0110, 0b00010, scan::L_MID, "out"),
-    (0b0110, 0b00010, scan::L_RING, "outer"),
+    // out — no ride-alongs (outer is not out+er)
     // back(1,405,024) / backs(6,569)
     (0b1101, 0b10000, scan::R_THUMB, "back"),
     (0b1101, 0b10000, scan::L_PINKY, "back"),
@@ -1403,10 +1398,7 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     (0b1011, 0b01001, scan::R_IDX, "general"),
     (0b1011, 0b01001, scan::L_IDX, "general"),
     (0b1011, 0b01001, scan::L_MID, "generally"),
-    // well(2,159,909) / wells(5,955)
-    (0b1100, 0b10000, scan::R_THUMB, "well"),
-    (0b1100, 0b10000, scan::L_PINKY, "well"),
-    (0b1100, 0b10000, scan::L_RING, "wells"),
+    // well — no ride-alongs (wells is mostly a surname)
     // situation(66,029) / situations(5,693)
     (0b1101, 0b10001, scan::R_THUMB, "situation"),
     (0b1101, 0b10001, scan::L_PINKY, "situation"),
@@ -1437,5 +1429,27 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
 
     // 170 sets, 254 ride-along words
 
-
+    // ─── Consolidated families (split briefs merged onto one chord) ───
+    // try(325,748) / trying(303,288) / tried(135,401) / tries(11,441)
+    // on try's chord (L=1100, R=10110) — frees trying's chord
+    (0b1100, 0b10110, scan::R_THUMB, "try"),
+    (0b1100, 0b10110, scan::L_PINKY, "try"),
+    (0b1100, 0b10110, scan::R_MID, "trying"),
+    (0b1100, 0b10110, scan::R_RING, "tried"),
+    (0b1100, 0b10110, scan::L_RING, "tries"),
+    // minute(188,958) / minutes(175,091)
+    // on minutes' chord (L=0111, R=10110) — frees minute's chord
+    (0b0111, 0b10110, scan::R_THUMB, "minute"),
+    (0b0111, 0b10110, scan::L_IDX, "minute"),
+    (0b0111, 0b10110, scan::R_MID, "minute"),
+    (0b0111, 0b10110, scan::L_MID, "minute"),
+    (0b0111, 0b10110, scan::R_RING, "minutes"),
+    (0b0111, 0b10110, scan::L_RING, "minutes"),
+    // problem(232,325) / problems(60,633)
+    // on problem's chord (L=0111, R=00011) — frees problems' chord
+    (0b0111, 0b00011, scan::L_IDX, "problem"),
+    (0b0111, 0b00011, scan::R_IDX, "problem"),
+    (0b0111, 0b00011, scan::R_MID, "problem"),
+    (0b0111, 0b00011, scan::L_MID, "problem"),
+    (0b0111, 0b00011, scan::L_RING, "problems"),
 ];
