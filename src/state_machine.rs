@@ -26,7 +26,8 @@ pub enum Event {
     },
     /// Symbol-mode entry. Fires when the user does the `+word +mod -word +word` gesture: the word-release-while-mod-held that prefixes a `Mod`+`SpaceUp` (the pristine-zero shortcut) gets repurposed when the user re-presses word before thumb releases. The deferred `SpaceUp` is dropped, this event fires instead, and the interpreter switches to a symbol-typing sub-session that lasts until the word releases.
     SymbolMode,
-    /// Undo last phoneme (reserved for future gesture).
+    /// Undo last phoneme. Reserved for a future explicit-undo gesture (current mod-tap undo runs through `Event::Mod` with `activity_in_session=true` and `phoneme_session=true`). Interpreter handler stays wired so adding a new SM emit site is a one-line change.
+    #[allow(dead_code)]
     UndoPhoneme,
 }
 

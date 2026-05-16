@@ -8,11 +8,6 @@
 
 use super::theme;
 
-/// Coarse-tier patch size. Larger square regions of self-similar brightness — sets the dominant patchwork scale.
-const PATCH_COARSE: usize = 64;
-/// Fine-tier patch size. Smaller embedded variation inside each coarse patch — adds texture detail at a tighter grid.
-const PATCH_FINE: usize = 16;
-
 /// Photon's signature procedural background.
 ///
 /// * `pixels` — ARGB pixel buffer (0xAARRGGBB).

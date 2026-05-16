@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.3 — 2026-05-16
+
+### Added
+- **Symbol mode** — new `+word +mod -word +chord` gesture enters a one-shot symbol-typing sub-session. Greek consonants (right hand) and Greek vowels + units (`° £ €`) + ASCII randos (`@ # $ ~ ; |` `` ` ``) on the left hand. Layout placed by glyph frequency × measured chord effort. Right-hand Greek consonant frequencies sourced from an arXiv math/physics-abstract scan; left-hand from a Wikipedia general-text scan.
+- **Phoneme-mode mod-tap undo** — pressing+releasing mod while word is held backspaces one phoneme in the engine and clears the drill's errored state. Drill highlights the mod cell as the recovery target while errored mid-word; releasing everything still resets to step 0 as before.
+- **Number-mode multi-finger extension** — multi-finger no-mod right-hand chords (effort 5-14) now emit Greek lowercase consonants matching symbol-mode placement. Left-hand multi-finger emits brackets and math operators (`[ ] { } < > √ ∞ ∂ ∫`).
+- **Rheboard digit-position variant** — digits 4 and 5 also reachable via all-4-right and all-4-left chords (in addition to the inner-index keys), so layouts that omit the QWERTY G/H keys still have a complete number layout.
+- **Effort ranking module** — `crate::layout::effort` exposes the 15-entry chord-shape ergonomic ranking as a single source of truth, consumed by symbol placement and available for future brief / phoneme layout work.
+- **frequency-scan binary** — `cargo run --release --bin frequency-scan` samples a corpus and writes a sorted CSV of Unicode codepoint frequencies. `--source wikipedia` (default) pulls random Wikipedia articles; `--source arxiv` pulls math + physics abstracts (Greek/math-heavy). Used to data-rank symbol-mode slots.
+
+### Changed
+- **Event::Mod carries `activity_in_session`** — distinguishes pristine number-mode entry (activity=false → enter Number) from a mid-word mod-tap (activity=true → no-op or phoneme-undo). Fixes the silent-mode-switch bug where mod-tapping after a goof would flip the tutor's cell hints to digits while the drill was still in phoneme mode.
+- **Tray menu: "Open Tutor" → "Tutor"** — name shortened. Clicking now always reloads Wikipedia content; previously a prior Test Text / Brown Corpus / dropped-file session would stick and the menu would no-op.
+- **Symbol layout extracted to `crate::layout::symbols`** — was duplicated inline in `interpreter.rs` and `tutor/drill.rs`. Now a single array-driven module per language (`layout/en/symbols.rs`, `layout/mri/symbols.rs` stub) indexed by effort rank.
+
+### Fixed
+- Pristine-zero pristine-symbol-entry disambiguation — defers both `Mod` and `SpaceUp` after `-word` with thumb live, then either fires `SymbolMode` (chord-finger follow-up) or flushes both events (pristine-zero or anything else). Earlier passes only deferred `SpaceUp`.
+
 ## 0.0.2 — 2026-04-21
 
 ### Added

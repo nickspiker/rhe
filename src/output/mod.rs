@@ -15,11 +15,11 @@ pub mod linux;
 #[cfg(target_os = "windows")]
 pub mod windows;
 
-/// No-op output backend for platforms where text injection isn't wired up.
-///
-/// On Linux, uinput routes through the user's xkb layout (so injected scancodes get re-interpreted by Dvorak/etc). Until we add xkb reverse-mapping or an IME path, the tutor runs without emitting text.
+/// No-op output backend for platforms where text injection isn't wired up. Kept as a placeholder + reference impl of the `TextOutput` trait; no current call site constructs it.
+#[allow(dead_code)]
 pub struct NullOutput;
 
+#[allow(dead_code)]
 impl NullOutput {
     pub fn new() -> Self {
         Self

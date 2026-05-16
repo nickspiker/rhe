@@ -12,7 +12,9 @@ use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{CursorIcon, ResizeDirection, Window, WindowId};
 
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
-use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
+use tray_icon::{Icon, TrayIconBuilder};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use tray_icon::TrayIcon;
 
 use crate::hand::KeyEvent as RheKeyEvent;
 use crate::interpreter::FallbackMode;
@@ -337,30 +339,6 @@ pub enum TrayEvent {
 /// Handle a tray can pass to other threads so they can wake the event loop.
 pub type TrayProxy = EventLoopProxy<TrayEvent>;
 
-/// Generate a filled circle icon as RGBA bytes.
-fn circle_icon(r: u8, g: u8, b: u8, a: u8) -> Icon {
-    let mut rgba = vec![0u8; (ICON_SIZE * ICON_SIZE * 4) as usize];
-    let center = ICON_SIZE as f64 / 2.0;
-    let radius = center - 1.0;
-
-    for y in 0..ICON_SIZE {
-        for x in 0..ICON_SIZE {
-            let dx = x as f64 - center;
-            let dy = y as f64 - center;
-            let dist = (dx * dx + dy * dy).sqrt();
-
-            if dist <= radius {
-                let offset = ((y * ICON_SIZE + x) * 4) as usize;
-                rgba[offset] = r;
-                rgba[offset + 1] = g;
-                rgba[offset + 2] = b;
-                rgba[offset + 3] = a;
-            }
-        }
-    }
-
-    Icon::from_rgba(rgba, ICON_SIZE, ICON_SIZE).expect("failed to create icon")
-}
 
 /// Build the event loop + proxy before spawning the engine. The caller gives the proxy to any thread that wants to notify the tray of state changes (primarily the evdev reader on Linux / HID callback on macOS).
 pub fn build() -> (EventLoop<TrayEvent>, TrayProxy) {
@@ -446,12 +424,7 @@ struct TrayApp {
     tutor_drag_start_size: (u32, u32),
     tutor_drag_start_window_pos: (i32, i32),
     tutor_drag_start_screen_pos: (f64, f64),
-    /// Cumulative cursor screen position during a drag, updated from
-    /// raw `DeviceEvent::MouseMotion` deltas. Lets us track the cursor
-    /// even when it leaves the window — `WindowEvent::CursorMoved`
-    /// stops firing on macOS once the cursor crosses the window edge,
-    /// which is exactly when a drag-to-resize / drag-to-move actually
-    /// needs the data.
+    /// Cumulative cursor screen position during a drag, updated from raw `DeviceEvent::MouseMotion` deltas. Lets us track the cursor even when it leaves the window — `WindowEvent::CursorMoved` stops firing on macOS once the cursor crosses the window edge, which is exactly when a drag-to-resize / drag-to-move actually needs the data.
     tutor_drag_screen_cursor: (f64, f64),
 
     // Frame/redraw counters for the debug HUD.
@@ -1196,7 +1169,6 @@ impl TrayApp {
             let first_down = self.tutor_state.as_ref().and_then(|s| s.tutor_first_down);
             let cell_d = layout.cell_d;
             let cell_gap = layout.cell_gap;
-            let hand_gap = layout.hand_gap;
             let row_x = layout.row_x;
             let cy = layout.row_cy;
 
@@ -1298,10 +1270,6 @@ impl TrayApp {
                 }
                 cell_centres[cell_idx] = (cx_cell, cy);
             }
-            let _ = hand_gap; // slot 5 width is implicit in the slot
-            // walk above; field kept for callers
-            // that want the in-gap centre Y.
-
             // Second row below the chord cells: word bar (long, left-
             // aligned under L-pinky) + mod cell (2 cells wide, right-
             // aligned under R-pinky). Word = purple, mod = green —
@@ -1376,19 +1344,10 @@ impl TrayApp {
                     target.word,
                 );
             }
-            let _ = theme::WORD_SECONDARY;
-
-            // Adaptive labels: drawn ABOVE each key (not on top), so
-            // the cell pill stays clean and the label sits in the
-            // strip between the chord row and whatever's above it.
-            // Each label is measured once with an off-screen draw
-            // and trimmed character-by-character from the end if it
-            // would otherwise spill outside its cell width — that
-            // keeps long ordered-brief labels from bleeding into
-            // neighbouring cells.
+            // Adaptive labels: drawn ABOVE each key (not on top), so the cell pill stays clean and the label sits in the strip between the chord row and whatever's above it. Each label is measured once with an off-screen draw and trimmed character-by-character from the end if it would otherwise spill outside its SLOT width (cell + the gap on either side, so labels can extend into the cell_gap whitespace) — that keeps long ordered-brief labels from bleeding into neighbouring cells while letting tiny-cell layouts still show readable text.
             if let Some(text) = self.text_renderer.as_mut() {
                 let label_font = layout.label_font;
-                let max_w = cell_d as f32;
+                let max_w = (cell_d + cell_gap) as f32;
                 for i in 0..10 {
                     if labels[i].is_empty() {
                         continue;
@@ -1911,14 +1870,7 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
         // Linux: tray built on the gtk thread by spawn_linux_tray_thread.
     }
 
-    /// macOS-only: raw mouse-motion deltas during a drag. CursorMoved
-    /// stops firing once the cursor leaves the window, but the press
-    /// originated inside so AppKit still routes the eventual mouse-up
-    /// to us — meanwhile we keep computing window-relative cursor by
-    /// adding raw deltas onto an absolute screen-cursor we seeded at
-    /// drag start. Replaces the previous 8ms NSEvent polling loop in
-    /// `about_to_wait`. Linux's compositor handles drag/resize via
-    /// xdg protocols, so this hook is a no-op there.
+    /// macOS-only: raw mouse-motion deltas during a drag. CursorMoved stops firing once the cursor leaves the window, but the press originated inside so AppKit still routes the eventual mouse-up to us — meanwhile we keep computing window-relative cursor by adding raw deltas onto an absolute screen-cursor we seeded at drag start. Replaces the previous 8ms NSEvent polling loop in `about_to_wait`. Linux's compositor handles drag/resize via xdg protocols, so this hook is a no-op there.
     #[cfg(target_os = "macos")]
     fn device_event(
         &mut self,
@@ -2038,7 +1990,7 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                                 Some(ResizeDirection::East) | Some(ResizeDirection::West) => {
                                     CursorIcon::EwResize
                                 }
-                                Some(_) | None => CursorIcon::Default,
+                                None => CursorIcon::Default,
                             }
                         };
                     w.set_cursor(icon);

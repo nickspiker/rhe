@@ -16,9 +16,6 @@ use crate::scan;
 pub struct ChordKey(KeyMask);
 
 impl ChordKey {
-    /// Empty chord (no keys pressed).
-    pub const EMPTY: Self = Self(KeyMask::EMPTY);
-
     /// Build directly from a `KeyMask`. This is the path the state machine uses — no packed-bit round-trip, no hand/finger detour.
     pub fn from_mask(mask: KeyMask) -> Self {
         Self(mask)
@@ -45,7 +42,8 @@ impl ChordKey {
         Self(mask)
     }
 
-    /// Legacy u16 construction (used by some callers that round-trip a packed encoding). Bits 0-3 = right, bits 4-7 = left, bit 8 = mod.
+    /// Legacy u16 construction for tests that need to round-trip a packed encoding. Bits 0-3 = right, bits 4-7 = left, bit 8 = mod.
+    #[cfg(test)]
     pub fn from_packed_u16(packed: u16) -> Self {
         Self::from_packed(
             (packed & 0xF) as u8,

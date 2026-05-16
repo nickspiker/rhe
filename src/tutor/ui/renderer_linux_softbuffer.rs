@@ -29,9 +29,6 @@ impl<'a> SoftbufferBuffer<'a> {
         &mut self.inner.cpu_buffer
     }
 
-    pub fn mark_rows(&self, _y_start: u32, _y_end: u32) {}
-    pub fn mark_all(&self) {}
-
     pub fn present(self) -> Result<(), ()> {
         self.inner.present_frame()
     }
@@ -93,11 +90,6 @@ impl Renderer {
                 NonZeroU32::new(height).unwrap(),
             );
         }
-    }
-
-    pub fn mark_rows(&mut self, y_start: u32, y_end: u32) {
-        self.dirty_y_min = self.dirty_y_min.min(y_start);
-        self.dirty_y_max = self.dirty_y_max.max(y_end);
     }
 
     pub fn mark_all(&mut self) {

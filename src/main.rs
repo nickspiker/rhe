@@ -56,7 +56,6 @@ fn run() {
     let enabled_engine = enabled.clone();
     let fallback_engine = fallback.clone();
     let mode_flags_engine = mode_flags.clone();
-    let _quit_engine = quit.clone();
 
     // Build the tray's event loop on the main thread so its proxy can be
     // handed to the engine thread before it spawns.

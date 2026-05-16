@@ -39,7 +39,7 @@ The thumb (spacebar) is the 5th bit for the right hand — it
 distinguishes voiced from unvoiced consonants. Same finger position,
 add thumb = voiced pair: T/D, S/Z, K/G, P/B, F/V, etc.
 
-## Two modes
+## Modes
 
 ### Phoneme mode (word key held)
 
@@ -65,6 +65,66 @@ Right-hand-only slots (31) go to 2+ phoneme words. Two-hand slots
 Rolls can be typed on 6-key-rollover keyboards by rolling hands
 sequentially: left hand down → right hand down → left up → right up.
 Keys never all hit zero until the roll is complete.
+
+### Number mode (mid-word mod-tap)
+
+Press mod alone (right thumb) while the word key is held with no other finger pressed. Engine enters number mode. Each single-finger chord then emits a digit:
+
+```
+  position:  0    1    2    3    4         5         6    7    8    9
+  key:     R-Pky R-Rg R-Md R-Ix R-Idx-In  L-Idx-In L-Ix L-Md L-Rg L-Pky
+  digit:    0    1    2    3    4         5         6    7    8    9
+```
+
+Hold mod + finger to get the operator on that position instead: `- / * + ) ( = % ^ ,`. Multi-finger no-mod chords emit lowercase Greek consonants matching their symbol-mode placement (same chord shape per letter across both modes — muscle memory transfers); multi-finger left-hand chords emit brackets and math operators (`[ ] { } < > √ ∞ ∂ ∫`).
+
+The all-4-home-row chord on each hand also emits digit 4 (right) and 5 (left) — so layouts that drop the inner-index keys (e.g. the bare-bones "rheboard") still have a complete number layout. Software keyboards keep both paths.
+
+Word release exits number mode with a trailing space. Six L-hand chords transform the just-emitted integer into spelled forms (`cardinal / ordinal / multiplier / group / fraction / prefix`).
+
+### Symbol mode (entered via `+word +mod -word +chord`)
+
+For Greek letters, currency, units, and ASCII punctuation that's awkward to type while rhe is engaged. Entry gesture:
+
+```
++word +mod          (word + thumb held, in either order)
+-word               (release word; thumb still held)
++chord              (press a chord finger; SymbolMode fires)
+release everything  (chord fires, symbol emits, mode reverts)
+```
+
+One symbol per gesture — the chord that triggers entry also fires the symbol. Re-enter for each subsequent glyph.
+
+Right-hand chords emit Greek lowercase consonants, ranked by frequency from an arXiv math/physics corpus:
+
+```
+Fingers     Glyph    Fingers          Glyph
+─────────────────────────────────────────────
+I           λ        I+P              τ
+R           β        I+R              δ
+P           μ        R+P              η
+M           ρ        M+R+P            ψ
+all4        π        M+P              κ
+M+R         σ        I+R+P            φ
+I+M         ω        I+M+P            ζ
+```
+
+Left-hand chords carry units, currency, ASCII randos, and Greek vowels — by general-text frequency:
+
+```
+Fingers     Glyph    Fingers          Glyph
+─────────────────────────────────────────────
+I           °        I+P              ~
+R           £        I+R              €
+P           @        R+P              ;
+M           α        M+R+P            ε
+all4        #        M+P              υ
+M+R         $        I+R+P            |
+I+M         ο        I+M+P            `
+I+M+R       ι
+```
+
+Curated in [`src/layout/en/symbols.rs`](src/layout/en/symbols.rs); the `chord_to_glyph` / `glyph_to_chord` pair share the same array, indexed by effort rank (`crate::layout::effort::RANKING`).
 
 ### Suffixes (left hand only, no word key)
 
@@ -275,7 +335,9 @@ court reporter steno ~225 WPM.
 
 ```
 +word -word              (no other key live)        backspace last word
-+word +mod -mod -word    (no finger between)        undo last phoneme (before commit)
++word +mod -mod          (word held, no finger)     enter number mode (or pristine "zero" on +word +mod -mod -word)
++word +mod -word +chord  (thumb held thru chord)    enter symbol mode and emit a glyph
++mod -mod                (word held, mid-word)      undo last phoneme (or no-op if buffer empty)
 ```
 
 ## The math
@@ -316,13 +378,16 @@ physical key change = one event = one state machine transition.
 ## Running
 
 ```
-cargo run --release              full engine (tray icon on macOS + Linux)
-cargo run --bin gen_briefs       regenerate roll assignments
-cargo test                       verify everything
+cargo run --release                         full engine (tray icon on macOS + Linux)
+cargo run --bin gen_briefs                  regenerate roll assignments
+cargo run --release --bin frequency-scan    sample a corpus, write codepoint frequencies
+cargo test                                  verify everything
 ```
 
 The interactive tutor opens from the tray icon's right-click menu
-("Open Tutor") — no separate CLI subcommand.
+("Tutor") — no separate CLI subcommand. Clicking "Tutor" always
+reloads Wikipedia content; "Test Text" and "Brown Corpus" switch to
+their respective sources.
 
 ### macOS
 
@@ -491,7 +556,33 @@ Done:
   mod-variants give symbols (`+`, `-`, `*`, `/`, `%`, etc.). Word
   release commits, then six L-hand chords transform the just-emitted
   integer into spelled cardinal / ordinal / multiplier / group /
-  fraction / prefix forms.
+  fraction / prefix forms. Multi-finger no-mod chords emit lowercase
+  Greek consonants matching symbol-mode placement; multi-finger
+  left-hand chords emit brackets + math operators (`[ ] { } < > √ ∞ ∂ ∫`).
+  Digits 4 and 5 are also reachable via all-4-right and all-4-left
+  chords so inner-index-less hardware (rheboard) works without extra
+  keys.
+- **Symbol mode** — `+word +mod -word +chord` gesture enters a one-shot
+  symbol-typing session. Right hand carries Greek lowercase consonants
+  ranked by arXiv math/physics-abstract frequency (λ on the easiest
+  chord, β / μ / ρ next, π on the all-4 slap). Left hand carries
+  units (`° £ €`), Greek vowels (α ε ι ο υ), and ASCII punctuation
+  (`@ # $ ~ ; |` `` ` ``) ranked by general-text frequency × effort.
+  Single source of truth at `src/layout/en/symbols.rs`, with a Māori
+  stub at `src/layout/mri/symbols.rs` deferred to a future
+  native-speaker design pass.
+- **Phoneme-mode mod-tap undo** — pressing+releasing mod while word is
+  held backspaces one phoneme in the engine and clears the drill's
+  errored state. Drill highlights mod as the recovery target when
+  errored mid-word; releasing everything still resets the word as
+  before.
+- **Effort ranking module** — `crate::layout::effort::RANKING` carries
+  the empirical chord-shape ergonomic ranking as a `[u8; 15]` const,
+  consumed by symbol placement and available for future layout work.
+- **frequency-scan binary** — `cargo run --release --bin frequency-scan`
+  samples a corpus and writes a sorted CSV of Unicode codepoint
+  frequencies. `--source wikipedia` (default) or `--source arxiv` (math
+  + physics abstracts). Drives symbol-mode slot prioritization.
 - **Six physical layouts** — narrow / medium / wide × right- or
   left-dominant. `CURRENT` in `src/layout/keyboard.rs` picks the
   active one at compile time; the rest of the engine is agnostic.
@@ -510,10 +601,13 @@ Short-term:
 - **Auto chord mapping** — `gen_map` reads bench timings + phoneme
   frequencies and generates `src/chord_map_data.rs` automatically.
   Users run bench, rebuild, mapping is personalized to their hands.
-- **Operators and symbols beyond the number-mode set** — extended
-  chord set for punctuation and common programmer symbols
-  reachable from a non-number sub-mode, so they don't fight for
-  digit slots.
+- **Symbol-mode mnemonic transforms** — extend the form-transform
+  pipeline (currently `cardinal / ordinal / multiplier / group /
+  fraction / prefix` for numbers) with a `Symbol` variant so users
+  can type the word `deg` and apply a transform chord to rewrite it
+  as `°`. Same shape as number-form transforms but with a glyph
+  output and a word-context input. Avoids clobbering English words
+  via auto-substitution.
 - **Brief generator improvements** — rework the brief-selection
   scoring to (a) exclude natural-split 2-phoneme words where the
   brief gesture equals the phoneme gesture (wasted slot), (b) rank

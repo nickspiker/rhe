@@ -6,7 +6,6 @@
 
 use super::HidEvent;
 use crate::hand::{KeyDirection, KeyEvent};
-use crate::layout::keyboard;
 use std::ffi::CString;
 use std::fs;
 use std::os::unix::io::RawFd;
@@ -105,8 +104,9 @@ struct InputEvent {
 
 /// How the user signals "quit rhe" and whether caps lock toggles the grab.
 ///
-/// In both `CapsLockPlusEsc` and `EscOrCapsPlusEsc`, Caps Lock is intercepted and a solo press-and-release toggles the `enabled` flag (passthrough on/off). `EscAlone` leaves caps alone — for unit tests, not typical use.
+/// In both `CapsLockPlusEsc` and `EscOrCapsPlusEsc`, Caps Lock is intercepted and a solo press-and-release toggles the `enabled` flag (passthrough on/off). `EscAlone` leaves caps alone — for unit tests, not typical use. `#[allow(dead_code)]` on the two non-default variants because match arms reference them but no production call site constructs them.
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub enum QuitTrigger {
     /// Esc alone quits. Caps lock passes through to OS, doesn't toggle.
     EscAlone,

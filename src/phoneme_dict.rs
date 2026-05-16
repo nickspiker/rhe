@@ -37,7 +37,8 @@ fn iter_entries(cmudict_text: &str) -> impl Iterator<Item = (String, Vec<Phoneme
 }
 
 impl PhonemeDictionary {
-    /// Empty dictionary — always-miss lookup. Used by `lang-mri` (no CMU equivalent for te reo) and as the v0.1.2 baseline before any per-language phoneme-word table is wired in.
+    /// Empty dictionary — always-miss lookup. Used by `lang-mri` (no CMU equivalent for te reo) and as the v0.1.2 baseline before any per-language phoneme-word table is wired in. `#[allow(dead_code)]` because the lang-en build has no call site.
+    #[allow(dead_code)]
     pub fn empty() -> Self {
         Self {
             entries: HashMap::new(),
@@ -119,9 +120,7 @@ impl PhonemeDictionary {
         self.entries.get(phonemes).map(|s| s.as_str())
     }
 
-    /// Get all homophones for a phoneme sequence, sorted by descending
-    /// frequency. Returns None if the sequence has no homophones (single
-    /// spelling only). Used by the homophone toggle.
+    /// Get all homophones for a phoneme sequence, sorted by descending frequency. Returns None if the sequence has no homophones (single spelling only). Used by the homophone toggle.
     pub fn homophones(&self, phonemes: &[Phoneme]) -> Option<&[String]> {
         self.homophones.get(phonemes).map(|v| v.as_slice())
     }

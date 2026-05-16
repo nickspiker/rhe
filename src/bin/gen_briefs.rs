@@ -41,28 +41,6 @@ fn cmu_consonant_to_right(ph: &str) -> Option<u8> {
     }
 }
 
-// ── Vowel mappings (left hand, 4 bits: PRMI) ────────────────────────────────
-
-fn cmu_vowel_to_left(ph: &str) -> Option<u8> {
-    match ph {
-        "AH" => Some(0b0001), // ʌ  Ah
-        "IH" => Some(0b0010), // ɪ  Ih
-        "EH" => Some(0b0100), // ɛ  Eh
-        "AE" => Some(0b1000), // æ  Ae
-        "IY" => Some(0b0011), // iː Iy
-        "AA" => Some(0b0101), // ɑ  Aa
-        "EY" => Some(0b0110), // eɪ Ey
-        "ER" => Some(0b0111), // ɝ  Er
-        "AY" => Some(0b1001), // aɪ Ay
-        "OW" => Some(0b1010), // oʊ Ow
-        "AO" => Some(0b1100), // ɔ  Ao
-        "UW" => Some(0b1011), // uː Uw
-        "AW" => Some(0b1101), // aʊ Aw
-        "UH" => Some(0b1110), // ʊ  Uh
-        "OY" => Some(0b1111), // ɔɪ Oy
-        _ => None,
-    }
-}
 
 fn is_vowel_phoneme(ph: &str) -> bool {
     matches!(
@@ -105,44 +83,6 @@ fn popcount(v: u8) -> u32 {
     v.count_ones()
 }
 
-/// Finger effort for a 4-bit pattern (bits 0-3 = index, middle, ring, pinky). Lower = easier.
-fn finger_effort(bits: u8) -> u32 {
-    let n = popcount(bits);
-    if n == 0 {
-        return 0;
-    }
-    // Base cost: number of fingers
-    let finger_cost = match n {
-        1 => 1,
-        2 => 3,
-        3 => 6,
-        4 => 10,
-        _ => 15,
-    };
-    // Adjacency bonus: non-adjacent pairs cost more
-    let gap_penalty = if n >= 2 {
-        let mut gaps = 0u32;
-        let mut prev = None;
-        for b in 0..4u8 {
-            if bits & (1 << b) != 0 {
-                if let Some(p) = prev {
-                    let dist: u8 = b - p;
-                    if dist > 1 {
-                        gaps += (dist - 1) as u32;
-                    }
-                }
-                prev = Some(b);
-            }
-        }
-        gaps
-    } else {
-        0
-    };
-    // Finger weight: pinky (bit3) = +2, ring (bit2) = +1
-    let weight = if bits & 0b1000 != 0 { 2 } else { 0 } + if bits & 0b0100 != 0 { 1 } else { 0 };
-
-    finger_cost + gap_penalty + weight
-}
 
 /// Measured finger combo effort (from bench data, averaged across hands). Lower = faster. Returns milliseconds as effort proxy.
 fn finger_combo_effort(bits: u8) -> u32 {
@@ -194,74 +134,7 @@ fn all_slots_by_effort() -> Vec<(u8, u8)> {
     slots.into_iter().map(|(r, l, _)| (r, l)).collect()
 }
 
-// ── Phoneme label helpers for comments ───────────────────────────────────────
 
-fn right_label(right: u8) -> String {
-    let fingers = right & 0xF;
-    let has_mod = right & 0b10000 != 0;
-    let cons = match fingers {
-        0b0000 => "-",
-        0b0001 => "T",
-        0b0010 => "S",
-        0b0100 => "K",
-        0b1000 => "P",
-        0b0011 => "N",
-        0b0101 => "R",
-        0b0110 => "L",
-        0b0111 => "H",
-        0b1001 => "F",
-        0b1010 => "W",
-        0b1100 => "Th",
-        0b1011 => "Sh",
-        0b1101 => "Ch",
-        0b1110 => "Ng",
-        0b1111 => "Y",
-        _ => "?",
-    };
-    let voiced = if has_mod {
-        match fingers {
-            0b0001 => "D",
-            0b0010 => "Z",
-            0b0100 => "G",
-            0b1000 => "B",
-            0b0011 => "M",
-            0b0101 => "Dh",
-            0b1001 => "V",
-            0b1011 => "Zh",
-            0b1101 => "Jh",
-            _ => return format!("{}+mod", cons),
-        }
-    } else {
-        cons
-    };
-    if has_mod && fingers != 0 {
-        voiced.to_string()
-    } else {
-        cons.to_string()
-    }
-}
-
-fn left_label(left: u8) -> String {
-    match left {
-        0b0000 => "-".into(),
-        0b0001 => "Ah".into(),
-        0b0010 => "Ih".into(),
-        0b0100 => "Eh".into(),
-        0b1000 => "Ae".into(),
-        0b0011 => "Iy".into(),
-        0b0101 => "Aa".into(),
-        0b0110 => "Ey".into(),
-        0b0111 => "Er".into(),
-        0b1001 => "Ay".into(),
-        0b1010 => "Ow".into(),
-        0b1100 => "Ao".into(),
-        0b1011 => "Uw".into(),
-        0b1101 => "Aw".into(),
-        0b1110 => "Uh".into(),
-        0b1111 => "Oy".into(),
-        _ => "?".into(),
-    }
-}
 
 // ── Ordered-brief mirror ─────────────────────────────────────────────────────
 
@@ -1790,34 +1663,3 @@ fn refresh_candidate_file(
     out
 }
 
-/// Find the nearest unoccupied slot to `target`. Priority: same right (consonant) different left, then same left different right, then fallback to any by effort.
-fn find_nearest_slot(
-    target: (u8, u8),
-    occupied: &HashSet<(u8, u8)>,
-    all_slots: &[(u8, u8)],
-) -> Option<(u8, u8)> {
-    let (tr, tl) = target;
-
-    // 1. Same consonant, different vowel (sorted by effort)
-    let same_cons: Option<(u8, u8)> = all_slots
-        .iter()
-        .filter(|(r, l)| *r == tr && *l != tl && !occupied.contains(&(*r, *l)))
-        .copied()
-        .next();
-    if same_cons.is_some() {
-        return same_cons;
-    }
-
-    // 2. Same vowel, different consonant
-    let same_vowel: Option<(u8, u8)> = all_slots
-        .iter()
-        .filter(|(r, l)| *l == tl && *r != tr && !occupied.contains(&(*r, *l)))
-        .copied()
-        .next();
-    if same_vowel.is_some() {
-        return same_vowel;
-    }
-
-    // 3. Any unoccupied slot by effort
-    all_slots.iter().find(|s| !occupied.contains(s)).copied()
-}

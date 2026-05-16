@@ -38,6 +38,7 @@ pub fn span(width: u32, height: u32) -> f32 {
 }
 
 /// Convert a fractional unit (span divisor) into an integer pixel count. `ru` is the user zoom factor (default 1.0).
+#[allow(dead_code)] // shared scaling helper; not all call sites in the current build use it.
 #[inline]
 pub fn px(span: f32, ru: f32, divisor: f32) -> i32 {
     (span * ru / divisor).round() as i32

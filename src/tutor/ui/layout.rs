@@ -24,7 +24,6 @@
 //!
 //! All knobs (section weights, horizontal pad, font multipliers / caps, zoom range) are `pub const`s at the top of this file so they're easy to tweak without hunting through render code.
 
-use super::span;
 
 // ── Vertical-section weights ─────────────────────────────────────
 
@@ -110,7 +109,8 @@ pub const WINDOW_H_FRAC: u32 = 2;
 
 // ── Layout output ───────────────────────────────────────────────
 
-/// Geometry for every element the tutor draws. Computed once per redraw via [`TutorLayout::compute`] from the live `(window_w, window_h, chrome_h, ru)`.
+/// Geometry for every element the tutor draws. Computed once per redraw via [`TutorLayout::compute`] from the live `(window_w, window_h, chrome_h, ru)`. Some fields are computed for completeness even if not currently consumed by the renderer — kept so the layout pass stays a stable reference for future widgets.
+#[allow(dead_code)]
 pub struct TutorLayout {
     // Window
     pub bw: i32,
@@ -162,7 +162,6 @@ impl TutorLayout {
     pub fn compute(window_w: u32, window_h: u32, chrome_h: i32, ru: f32) -> Self {
         let bw = window_w as i32;
         let bh = window_h as i32;
-        let span = span(window_w, window_h);
         let cx = bw as f32 / 2.0;
 
         // ── Vertical sections ────────────────────────────────────

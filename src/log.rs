@@ -21,7 +21,6 @@ static STATE: OnceLock<Mutex<LogState>> = OnceLock::new();
 
 struct LogState {
     file: File,
-    path: PathBuf,
     start: Instant,
 }
 
@@ -55,7 +54,6 @@ pub fn init() {
     };
     let state = LogState {
         file,
-        path: path.clone(),
         start: Instant::now(),
     };
     let _ = STATE.set(Mutex::new(state));

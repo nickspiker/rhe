@@ -24,36 +24,6 @@ pub struct Target {
     pub accepted_leads: KeyMask,
 }
 
-impl Target {
-    pub fn has_extra(&self, state: &KeyState) -> bool {
-        let extra_word = state.word && !self.word;
-        if self.right != 0 && self.left != 0 {
-            let extra_right = state.right_bits() & !self.right;
-            let extra_left = state.left_bits() & !self.left;
-            extra_right != 0 || extra_left != 0 || extra_word
-        } else if self.right != 0 {
-            (state.right_bits() & !self.right) != 0 || extra_word
-        } else if self.left != 0 {
-            (state.left_bits() & !self.left) != 0 || extra_word
-        } else {
-            state.right_bits() != 0 || state.left_bits() != 0 || extra_word
-        }
-    }
-
-    pub fn matches(&self, state: &KeyState) -> bool {
-        let word_ok = state.word == self.word;
-        if self.right != 0 && self.left != 0 {
-            state.right_bits() == self.right && state.left_bits() == self.left && word_ok
-        } else if self.right != 0 {
-            state.right_bits() == self.right && word_ok
-        } else if self.left != 0 {
-            state.left_bits() == self.left && word_ok
-        } else {
-            state.right_bits() == 0 && state.left_bits() == 0 && word_ok
-        }
-    }
-}
-
 // ─── Steps for a word ───
 
 #[derive(Default, Clone)]
@@ -73,6 +43,7 @@ pub struct PracticeWord {
     pub phoneme_steps: Vec<Step>, // word held + phoneme sequence + commit
     pub brief_steps: Option<Vec<Step>>, // single chord without word + all-off
     pub suffix_steps: Option<Vec<Step>>, // roll(base) + suffix chord + all-off
+    #[allow(dead_code)] // populated by build_practice; reserved for a future tutor-UI suffix indicator.
     pub suffix_label: Option<String>, // e.g. "~ing" for display
     pub number_steps: Option<Vec<Step>>, // spelled-digit path: entry + finger+mod + commit
     pub number_fallback_steps: Option<Vec<Step>>, // digit-then-form path: entry + digit + commit + form chord
@@ -1193,22 +1164,9 @@ pub struct TutorState {
     chord_left_acc: u8,
     touched_right: u8,
     touched_left: u8,
-    /// Set when a goof needs the drill to roll back to step 0, but the
-    /// actual `practice.reset_word()` call is held until errored
-    /// clears so the user keeps seeing the failed target while they
-    /// wind down their bad press. Without this, the drill snaps back
-    /// to step 0 the moment they goof — distracting and especially
-    /// noticeable in number mode where step 0 is the +mod+word
-    /// re-entry chord.
+    /// Set when a goof needs the drill to roll back to step 0, but the actual `practice.reset_word()` call is held until errored clears so the user keeps seeing the failed target while they wind down their bad press. Without this, the drill snaps back to step 0 the moment they goof — distracting and especially noticeable in number mode where step 0 is the +mod+word re-entry chord.
     pending_reset: bool,
-    /// Set when the goof happened after the user had already made
-    /// progress (step_idx > 0). In that case the rollback throws
-    /// away typed chords that the engine already committed to the
-    /// focused app, and we require a full all_off (including word)
-    /// before clearing errored so the engine has a chance to commit
-    /// and reset cleanly. Goofs at step 0 don't set this — they're
-    /// trivial first-chord misses where the user can stay in the
-    /// word-held context and retry the same chord.
+    /// Set when the goof happened after the user had already made progress (step_idx > 0). In that case the rollback throws away typed chords that the engine already committed to the focused app, and we require a full all_off (including word) before clearing errored so the engine has a chance to commit and reset cleanly. Goofs at step 0 don't set this — they're trivial first-chord misses where the user can stay in the word-held context and retry the same chord.
     requires_word_release: bool,
     sm: crate::state_machine::StateMachine,
 }
@@ -1237,16 +1195,7 @@ impl TutorState {
         self.sm.pending_symbol_entry()
     }
 
-    /// A wrong key for the current step. Mark the drill as botched and
-    /// either reset immediately (if the user already has hands clear,
-    /// no errored period to wait through) or defer the actual rollback
-    /// to step 0 until errored clears — so the visual target stays on
-    /// the failed step throughout the user's wind-down. If the goof
-    /// happened after some progress was made (step_idx > 0), also
-    /// flag that the user needs to release word too before retrying:
-    /// the rollback throws away typed chords that the engine already
-    /// committed to the focused app, so word-up gives the engine a
-    /// commit-and-reset boundary.
+    /// A wrong key for the current step. Mark the drill as botched and either reset immediately (if the user already has hands clear, no errored period to wait through) or defer the actual rollback to step 0 until errored clears — so the visual target stays on the failed step throughout the user's wind-down. If the goof happened after some progress was made (step_idx > 0), also flag that the user needs to release word too before retrying: the rollback throws away typed chords that the engine already committed to the focused app, so word-up gives the engine a commit-and-reset boundary.
     fn goof(&mut self, all_off: bool, prev_step_idx: usize) {
         self.last_was_botch = true;
         if all_off {
@@ -2379,8 +2328,7 @@ mod tests {
         state
     }
 
-    /// Default mode for digit word "two" is Brief — the ordered brief
-    /// is the priority path even when number_steps is also populated.
+    /// Default mode for digit word "two" is Brief — the ordered brief is the priority path even when number_steps is also populated.
     #[test]
     fn two_default_mode_is_brief() {
         let p = two_practice();
@@ -2401,8 +2349,7 @@ mod tests {
         assert!(!s.errored, "brief path should drill without botching");
     }
 
-    /// Path 2: spelled-digit gesture. Pressing word switches Brief →
-    /// Number; the rest is the standard 5-target spelled-digit path.
+    /// Path 2: spelled-digit gesture. Pressing word switches Brief → Number; the rest is the standard 5-target spelled-digit path.
     #[test]
     fn two_path_spelled_digit_drills_clean() {
         let s = run_two(&[
@@ -2461,9 +2408,7 @@ mod tests {
         }
     }
 
-    /// "one" gets the same three-path treatment as "two" — brief
-    /// default, spelled-digit fallback on word-press, digit-then-form
-    /// fallback on finger-release-without-mod.
+    /// "one" gets the same three-path treatment as "two" — brief default, spelled-digit fallback on word-press, digit-then-form fallback on finger-release-without-mod.
     #[test]
     fn one_default_mode_is_brief() {
         assert_eq!(one_practice().mode, WordMode::Brief);
@@ -2520,8 +2465,7 @@ mod tests {
         assert_eq!(five_practice().mode, WordMode::Number);
     }
 
-    /// Path 3 fallback works for "five" (digit on left hand) just as
-    /// it does for "two" (digit on right hand).
+    /// Path 3 fallback works for "five" (digit on left hand) just as it does for "two" (digit on right hand).
     #[test]
     fn five_path_digit_then_form_falls_back_cleanly() {
         let mut state = TutorState::new(five_practice());
@@ -2539,10 +2483,7 @@ mod tests {
         assert_eq!(state.practice.step_idx, 4);
     }
 
-    /// Path 3: user starts Path 2 but releases the digit finger
-    /// without joining mod. Drill switches to NumberFallback at the
-    /// release-word step; user finishes with the SpelledCardinal
-    /// form chord (L-IDX) to convert "2" → "two".
+    /// Path 3: user starts Path 2 but releases the digit finger without joining mod. Drill switches to NumberFallback at the release-word step; user finishes with the SpelledCardinal form chord (L-IDX) to convert "2" → "two".
     #[test]
     fn two_path_digit_then_form_falls_back_cleanly() {
         let s = run_two(&[
@@ -2629,9 +2570,7 @@ mod tests {
         }
     }
 
-    /// After a goof at step 2 (phoneme[1] target), pressing mod alone
-    /// while word is still held should clear errored and leave step_idx
-    /// at the same step so the user can retry.
+    /// After a goof at step 2 (phoneme[1] target), pressing mod alone while word is still held should clear errored and leave step_idx at the same step so the user can retry.
     #[test]
     fn phoneme_mode_mod_undo_clears_errored() {
         let mut state = TutorState::new(kt_practice());
@@ -2679,8 +2618,7 @@ mod tests {
         );
     }
 
-    /// Mod-tap mid-word without an error rolls step_idx back by one
-    /// phoneme so the user can retype the previous syllable.
+    /// Mod-tap mid-word without an error rolls step_idx back by one phoneme so the user can retype the previous syllable.
     #[test]
     fn phoneme_mode_mod_undo_rolls_back_one_phoneme() {
         let mut state = TutorState::new(kt_practice());
@@ -2710,8 +2648,7 @@ mod tests {
         assert_eq!(state.practice.step_idx, 0, "one phoneme undone");
     }
 
-    /// Mod-tap at step 0 (no phonemes typed) is a no-op — clears any
-    /// transient acc state but doesn't underflow step_idx or goof.
+    /// Mod-tap at step 0 (no phonemes typed) is a no-op — clears any transient acc state but doesn't underflow step_idx or goof.
     #[test]
     fn phoneme_mode_mod_undo_at_step_zero_no_op() {
         let mut state = TutorState::new(kt_practice());

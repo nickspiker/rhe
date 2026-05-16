@@ -25,9 +25,6 @@ pub const TRAY_RING_ON: u32 = fmt(0xFF_40_FF_00);
 /// Tray icon ring colour while rhe is passing keys through to the OS — dark purple.
 pub const TRAY_RING_OFF: u32 = fmt(0xFF_40_00_80);
 
-// ── Tutor canvas ─────────────────────────────────────────────────────────
-pub const CANVAS_BG: u32 = fmt(0xFF_20_20_20);
-
 // ── Window chrome ────────────────────────────────────────────────────────
 
 pub const WINDOW_LIGHT_EDGE: u32 = fmt(0xFF_44_41_37);
@@ -87,10 +84,8 @@ pub const CELL_INNER_IDLE: u32 = fmt(0xFF_18_18_18);
 
 /// Word-mode bar (left thumb)
 pub const WORD_PRIMARY: u32 = fmt(0xFF_40_E0_00);
-pub const WORD_SECONDARY: u32 = fmt(0xFF_20_70_00);
 /// Mod-key bar (right thumb)
 pub const MOD_PRIMARY: u32 = fmt(0xFF_80_00_E0);
-pub const MOD_SECONDARY: u32 = fmt(0xFF_40_00_70);
 
 // ── Tutor text ───────────────────────────────────────────────────────────
 
@@ -101,8 +96,6 @@ pub const SENTENCE_FUTURE: u32 = fmt(0xFF_B0_B0_B0);
 
 /// Big centred drill word above the chord row.
 pub const TARGET_WORD: u32 = fmt(0xFF_E0_E0_E0);
-/// Step hint below the target word (IPA / digit / mode glyph).
-pub const STEP_HINT: u32 = fmt(0xFF_B0_B0_B0);
 /// Adaptive label centred in each chord cell.
 pub const CELL_LABEL: u32 = fmt(0xFF_E0_E0_E0);
 
@@ -111,53 +104,15 @@ pub const LOGO_TEXT: u32 = fmt(0xFF_00_00_00);
 pub const LOGO_GLOW_GRAY: u8 = 192;
 pub const LOGO_HIGHLIGHT_GRAY: u8 = 128;
 
-// ── Generic UI palette (kept for future widgets) ─────────────────────────
-
-pub const LIGHT_EDGE: u32 = fmt(0xFF_60_60_60);
-pub const SHADOW_EDGE: u32 = fmt(0xFF_20_20_20);
-pub const FILL: u32 = fmt(0xFF_40_40_40);
-
-pub const LABEL_COLOUR: u32 = fmt(0xFF_80_80_80);
-pub const TEXT_COLOUR: u32 = fmt(0xFF_D0_D0_D0);
-pub const TEXT_SELECTION_COLOUR: u32 = fmt(0xFF_D0_D0_D0);
-
-// Generic button palette.
-pub const BUTTON_BASE: u32 = fmt(0xFF_40_40_40);
+// Used by button drawing + tray icon hover-delta math.
 pub const BUTTON_LIGHT_EDGE: u32 = fmt(0xFF_40_40_40);
 pub const BUTTON_SHADOW_EDGE: u32 = fmt(0xFF_20_20_20);
-pub const BUTTON_HAIRLINE: u32 = fmt(0xFF_32_32_32);
-pub const BUTTON_BLUE: u32 = fmt(0xFF_20_30_50);
-pub const BUTTON_GREEN: u32 = fmt(0xFF_20_45_25);
-pub const BUTTON_YELLOW: u32 = fmt(0xFF_50_45_20);
-pub const BUTTON_TEXT: u32 = fmt(0xFF_D0_D0_D0);
 
-// Hover deltas for generic surfaces (additive; negated on unhover).
-pub const TEXTBOX_HOVER: u32 = fmt(0x00_0A_0A_0A);
-pub const QUERY_BUTTON_HOVER: u32 = fmt(0x00_0F_0F_0F);
-pub const BACK_HEADER_HOVER: u32 = fmt(0x00_0C_0C_0C);
-
-// Textbox surface.
-pub const TEXTBOX_LIGHT_EDGE: u32 = fmt(0xFF_44_41_37);
-pub const TEXTBOX_SHADOW_EDGE: u32 = fmt(0xFF_2B_34_37);
-pub const TEXTBOX_FILL: u32 = fmt(0xFF_06_08_09);
-
-// Textbox glow (0x00RRGGBB — alpha applied separately at blend time).
-pub const GLOW_DEFAULT: u32 = fmt(0x00_FF_FF_FF);
-pub const GLOW_ATTESTING: u32 = fmt(0x00_FF_FF_40);
-pub const GLOW_SUCCESS: u32 = fmt(0x00_40_FF_40);
-pub const GLOW_ERROR: u32 = fmt(0x00_FF_60_60);
-
-// Status / counter / hint text states.
+// Status / counter / hint text.
 pub const COUNTER_TEXT: u32 = fmt(0xFF_FF_FF_FF);
-pub const PLACEHOLDER_TEXT: u32 = fmt(0xFF_80_80_80);
-pub const STATUS_TEXT_ATTESTING: u32 = fmt(0xFF_FF_FF_00);
-pub const STATUS_TEXT_ERROR: u32 = fmt(0xFF_FF_00_00);
 pub const ZOOM_HINT_TEXT: u32 = fmt(0xFF_80_80_80);
 
-/// Magenta debug marker. Alpha 0xFE so it never accidentally matches real opaque content during pixel comparisons.
-pub const DEBUG_MARKER: u32 = fmt(0xFE_FF_00_FF);
-
-// Background texture (noise generator inputs, if/when we add one).
+// Background texture (noise generator inputs).
 pub const BG_BASE: u32 = fmt(0xFF_10_10_10);
 pub const BG_MASK: u32 = fmt(0xFF_1F_1F_1F);
 pub const BG_ALPHA: u32 = fmt(0xFF_00_00_00);
