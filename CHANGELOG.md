@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.5 — 2026-05-17
+
+### Changed
+- **All 8 primary colours pinned as briefs** — white, yellow, cyan, magenta now have dedicated one-chord briefs alongside the existing red/green/blue/black, so every primary colour is reachable in a single chord. Yellow and cyan land on the nearest free slots since their natural phoneme chords were already claimed by higher-frequency words. Synced with the unpublished commit that wasn't in 0.1.4.
+
+### Removed
+- **detective / detectives** — corpus-inflated subtitle word holding an 8-finger chord; reclaimed for a more useful brief.
+
+### Fixed
+- **person back in briefs** — had been listed in `ORDERED_CLAIMED` without a corresponding ordered entry, so it silently dropped out.
+
 ## 0.1.4 — 2026-05-17
 
 ### Fixed
