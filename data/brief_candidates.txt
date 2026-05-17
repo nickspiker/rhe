@@ -327,7 +327,7 @@
  through                  776254    3    274  # ordered brief (slot already claimed)
  working                  772688    5    275  # ordered brief (slot already claimed), +ing→work(611677) defer
  sometimes                772674    7    276  # ordered brief (slot already claimed), +s→sometime(17142) keep
- person                   770608    5    277  # ordered brief (slot already claimed)
+ person                   770608    5    277
  supposed                 765585    6    278  # ordered brief (slot already claimed), +ed→suppose(73465) keep
  two                      764564    2    279  # ordered brief (slot already claimed), homophone of "to"(17099834)
  since                    763281    4    280
@@ -532,7 +532,7 @@
  city                     427719    4    479
  soon                     426558    3    480  # ordered brief (slot already claimed)
  problems                 424431    8    481  # ordered brief (slot already claimed), +s→problem(232325) defer
- detective                424431    8    482  # ordered brief (slot already claimed), +ive→detect(4113) keep
+#detective                424431    8    482  # +ive→detect(4113) keep
  christmas                423744    7    483
  office                   423420    4    484  # ordered brief (slot already claimed)
  difficult                422828    8    485
@@ -2114,7 +2114,7 @@
  couples  # ordered brief (slot already claimed), +s→couple(138996) defer
  deadly  # ordered brief (slot already claimed), +ly→dead(317589) defer
  deaths  # ordered brief (slot already claimed), +s→death(189000) defer
- detectives  # ordered brief (slot already claimed), +s→detective(60633) defer
+ detectives  # +s→detective(60633) defer
  differently  # ordered brief (slot already claimed)
  exact  # ordered brief (slot already claimed)
  excuses  # ordered brief (slot already claimed), +s→excuse(219855) defer

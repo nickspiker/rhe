@@ -1336,15 +1336,7 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     (0b1011, 0b00101, scan::L_IDX, "immediately"),
     (0b1011, 0b00101, scan::L_MID, "immediately"),
     (0b1011, 0b00101, scan::R_RING, "immediate"),
-    // detective(60,633) / detectives(8,036)
-    (0b1111, 0b11101, scan::R_THUMB, "detective"),
-    (0b1111, 0b11101, scan::R_PINKY, "detective"),
-    (0b1111, 0b11101, scan::L_PINKY, "detective"),
-    (0b1111, 0b11101, scan::R_IDX, "detective"),
-    (0b1111, 0b11101, scan::L_IDX, "detective"),
-    (0b1111, 0b11101, scan::L_MID, "detective"),
-    (0b1111, 0b11101, scan::R_RING, "detectives"),
-    (0b1111, 0b11101, scan::L_RING, "detectives"),
+    // (detective/detectives removed — corpus-inflated subtitle word)
     // continue(51,279) / continued(7,998)
     (0b1011, 0b01101, scan::R_PINKY, "continue"),
     (0b1011, 0b01101, scan::L_PINKY, "continue"),

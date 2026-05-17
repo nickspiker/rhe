@@ -677,8 +677,7 @@ const ORDERED_CLAIMED: &[(u8, u8, &str)] = &[
     (0b10011, 0b1111, "forgetting"),
     (0b00101, 0b1011, "immediately"),
     (0b00101, 0b1011, "immediate"),
-    (0b11101, 0b1111, "detective"),
-    (0b11101, 0b1111, "detectives"),
+    // (detective/detectives removed — corpus-inflated)
     (0b01101, 0b1011, "continue"),
     (0b01101, 0b1011, "continued"),
     (0b10001, 0b0011, "world"),
@@ -689,7 +688,6 @@ const ORDERED_CLAIMED: &[(u8, u8, &str)] = &[
     (0b11000, 0b0010, "excuses"),
     (0b11110, 0b0110, "stuff"),
     (0b11110, 0b0110, "stuffed"),
-    (0b11000, 0b1001, "person"),
     (0b01001, 0b1110, "anyway"),
     (0b01001, 0b1110, "anyways"),
     (0b11010, 0b0001, "couple"),
@@ -1004,6 +1002,13 @@ fn main() {
         // right fingers). Auto-assignment had given "three" a 5-finger
         // chord that didn't fit the family.
         (0b00111, 0b0111, "three"),
+        // Primary colours not covered by ordered briefs (red, green,
+        // blue already ordered). Natural phoneme chord where free,
+        // nearest free slot where natural chord is claimed.
+        (0b01001, 0b0110, "white"),    // W+AY+T (natural, free)
+        (0b11111, 0b0011, "magenta"),  // M+AH+JH+EH+N+T+AH (natural, free)
+        (0b10000, 0b0111, "yellow"),   // natural 01110+0111 taken by hold; nearest free
+        (0b10000, 0b0011, "cyan"),     // natural 10101+0111 taken by job; nearest free
     ];
 
     let all_slots = all_slots_by_effort();
