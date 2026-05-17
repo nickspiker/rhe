@@ -98,8 +98,8 @@ pub const PHONEME_SPACE_FRAC: f32 = 0.5;
 pub const ZOOM_MIN: f32 = 0.3;
 /// Upper bound for `ru`. Lined up with the design saturation point (`FONT_CAP_FRAC / FONT_MULT = 1.5`) so Ctrl+= never silently does nothing.
 pub const ZOOM_MAX: f32 = 1.5;
-/// Multiplicative step per Ctrl+= / Ctrl+− press.
-pub const ZOOM_STEP: f32 = 1.1;
+/// Pixels of scroll travel per zoom step. LineDelta notches normalize to 20px each, so one mouse-wheel notch = one step. Pixel-delta touchpad scrolls accumulate fractional steps directly. Ported from photon.
+pub const ZOOM_SCROLL_PIXELS_PER_STEP: f32 = 20.0;
 
 // ── Fixed window-fraction sizing ────────────────────────────────
 

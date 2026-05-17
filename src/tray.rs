@@ -565,6 +565,23 @@ impl TrayApp {
             Some(std::time::Instant::now() + std::time::Duration::from_millis(1000));
     }
 
+    /// Adjust `tutor_ru` by `steps` (positive = zoom in, negative = zoom out). Ported from photon's `adjust_zoom`: zoom-in multiplies by 32/31 per step, zoom-out by 32/33 per step — slightly asymmetric so the constants `33/32` and `31/32` raised to `±steps` evaluate to nearly-inverse factors (product ≈ 1024/1023), making one in followed by one out return almost exactly to the originating ru. Clamps to [`ZOOM_MIN`, `ZOOM_MAX`], bumps the hint, and requests a redraw.
+    fn adjust_zoom(&mut self, steps: f32) {
+        let factor = if steps.is_sign_negative() {
+            (33.0_f32 / 32.0).powf(steps)
+        } else {
+            (31.0_f32 / 32.0).powf(-steps)
+        };
+        self.tutor_ru = (self.tutor_ru * factor).clamp(
+            crate::tutor::ui::layout::ZOOM_MIN,
+            crate::tutor::ui::layout::ZOOM_MAX,
+        );
+        self.bump_zoom_hint();
+        if let Some(w) = self.tutor_window.as_ref() {
+            w.request_redraw();
+        }
+    }
+
     /// On wraparound, swap the drill to the next prefetched wiki batch if one is ready. Otherwise just clear the flag — the same batch loops, and the next wrap retries the prefetch.
     fn maybe_swap_practice(&mut self) {
         let Some(state) = self.tutor_state.as_mut() else {
@@ -1688,18 +1705,10 @@ impl TrayApp {
             self.tutor_debug_hit_test = false;
             true
         } else if c == "=" || c == "+" {
-            self.tutor_ru = (self.tutor_ru * crate::tutor::ui::layout::ZOOM_STEP).clamp(
-                crate::tutor::ui::layout::ZOOM_MIN,
-                crate::tutor::ui::layout::ZOOM_MAX,
-            );
-            self.bump_zoom_hint();
+            self.adjust_zoom(1.0);
             true
         } else if c == "-" {
-            self.tutor_ru = (self.tutor_ru / crate::tutor::ui::layout::ZOOM_STEP).clamp(
-                crate::tutor::ui::layout::ZOOM_MIN,
-                crate::tutor::ui::layout::ZOOM_MAX,
-            );
-            self.bump_zoom_hint();
+            self.adjust_zoom(-1.0);
             true
         } else if c == "0" {
             self.tutor_ru = 1.0;
@@ -2081,23 +2090,16 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 if self.tutor_mods.control_key() || self.tutor_ctrl_held {
-                    let steps = match delta {
-                        MouseScrollDelta::LineDelta(_, y) => y,
-                        MouseScrollDelta::PixelDelta(p) => (p.y / 50.0) as f32,
-                    };
-                    if steps != 0.0 {
-                        // Zoom-per-notch matches photon's feel (1.1×
-                        // per scroll step). Clamped so nobody can zoom
-                        // into the abyss.
-                        let factor = crate::tutor::ui::layout::ZOOM_STEP.powf(steps);
-                        self.tutor_ru = (self.tutor_ru * factor).clamp(
-                            crate::tutor::ui::layout::ZOOM_MIN,
-                            crate::tutor::ui::layout::ZOOM_MAX,
-                        );
-                        self.bump_zoom_hint();
-                        if let Some(w) = self.tutor_window.as_ref() {
-                            w.request_redraw();
+                    // Normalize scroll delta to pixels (LineDelta = 20px per notch), then divide by the same step size to get fractional steps. Matches photon's mouse-wheel → adjust_zoom path.
+                    let scroll_pixels = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => {
+                            y * crate::tutor::ui::layout::ZOOM_SCROLL_PIXELS_PER_STEP
                         }
+                        MouseScrollDelta::PixelDelta(p) => p.y as f32,
+                    };
+                    let steps = scroll_pixels / crate::tutor::ui::layout::ZOOM_SCROLL_PIXELS_PER_STEP;
+                    if steps != 0.0 {
+                        self.adjust_zoom(steps);
                     }
                 }
             }

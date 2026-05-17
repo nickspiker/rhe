@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4 — 2026-05-17
+
+### Fixed
+- **Tutor zoom step** — Ctrl+= / Ctrl+- / Ctrl+scroll were stepping by 10% per notch (multiplicative 1.1), so integer percentages like 101% were unreachable and every notch felt jerky. Ported photon's asymmetric `(33/32)^steps` / `(31/32)^(-steps)` math: per-step factors of 32/31 (in) and 32/33 (out), ~3% per step, and the product 1024/1023 means one in + one out returns nearly exactly to the originating ru. Mouse wheel normalizes `LineDelta` notches to 20px and divides by 20 to derive fractional steps, matching photon's path.
+
 ## 0.1.3 — 2026-05-16
 
 ### Added
