@@ -27,7 +27,7 @@ use crate::tutor::ui::drawing;
 use crate::tutor::ui::renderer::Renderer;
 use crate::tutor::ui::text_rasterizing::TextRenderer;
 use crate::tutor::ui::theme;
-use crate::tutor::wiki::SentenceStream;
+use crate::tutor::wiki::fetch_in_background;
 use crate::word_lookup::WordLookup;
 use std::sync::Arc;
 
@@ -334,6 +334,8 @@ pub enum TrayEvent {
     Menu(MenuId),
     /// The engine thread observed a key event. Forwarded to the tutor window if it's open so the drill state machine can advance. Sent unconditionally — the tray drops it on the floor when no tutor window exists.
     DrillKey(RheKeyEvent),
+    /// A Wikipedia background fetch finished. Carries the parsed sentences (empty on fetch failure). Used as both the initial-load signal (build `tutor_state`) and the prefetch ready signal (stash for the next wraparound). Dropped if the user switched away from the Wikipedia source mid-fetch.
+    WikiBatch(Vec<String>),
 }
 
 /// Handle a tray can pass to other threads so they can wake the event loop.
@@ -385,9 +387,14 @@ struct TrayApp {
     // Cached drill resources, kept alive between word transitions so a
     // wiki wraparound can rebuild Practice without re-parsing cmudict /
     // briefs. Built lazily on first `open_tutor`, dropped on close.
-    tutor_wiki_stream: Option<SentenceStream>,
     tutor_word_lookup: Option<WordLookup>,
     tutor_brief_table: Option<BriefTable>,
+    /// EventLoop proxy used to fire `WikiBatch` events from background fetch threads. Stored so handler code can clone it into worker closures.
+    proxy: TrayProxy,
+    /// True while Wikipedia is the active practice source. Incoming `WikiBatch` events are dropped when this is false — guards against stale fetches arriving after the user switched to Test Text / Brown Corpus / a dropped file.
+    tutor_wiki_active: bool,
+    /// A prefetched Wikipedia batch waiting to be consumed by the next wraparound. Set when `WikiBatch` arrives with `tutor_state` already populated. `maybe_swap_practice` drains it and triggers the next prefetch.
+    tutor_wiki_pending: Option<Vec<String>>,
 
     /// User zoom multiplier applied on top of span-derived sizes. Adjusted live by Ctrl+scroll; 1.0 is the default.
     tutor_ru: f32,
@@ -553,10 +560,19 @@ impl TrayApp {
         self.tutor_window = None;
         // Drop drill state too — it'll get rebuilt fresh next open.
         self.tutor_state = None;
-        self.tutor_wiki_stream = None;
+        self.tutor_wiki_active = false;
+        self.tutor_wiki_pending = None;
         self.tutor_word_lookup = None;
         self.tutor_brief_table = None;
         self.tutor_zoom_hint_until = None;
+    }
+
+    /// Kick off a Wikipedia fetch on a worker thread. When it completes, the worker fires a `TrayEvent::WikiBatch` user event on the winit loop, which `user_event` routes to `on_wiki_batch`. Caller is responsible for setting `tutor_wiki_active = true` before/around this; the handler will drop incoming batches if the user has since switched sources.
+    fn start_wiki_fetch(&self) {
+        let proxy = self.proxy.clone();
+        fetch_in_background(move |lines| {
+            let _ = proxy.send_event(TrayEvent::WikiBatch(lines));
+        });
     }
 
     /// Show the top-left zoom-percentage hint and arm a 1-second auto-fade. Called from every ru-changing site (Ctrl+= / Ctrl+- / Ctrl+0 / Ctrl+scroll).
@@ -582,7 +598,7 @@ impl TrayApp {
         }
     }
 
-    /// On wraparound, swap the drill to the next prefetched wiki batch if one is ready. Otherwise just clear the flag — the same batch loops, and the next wrap retries the prefetch.
+    /// On wraparound, swap the drill to the next prefetched wiki batch if one is ready. If consumed, kick off the next prefetch so the following wrap has fresh content waiting. If nothing is queued, just clear the flag — the same batch loops, and a freshly-arriving `WikiBatch` event will repopulate `tutor_wiki_pending` for the next wrap.
     fn maybe_swap_practice(&mut self) {
         let Some(state) = self.tutor_state.as_mut() else {
             return;
@@ -590,15 +606,18 @@ impl TrayApp {
         if !state.practice.wrapped {
             return;
         }
-        if let (Some(stream), Some(lookup), Some(brief_table)) = (
-            self.tutor_wiki_stream.as_ref(),
+        if !self.tutor_wiki_active {
+            state.practice.wrapped = false;
+            return;
+        }
+        if let (Some(new_lines), Some(lookup), Some(brief_table)) = (
+            self.tutor_wiki_pending.take(),
             self.tutor_word_lookup.as_ref(),
             self.tutor_brief_table.as_ref(),
         ) {
-            if let Some(new_lines) = stream.try_next() {
-                state.practice = build_practice(lookup, brief_table, new_lines, false);
-                return;
-            }
+            state.practice = build_practice(lookup, brief_table, new_lines, false);
+            self.start_wiki_fetch();
+            return;
         }
         state.practice.wrapped = false;
     }
@@ -1163,7 +1182,15 @@ impl TrayApp {
                 });
                 Some((target, labels, key_state, errored, (), mod_tap_recovers))
             } else {
-                None
+                // No drill state yet (Wikipedia load in flight). Render the chord row in pure-idle state — empty labels, no targets, no presses — so the user sees the keyboard layout instead of a blank window.
+                Some((
+                    crate::tutor::drill::Target::default(),
+                    std::array::from_fn(|_| String::new()),
+                    crate::tutor::drill::KeyState::default(),
+                    false,
+                    (),
+                    false,
+                ))
             };
 
         if let Some((target, labels, key_state, errored, _, mod_tap_recovers)) = label_data.as_ref()
@@ -1760,7 +1787,8 @@ impl TrayApp {
             .ok_or("brief table not initialised")?;
         let practice = build_practice(lookup, briefs, lines, false);
         self.tutor_state = Some(TutorState::new(practice));
-        self.tutor_wiki_stream = None;
+        self.tutor_wiki_active = false;
+        self.tutor_wiki_pending = None;
         if let Some(w) = self.tutor_window.as_ref() {
             w.request_redraw();
         }
@@ -1777,20 +1805,12 @@ impl TrayApp {
             // would skip the wiki init, leaving the user staring at
             // the wrong source. Symmetric with how Test Text and
             // Brown Corpus always switch to their own source.
-            if let (Some(lookup), Some(briefs)) = (
-                self.tutor_word_lookup.as_ref(),
-                self.tutor_brief_table.as_ref(),
-            ) {
-                let stream = SentenceStream::new();
-                let initial = stream.initial();
-                let lines: Vec<String> = if initial.is_empty() {
-                    crate::tutor::drill::brown_corpus_lines()
-                } else {
-                    initial
-                };
-                let practice = build_practice(lookup, briefs, lines, false);
-                self.tutor_state = Some(TutorState::new(practice));
-                self.tutor_wiki_stream = Some(stream);
+            if self.tutor_word_lookup.is_some() && self.tutor_brief_table.is_some() {
+                // Kick off the fetch on a worker thread; it fires `TrayEvent::WikiBatch` when done. The window opens immediately with `tutor_state = None`, which the redraw path renders as just the chord row in idle state. Wikipedia fetches can take a minute; blocking here used to freeze the whole UI.
+                self.tutor_state = None;
+                self.tutor_wiki_active = true;
+                self.tutor_wiki_pending = None;
+                self.start_wiki_fetch();
                 if let Some(w) = self.tutor_window.as_ref() {
                     w.request_redraw();
                 }
@@ -1812,7 +1832,8 @@ impl TrayApp {
                     .collect();
                 let practice = build_practice(lookup, briefs, lines, true);
                 self.tutor_state = Some(TutorState::new(practice));
-                self.tutor_wiki_stream = None;
+                self.tutor_wiki_active = false;
+                self.tutor_wiki_pending = None;
                 if let Some(w) = self.tutor_window.as_ref() {
                     w.request_redraw();
                 }
@@ -1831,7 +1852,8 @@ impl TrayApp {
                 let lines = crate::tutor::drill::brown_corpus_lines();
                 let practice = build_practice(lookup, briefs, lines, false);
                 self.tutor_state = Some(TutorState::new(practice));
-                self.tutor_wiki_stream = None;
+                self.tutor_wiki_active = false;
+                self.tutor_wiki_pending = None;
                 if let Some(w) = self.tutor_window.as_ref() {
                     w.request_redraw();
                 }
@@ -2128,6 +2150,36 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                     }
                 }
             }
+            TrayEvent::WikiBatch(lines) => {
+                // Drop stale batches: user switched away from Wikipedia mid-fetch.
+                if !self.tutor_wiki_active {
+                    return;
+                }
+                if self.tutor_state.is_none() {
+                    // Initial load. Empty batch = fetch failed; fall back to bundled Brown Corpus so the user still gets a usable drill instead of a blank window. Kick off the next prefetch so the first wraparound has fresh content waiting.
+                    if let (Some(lookup), Some(briefs)) = (
+                        self.tutor_word_lookup.as_ref(),
+                        self.tutor_brief_table.as_ref(),
+                    ) {
+                        let lines = if lines.is_empty() {
+                            crate::tutor::drill::brown_corpus_lines()
+                        } else {
+                            lines
+                        };
+                        let practice = build_practice(lookup, briefs, lines, false);
+                        self.tutor_state = Some(TutorState::new(practice));
+                        self.start_wiki_fetch();
+                        if let Some(w) = self.tutor_window.as_ref() {
+                            w.request_redraw();
+                        }
+                    }
+                } else {
+                    // Prefetch for the next wraparound. Empty batches are dropped here (no point stashing a guaranteed-empty fallback); the next wrap will retry.
+                    if !lines.is_empty() {
+                        self.tutor_wiki_pending = Some(lines);
+                    }
+                }
+            }
         }
 
         if self.quit.load(Ordering::Relaxed) {
@@ -2397,6 +2449,7 @@ pub fn run_tray(
     #[cfg(target_os = "linux")]
     spawn_linux_tray_thread(ids.clone(), enabled.clone(), quit.clone(), fallback.clone());
 
+    let app_proxy = event_loop.create_proxy();
     let mut app = TrayApp {
         enabled,
         quit,
@@ -2409,9 +2462,11 @@ pub fn run_tray(
         tutor_window: None,
         tutor_state: None,
         text_renderer: None,
-        tutor_wiki_stream: None,
         tutor_word_lookup: None,
         tutor_brief_table: None,
+        proxy: app_proxy,
+        tutor_wiki_active: false,
+        tutor_wiki_pending: None,
         tutor_ru: 1.0,
         tutor_zoom_hint_until: None,
         tutor_mods: ModifiersState::empty(),

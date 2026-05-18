@@ -1,8 +1,7 @@
 //! Random Wikipedia article extracts, for tutor practice text.
 //!
-//! Fetches plain-text summaries via the MediaWiki action API on demand — no cache. `SentenceStream` is double-buffered: it fetches one article up-front (the initial batch blocks), then pre-fetches the next in a background thread. The tutor pulls the next batch on a non-blocking poll when it finishes the current one, and that pull kicks off the following prefetch. Steady state is one always-prefetched article sitting ready.
+//! Fetches plain-text summaries via the MediaWiki action API. `fetch_in_background` spawns a worker thread that calls a user-provided closure with the parsed sentences when done — the tutor wires that closure to the winit event loop so completion arrives as a normal `TrayEvent::WikiBatch` user event, no polling required. Returns an empty vec on fetch failure so the caller can fall back to bundled text.
 
-use std::sync::mpsc;
 use std::time::Duration;
 
 const USER_AGENT: &str = concat!(
@@ -38,38 +37,10 @@ fn fetch_batch() -> Vec<String> {
     sentences
 }
 
-/// Double-buffered article stream. `initial()` blocks until the first batch is ready; at the same time a background thread starts prefetching the next. `try_next()` is non-blocking: if the prefetch is done, it returns the ready batch and kicks off the next prefetch; otherwise `None`.
-pub struct SentenceStream {
-    rx: mpsc::Receiver<Vec<String>>,
-    tx: mpsc::Sender<Vec<String>>,
-}
-
-impl SentenceStream {
-    /// Spawn the first fetch immediately. Call `initial()` to block for it.
-    pub fn new() -> Self {
-        let (tx, rx) = mpsc::channel();
-        spawn_fetch(tx.clone());
-        Self { rx, tx }
-    }
-
-    /// Block until the first batch arrives, then kick off the next prefetch so it's ready by the time the tutor needs it.
-    pub fn initial(&self) -> Vec<String> {
-        let first = self.rx.recv().unwrap_or_default();
-        spawn_fetch(self.tx.clone());
-        first
-    }
-
-    /// Non-blocking poll for the next prefetched batch. If one is ready, returns it and immediately kicks off another fetch so there's always exactly one prefetch in flight.
-    pub fn try_next(&self) -> Option<Vec<String>> {
-        let batch = self.rx.try_recv().ok()?;
-        spawn_fetch(self.tx.clone());
-        Some(batch)
-    }
-}
-
-fn spawn_fetch(tx: mpsc::Sender<Vec<String>>) {
+/// Spawn a worker thread that runs one Wikipedia fetch and calls `on_done` with the parsed sentences (or an empty vec on failure). The caller is responsible for marshalling the result back to wherever it's consumed — the tutor wires this to a `TrayEvent::WikiBatch` so completion lands as a regular winit user event.
+pub fn fetch_in_background<F: FnOnce(Vec<String>) + Send + 'static>(on_done: F) {
     std::thread::spawn(move || {
-        let _ = tx.send(fetch_batch());
+        on_done(fetch_batch());
     });
 }
 
