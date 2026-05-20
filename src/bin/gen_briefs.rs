@@ -1009,6 +1009,13 @@ fn main() {
         (0b11111, 0b0011, "magenta"),  // M+AH+JH+EH+N+T+AH (natural, free)
         (0b10000, 0b0111, "yellow"),   // natural 01110+0111 taken by hold; nearest free
         (0b10000, 0b0011, "cyan"),     // natural 10101+0111 taken by job; nearest free
+        // Compass cardinals — same group-pin reasoning as the 8
+        // primary colours. Natural phoneme chord where free, near-
+        // natural where claimed by a higher-value ordered brief.
+        (0b01101, 0b0010, "west"),     // W+EH+S+T (natural, free)
+        (0b10011, 0b1110, "north"),    // N+R+AO; natural N+R+TH+AO taken by interesting (TH dropped)
+        (0b10100, 0b1010, "south"),    // S+mod+AW; natural S+TH+AW taken by close, S+AW taken by happy
+        (0b00100, 0b1000, "east"),     // S+IY; natural IY+S+T taken by listen (T dropped)
     ];
 
     let all_slots = all_slots_by_effort();
