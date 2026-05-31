@@ -41,6 +41,7 @@ blake3 = "1.5"
 hex = "0.4"
 sha2 = "0.10"
 rand = "0.8"
+arboard = { version = "3", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 rdev = { version = "0.5", features = ["unstable_grab"] }

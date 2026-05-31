@@ -1741,6 +1741,12 @@ impl TrayApp {
             self.tutor_ru = 1.0;
             self.bump_zoom_hint();
             true
+        } else if c.eq_ignore_ascii_case("v") {
+            // Ctrl+V: load clipboard text as the drill source. Same install path as a dropped file but `deterministic_start = true` so the drill always begins at the first line — pasting a known passage means the user wants to drill it top-to-bottom.
+            if let Err(e) = self.load_pasted_text() {
+                crate::rerror!("paste rejected: {e}");
+            }
+            true
         } else {
             false
         };
@@ -1771,7 +1777,26 @@ impl TrayApp {
     /// Swap the active drill source to the contents of a dropped text file. Returns `Err` with a user-facing message on any failure (oversize / unreadable / not UTF-8 / empty); caller logs. Mirrors `photon::ui::app::handle_dropped_file`'s pattern: pure parsing in a free fn (`parse_dropped_drill_text`), state mutation kept out of the parse step so the parser is unit-testable.
     fn load_dropped_text_file(&mut self, path: std::path::PathBuf) -> Result<(), String> {
         let lines = read_and_parse_drill_file(&path)?;
+        self.install_text_source(lines, false)
+    }
 
+    /// Swap the active drill source to the contents of the system clipboard. Triggered by Ctrl+V over the tutor window. Always starts from the first line — `deterministic_start = true` — so the user can paste a known passage and drill it top-to-bottom without the random-start treatment that wiki / brown corpus get.
+    fn load_pasted_text(&mut self) -> Result<(), String> {
+        let mut clipboard =
+            arboard::Clipboard::new().map_err(|e| format!("clipboard unavailable: {e}"))?;
+        let text = clipboard
+            .get_text()
+            .map_err(|e| format!("clipboard read failed: {e}"))?;
+        let lines = parse_dropped_drill_text(text.as_bytes())?;
+        self.install_text_source(lines, true)
+    }
+
+    /// Shared install path for dropped-file and pasted-text drills: ensure lookup / brief tables are loaded, build a fresh `Practice`, clear any in-flight Wikipedia state, and request a redraw. `deterministic_start = true` pins sentence 0 as the entry point (paste); `false` picks a random valid sentence (drop).
+    fn install_text_source(
+        &mut self,
+        lines: Vec<String>,
+        deterministic_start: bool,
+    ) -> Result<(), String> {
         if self.tutor_word_lookup.is_none() {
             let cmudict = crate::data::load_cmudict();
             self.tutor_word_lookup = Some(WordLookup::new(&cmudict));
@@ -1785,7 +1810,7 @@ impl TrayApp {
             .tutor_brief_table
             .as_ref()
             .ok_or("brief table not initialised")?;
-        let practice = build_practice(lookup, briefs, lines, false);
+        let practice = build_practice(lookup, briefs, lines, deterministic_start);
         self.tutor_state = Some(TutorState::new(practice));
         self.tutor_wiki_active = false;
         self.tutor_wiki_pending = None;

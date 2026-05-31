@@ -385,9 +385,18 @@ cargo test                                  verify everything
 ```
 
 The interactive tutor opens from the tray icon's right-click menu
-("Tutor") — no separate CLI subcommand. Clicking "Tutor" always
-reloads Wikipedia content; "Test Text" and "Brown Corpus" switch to
-their respective sources.
+("Tutor") — no separate CLI subcommand. Three built-in text sources
+are picked from that menu:
+
+- **Tutor** — random Wikipedia article extracts, fetched on demand and prefetched while you drill. Reloads every time you click the item.
+- **Test Text** — a short curated set of sentences that exercises every drill mode (phoneme, brief, suffix, number, symbol). Same content every time, useful for sanity checks.
+- **Brown Corpus** — the Brown University Standard Corpus of Present-Day American English: ~1M words across 500 documents from 1961, the classic baseline NLP corpus. Bundled (zstd-compressed) so it works offline.
+
+Two additional ways to load your own text into the drill (no menu
+needed, just focus the tutor window):
+
+- **Drag-and-drop** a UTF-8 text file onto the tutor — file becomes the new drill source. 16 MiB cap; a random starting sentence is picked so repeated drops on the same file feel fresh.
+- **Ctrl+V** pastes the system clipboard as the drill source. Starts at the first line every time, so you can paste a known passage and drill it top-to-bottom. Requires rhe to be passing keys through to the OS (CapsLock-toggled into keyboard mode); if rhe is grabbing the keyboard the Ctrl never reaches the tutor.
 
 ### macOS
 
