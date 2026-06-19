@@ -400,6 +400,10 @@ struct TrayApp {
     tutor_ru: f32,
     /// While `Some(deadline)` and `now < deadline`, the top-left zoom-percentage hint renders. Bumped on every ru change to `now + 1s`. about_to_wait schedules a `WaitUntil(deadline)` so the hint auto-fades without further user input.
     tutor_zoom_hint_until: Option<std::time::Instant>,
+    /// Timer-start for the live WPM readout. Set on the first alphabetic-word completion after the most recent reset; remains `None` while waiting for that first word. Any non-typing interaction (Escape, click, focus change, drag/drop, paste, source switch, zoom adjustment, debug toggle, drill-source close) clears this back to `None`, restarting the measurement.
+    tutor_first_word_at: Option<std::time::Instant>,
+    /// Count of alphabetic-only words completed since `tutor_first_word_at` was armed. Drives the WPM display (`count * 60 / elapsed_secs`). Non-alphabetic words (digits, Greek glyphs, ASCII randos, symbol-mode emissions) are excluded — see `maybe_count_word`.
+    tutor_words_completed: u32,
     /// Last observed modifier state for the tutor window. Updated on every ModifiersChanged event so MouseWheel can consult it.
     tutor_mods: ModifiersState,
     /// Last cursor position inside the tutor window, in physical px.
@@ -565,6 +569,7 @@ impl TrayApp {
         self.tutor_word_lookup = None;
         self.tutor_brief_table = None;
         self.tutor_zoom_hint_until = None;
+        self.reset_wpm();
     }
 
     /// Kick off a Wikipedia fetch on a worker thread. When it completes, the worker fires a `TrayEvent::WikiBatch` user event on the winit loop, which `user_event` routes to `on_wiki_batch`. Caller is responsible for setting `tutor_wiki_active = true` before/around this; the handler will drop incoming batches if the user has since switched sources.
@@ -579,6 +584,23 @@ impl TrayApp {
     fn bump_zoom_hint(&mut self) {
         self.tutor_zoom_hint_until =
             Some(std::time::Instant::now() + std::time::Duration::from_millis(1000));
+    }
+
+    /// Clear the WPM measurement. Per the design: any user interaction that isn't typing — Escape, mouse click, focus change, drag/drop, paste, source-switch menu pick, zoom adjustment, debug toggle, window close — wipes the stat back to "waiting for the first word." Idempotent.
+    fn reset_wpm(&mut self) {
+        self.tutor_first_word_at = None;
+        self.tutor_words_completed = 0;
+    }
+
+    /// Increment the WPM counter if `word` is pure ASCII letters (filters digit-mode emissions like "5", spelled-number paths still count because they're letters, Greek/symbol/rando outputs don't). Arms the timer on the very first qualifying word post-reset.
+    fn maybe_count_word(&mut self, word: &str) {
+        if word.is_empty() || !word.chars().all(|c| c.is_ascii_alphabetic()) {
+            return;
+        }
+        if self.tutor_first_word_at.is_none() {
+            self.tutor_first_word_at = Some(std::time::Instant::now());
+        }
+        self.tutor_words_completed += 1;
     }
 
     /// Adjust `tutor_ru` by `steps` (positive = zoom in, negative = zoom out). Ported from photon's `adjust_zoom`: zoom-in multiplies by 32/31 per step, zoom-out by 32/33 per step — slightly asymmetric so the constants `33/32` and `31/32` raised to `±steps` evaluate to nearly-inverse factors (product ≈ 1024/1023), making one in followed by one out return almost exactly to the originating ru. Clamps to [`ZOOM_MIN`, `ZOOM_MAX`], bumps the hint, and requests a redraw.
@@ -1495,6 +1517,32 @@ impl TrayApp {
             }
         }
 
+        // Live WPM readout — stacked just below the zoom hint area. Visible only after the first alphabetic word has been completed since the most recent reset (any non-typing interaction wipes both fields). 60×words/elapsed_seconds, no rolling window; cumulative for the current uninterrupted-typing session.
+        if let Some(started) = self.tutor_first_word_at {
+            let elapsed = started.elapsed().as_secs_f64();
+            if elapsed > 0.0 && self.tutor_words_completed > 0 {
+                if let Some(text) = self.text_renderer.as_mut() {
+                    let span = crate::tutor::ui::span(size.width, size.height);
+                    let hint_size = (span / 24.0).max(10.0);
+                    let chrome_h = (span / 16.0).max(8.0);
+                    let wpm = (self.tutor_words_completed as f64) * 60.0 / elapsed;
+                    let wpm_text = format!("{:.0} WPM", wpm);
+                    text.draw_text_left_u32(
+                        pixels,
+                        width,
+                        &wpm_text,
+                        hint_size,
+                        chrome_h + hint_size * 2.4,
+                        hint_size,
+                        500,
+                        theme::ZOOM_HINT_TEXT,
+                        "Bona Nova",
+                        false,
+                    );
+                }
+            }
+        }
+
         // Debug HUD — counters + current zoom. Visible when Ctrl+D
         // toggled the global debug flag. Photon's layout: bottom strip
         // with R/U/F counters + top-left zoom percentage.
@@ -1686,6 +1734,14 @@ impl TrayApp {
             crate::log::reset();
             return;
         }
+        // Escape resets the WPM stat (user's typing flow was broken by the explicit escape gesture).
+        if matches!(event.logical_key, Key::Named(NamedKey::Escape)) {
+            self.reset_wpm();
+            if let Some(w) = self.tutor_window.as_ref() {
+                w.request_redraw();
+            }
+            return;
+        }
         if !ctrl {
             return;
         }
@@ -1751,6 +1807,8 @@ impl TrayApp {
             false
         };
         if matched {
+            // Any Ctrl+key shortcut in this handler is a non-typing interaction (debug toggle, zoom adjust, paste, etc.); reset the WPM stat so the next typed word starts a fresh measurement.
+            self.reset_wpm();
             if let Some(w) = self.tutor_window.as_ref() {
                 w.request_redraw();
             }
@@ -1814,6 +1872,7 @@ impl TrayApp {
         self.tutor_state = Some(TutorState::new(practice));
         self.tutor_wiki_active = false;
         self.tutor_wiki_pending = None;
+        self.reset_wpm();
         if let Some(w) = self.tutor_window.as_ref() {
             w.request_redraw();
         }
@@ -1835,6 +1894,7 @@ impl TrayApp {
                 self.tutor_state = None;
                 self.tutor_wiki_active = true;
                 self.tutor_wiki_pending = None;
+                self.reset_wpm();
                 self.start_wiki_fetch();
                 if let Some(w) = self.tutor_window.as_ref() {
                     w.request_redraw();
@@ -1859,6 +1919,7 @@ impl TrayApp {
                 self.tutor_state = Some(TutorState::new(practice));
                 self.tutor_wiki_active = false;
                 self.tutor_wiki_pending = None;
+                self.reset_wpm();
                 if let Some(w) = self.tutor_window.as_ref() {
                     w.request_redraw();
                 }
@@ -1879,6 +1940,7 @@ impl TrayApp {
                 self.tutor_state = Some(TutorState::new(practice));
                 self.tutor_wiki_active = false;
                 self.tutor_wiki_pending = None;
+                self.reset_wpm();
                 if let Some(w) = self.tutor_window.as_ref() {
                     w.request_redraw();
                 }
@@ -2079,6 +2141,7 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                 }
 
                 // Pressed
+                self.reset_wpm();
                 self.tutor_mouse_pressed = true;
                 let Some(window) = self.tutor_window.as_ref() else {
                     return;
@@ -2127,10 +2190,9 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
             WindowEvent::KeyboardInput { event, .. } => {
                 self.handle_keyboard(event);
             }
-            WindowEvent::Focused(true) => {
-                // Nudge: some compositors don't deliver the initial
-                // ModifiersChanged until the window has focus. Request
-                // a redraw in case anything depends on mods state.
+            WindowEvent::Focused(_) => {
+                // Focus shifts (in or out) reset the WPM measurement — the user's typing flow was broken either by switching to the tutor from elsewhere or by tabbing away. Then nudge a redraw (also covers some compositors that skip the initial ModifiersChanged until after focus settles).
+                self.reset_wpm();
                 if let Some(w) = self.tutor_window.as_ref() {
                     w.request_redraw();
                 }
@@ -2154,6 +2216,7 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                 self.redraw_tutor();
             }
             WindowEvent::DroppedFile(path) => {
+                self.reset_wpm();
                 if let Err(e) = self.load_dropped_text_file(path) {
                     crate::rerror!("drop rejected: {e}");
                 }
@@ -2168,7 +2231,30 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
             TrayEvent::StateChanged => self.refresh_enabled_ui(),
             TrayEvent::DrillKey(ev) => {
                 if let Some(state) = self.tutor_state.as_mut() {
+                    // Snapshot the active word + position before `tick` so we can detect a forward word advance and count the just-completed word for WPM. Backward moves (goof recovery via `prev_word()`) and stays (mid-word step advances) don't count.
+                    let prev_si = state.practice.sentence_idx;
+                    let prev_wi = state.practice.word_idx;
+                    let prev_word_text = state
+                        .practice
+                        .sentences
+                        .get(prev_si)
+                        .and_then(|s| s.get(prev_wi))
+                        .map(|w| w.word.clone());
+
                     state.tick(ev);
+
+                    let new_si = state.practice.sentence_idx;
+                    let new_wi = state.practice.word_idx;
+                    let advanced_forward = (new_si, new_wi) > (prev_si, prev_wi)
+                        || (new_si == 0
+                            && new_wi == 0
+                            && (prev_si != 0 || prev_wi != 0));
+                    if advanced_forward {
+                        if let Some(word) = prev_word_text {
+                            self.maybe_count_word(&word);
+                        }
+                    }
+
                     self.maybe_swap_practice();
                     if let Some(w) = self.tutor_window.as_ref() {
                         w.request_redraw();
@@ -2494,6 +2580,8 @@ pub fn run_tray(
         tutor_wiki_pending: None,
         tutor_ru: 1.0,
         tutor_zoom_hint_until: None,
+        tutor_first_word_at: None,
+        tutor_words_completed: 0,
         tutor_mods: ModifiersState::empty(),
         tutor_cursor: PhysicalPosition::new(0.0, 0.0),
         tutor_hit_test: Vec::new(),

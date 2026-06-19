@@ -99,6 +99,26 @@ struct NumberContext {
     current: String,
 }
 
+/// Compute the minimal Action that morphs the on-screen text from `old` to `new`. Used by the live-preview path to emit only the changed tail instead of backspacing-and-retyping the whole word every time a phoneme is added or removed.
+fn diff_to_action(old: &str, new: &str) -> Option<Action> {
+    if old == new {
+        return None;
+    }
+    let common: usize = old
+        .chars()
+        .zip(new.chars())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let before: String = old.chars().skip(common).collect();
+    let after: String = new.chars().skip(common).collect();
+    match (before.is_empty(), after.is_empty()) {
+        (true, true) => None,
+        (true, false) => Some(Action::Emit(after)),
+        (false, true) => Some(Action::Backspace(before.chars().count())),
+        (false, false) => Some(Action::Replace { before, after }),
+    }
+}
+
 /// Converts state machine events into output actions.
 ///
 /// Chord with space_held=true: look up phoneme, buffer it. Chord with space_held=false: look up brief, emit immediately. SpaceUp: look up buffered phonemes in dictionary, emit word.
@@ -124,6 +144,8 @@ pub struct Interpreter {
     /// Phoneme sequence of the last word emitted via the phoneme path.
     /// Used by the homophone toggle to cycle through alternate spellings.
     last_phonemes: Option<Vec<Phoneme>>,
+    /// The text of the in-progress phoneme-path word as it currently appears in the focused app. Empty when no word is being typed. After each phoneme push or pop, recompute what the buffer would resolve to (dict hit or autospell concat), diff against this, emit Replace/Backspace/Emit for the changed tail, and update. Commit (SpaceUp) appends a trailing space and clears; the full word + space goes into emit_history so word-level backspace still undoes the whole token.
+    current_preview: String,
 }
 
 impl Interpreter {
@@ -149,6 +171,7 @@ impl Interpreter {
             phoneme_session: false,
             number_session_pristine: false,
             last_phonemes: None,
+            current_preview: String::new(),
         }
     }
 
@@ -186,6 +209,30 @@ impl Interpreter {
             prior_number_state,
         });
         Action::Replace { before, after }
+    }
+
+    /// Resolve the in-progress phoneme buffer to its current visible spelling. Dictionary hit wins (lets short words like "the" / "cat" snap into shape once enough phonemes are in); otherwise concatenate per-phoneme graphemes (autospell) or IPA, matching the fallback mode that would fire at commit. Returns "" when the buffer is empty.
+    fn compute_preview(&self) -> String {
+        if self.buffer.is_empty() {
+            return String::new();
+        }
+        let mode = FallbackMode::from_u8(self.fallback.load(Ordering::Relaxed));
+        if mode == FallbackMode::Ipa {
+            return self.buffer.iter().map(|p| p.to_ipa()).collect();
+        }
+        if let Some(word) = self.dictionary.lookup(&self.buffer) {
+            word.to_string()
+        } else {
+            self.buffer.iter().map(|p| p.to_grapheme()).collect()
+        }
+    }
+
+    /// Recompute the preview after a phoneme buffer change, diff against the currently-visible text, and return the minimal action that updates the focused app. Updates `current_preview` to the new value. Returns None if nothing changed.
+    fn update_preview(&mut self) -> Option<Action> {
+        let new_preview = self.compute_preview();
+        let action = diff_to_action(&self.current_preview, &new_preview);
+        self.current_preview = new_preview;
+        action
     }
 
     /// Cycle the last phoneme-path word to the next homophone spelling.
@@ -266,6 +313,7 @@ impl Interpreter {
                     if let Some(phoneme) = self.phonemes.lookup(*key) {
                         self.buffer.push(phoneme);
                         self.phoneme_session = true;
+                        return self.update_preview();
                     }
                     None
                 } else {
@@ -318,10 +366,10 @@ impl Interpreter {
                 }
             }
             Event::Mod { activity_in_session } => {
-                // If phonemes were buffered this session, Mod = undo last phoneme
+                // If phonemes were buffered this session, Mod = undo last phoneme. With live preview the visible word now shrinks (or morphs back to autospell when the dictionary stops matching), so emit the diff against the previous preview.
                 if self.phoneme_session {
                     self.buffer.pop();
-                    return None;
+                    return self.update_preview();
                 }
                 match self.mode {
                     Mode::Normal => {
@@ -332,6 +380,7 @@ impl Interpreter {
                         self.last_number = None;
                         self.mode = Mode::Number;
                         self.buffer.clear();
+                        self.current_preview.clear();
                         self.number_buffer.clear();
                         self.number_session_pristine = true;
                         None
@@ -355,6 +404,7 @@ impl Interpreter {
                 self.last_number = None;
                 self.mode = Mode::Symbol;
                 self.buffer.clear();
+                self.current_preview.clear();
                 self.number_buffer.clear();
                 None
             }
@@ -419,38 +469,37 @@ impl Interpreter {
                     });
                     return Some(Action::Emit(" ".to_string()));
                 }
-                // Phoneme commit from Normal mode.
+                // Phoneme commit from Normal mode. The in-progress word
+                // has already been typed incrementally into the focused
+                // app via Replace/Emit actions; `current_preview` mirrors
+                // what's visible. Commit appends a trailing space and
+                // pushes a single history entry covering the whole
+                // word+space so word-level backspace undoes the token.
                 self.last_number = None;
                 self.phoneme_session = false;
-                if self.buffer.is_empty() {
+                if self.current_preview.is_empty() {
+                    self.buffer.clear();
                     return None;
                 }
                 let phonemes = std::mem::take(&mut self.buffer);
                 let mode = FallbackMode::from_u8(self.fallback.load(Ordering::Relaxed));
-                let text = if mode == FallbackMode::Ipa {
-                    let ipa: String = phonemes.iter().map(|p| p.to_ipa()).collect();
-                    self.last_phonemes = None;
-                    format!("{} ", ipa)
-                } else if let Some(word) = self.dictionary.lookup(&phonemes) {
-                    // Arm the homophone toggle if this phoneme sequence
-                    // has alternate spellings.
-                    if self.dictionary.homophones(&phonemes).is_some() {
-                        self.last_phonemes = Some(phonemes);
-                    } else {
-                        self.last_phonemes = None;
-                    }
-                    format!("{} ", word)
+                // Arm the homophone toggle when the committed spelling came from a dict hit with alternates. Skip in IPA mode (no dict).
+                if mode != FallbackMode::Ipa
+                    && self.dictionary.lookup(&phonemes).is_some()
+                    && self.dictionary.homophones(&phonemes).is_some()
+                {
+                    self.last_phonemes = Some(phonemes);
                 } else {
-                    let fallback: String = match mode {
-                        FallbackMode::Autospell => {
-                            phonemes.iter().map(|p| p.to_grapheme()).collect()
-                        }
-                        FallbackMode::Ipa => unreachable!(),
-                    };
                     self.last_phonemes = None;
-                    format!("{} ", fallback)
-                };
-                Some(self.record_emit(text))
+                }
+                let preview = std::mem::take(&mut self.current_preview);
+                let full = format!("{} ", preview);
+                let prior_number_state = self.last_number.clone();
+                self.emit_history.push(HistoryEntry::Emit {
+                    text: full,
+                    prior_number_state,
+                });
+                Some(Action::Emit(" ".to_string()))
             }
             Event::Backspace => {
                 // Pop one history entry and invert it. A plain Emit
@@ -486,7 +535,7 @@ impl Interpreter {
             }
             Event::UndoPhoneme => {
                 self.buffer.pop();
-                None
+                self.update_preview()
             }
         }
     }
@@ -534,16 +583,53 @@ mod tests {
         )
     }
 
+    /// Live preview as phonemes accumulate. K alone autospells to "k" (no dict hit); +AE extends to "ka" (still no hit); +T snaps to the dictionary entry "cat" via Replace. SpaceUp commits with just a trailing space — the word body was already on screen.
     #[test]
     fn phoneme_mode_cat() {
         let mut interp = setup();
 
+        let a1 = interp.process(&phoneme_event(Phoneme::K, true)).unwrap();
+        assert_eq!(a1, Action::Emit("k".to_string()));
+        let a2 = interp.process(&phoneme_event(Phoneme::Ae, true)).unwrap();
+        assert_eq!(a2, Action::Emit("a".to_string()));
+        let a3 = interp.process(&phoneme_event(Phoneme::T, true)).unwrap();
+        assert_eq!(
+            a3,
+            Action::Replace {
+                before: "ka".to_string(),
+                after: "cat".to_string(),
+            }
+        );
+        let space = interp.process(&Event::SpaceUp).unwrap();
+        assert_eq!(space, Action::Emit(" ".to_string()));
+    }
+
+    /// Mid-word mod-tap undoes the last phoneme and the preview shrinks (or morphs back from a dict word to autospell) via a Replace/Backspace action.
+    #[test]
+    fn phoneme_mode_undo_shrinks_preview() {
+        let mut interp = setup();
         interp.process(&phoneme_event(Phoneme::K, true));
         interp.process(&phoneme_event(Phoneme::Ae, true));
-        interp.process(&phoneme_event(Phoneme::T, true));
-
-        let action = interp.process(&Event::SpaceUp).unwrap();
-        assert_eq!(action, Action::Emit("cat ".to_string()));
+        let a3 = interp.process(&phoneme_event(Phoneme::T, true)).unwrap();
+        assert_eq!(
+            a3,
+            Action::Replace {
+                before: "ka".to_string(),
+                after: "cat".to_string(),
+            }
+        );
+        // Undo the T: buffer drops back to [K, AE], dict no longer hits, preview becomes "ka" — diff against on-screen "cat" is Replace.
+        let undo = interp.process(&Event::Mod { activity_in_session: true }).unwrap();
+        assert_eq!(
+            undo,
+            Action::Replace {
+                before: "cat".to_string(),
+                after: "ka".to_string(),
+            }
+        );
+        // Undo again — pure backspace of the trailing autospell character.
+        let undo2 = interp.process(&Event::Mod { activity_in_session: true }).unwrap();
+        assert_eq!(undo2, Action::Backspace(1));
     }
 
     #[test]
