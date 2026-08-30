@@ -98,8 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             return Ok(());
         }
-        // Trailer present but signed by another key — strip it before re-signing
-        // so the hash covers only the original body.
+        // Trailer present but signed by another key — strip it before re-signing so the hash covers only the original body.
         binary_data.truncate(sig_start);
     }
 

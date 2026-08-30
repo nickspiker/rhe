@@ -57,16 +57,14 @@ fn run() {
     let fallback_engine = fallback.clone();
     let mode_flags_engine = mode_flags.clone();
 
-    // Build the tray's event loop on the main thread so its proxy can be
-    // handed to the engine thread before it spawns.
+    // Build the tray's event loop on the main thread so its proxy can be handed to the engine thread before it spawns.
     let (event_loop, proxy) = tray::build();
     let drill_proxy = proxy.clone();
     let caps_proxy = proxy.clone();
 
     std::thread::spawn(move || {
         let phoneme_table = crate::layout::chords::PhonemeTable::new();
-        // English: PhonemeDictionary built from CMU + frequency data so the
-        // interpreter can resolve homographs (`to/two`) by phoneme path.
+        // English: PhonemeDictionary built from CMU + frequency data so the interpreter can resolve homographs (`to/two`) by phoneme path.
         // Māori: 1:1 grapheme→phoneme, no equivalent dictionary needed —
         // engine emits via the autospell (phoneme→grapheme) fallback.
         #[cfg(feature = "lang-en")]
@@ -106,9 +104,7 @@ fn run() {
                 Err(_) => break,
             };
 
-            // Tee to the tutor window so the drill state machine sees
-            // the same events the interpreter does. Tray drops the
-            // event on the floor when no tutor window is open.
+            // Tee to the tutor window so the drill state machine sees the same events the interpreter does. Tray drops the event on the floor when no tutor window is open.
             let _ = drill_proxy.send_event(tray::TrayEvent::DrillKey(event));
 
             for sm_event in sm.feed(event) {
@@ -174,9 +170,7 @@ fn run() {
     let mode_flags_engine = mode_flags.clone();
     let quit_engine = quit.clone();
 
-    // Build the tray's event loop on the main thread so its proxy can be
-    // handed to the engine thread before it spawns. The evdev reader wakes
-    // the tray via this proxy whenever a solo caps press toggles enabled,
+    // Build the tray's event loop on the main thread so its proxy can be handed to the engine thread before it spawns. The evdev reader wakes the tray via this proxy whenever a solo caps press toggles enabled,
     // so the tray icon/check item refresh without polling.
     let (event_loop, proxy) = tray::build();
     let toggle_proxy = proxy.clone();
@@ -187,8 +181,7 @@ fn run() {
 
     std::thread::spawn(move || {
         let phoneme_table = crate::layout::chords::PhonemeTable::new();
-        // English: PhonemeDictionary built from CMU + frequency data so the
-        // interpreter can resolve homographs (`to/two`) by phoneme path.
+        // English: PhonemeDictionary built from CMU + frequency data so the interpreter can resolve homographs (`to/two`) by phoneme path.
         // Māori: 1:1 grapheme→phoneme, no equivalent dictionary needed —
         // engine emits via the autospell (phoneme→grapheme) fallback.
         #[cfg(feature = "lang-en")]
@@ -209,8 +202,7 @@ fn run() {
             mode_flags_engine,
         );
 
-        // Input before output so the keyboard scan completes before any
-        // rhe-owned uinput devices show up in /dev/input/event*.
+        // Input before output so the keyboard scan completes before any rhe-owned uinput devices show up in /dev/input/event*.
         let input = input::evdev_backend::EvdevInput::start_grab(
             enabled_engine,
             input::evdev_backend::QuitTrigger::CapsLockPlusEsc,
@@ -228,8 +220,7 @@ fn run() {
             if quit_engine.load(std::sync::atomic::Ordering::Relaxed) {
                 break;
             }
-            // Timeout keeps us responsive to tray-initiated quit even when
-            // no key events are arriving.
+            // Timeout keeps us responsive to tray-initiated quit even when no key events are arriving.
             let event = match input.rx.recv_timeout(std::time::Duration::from_millis(250)) {
                 Ok(input::HidEvent::Key(ev)) => ev,
                 Ok(input::HidEvent::Quit) => break,
@@ -284,8 +275,7 @@ fn run() {
         }
         // Signal tray to exit as well.
         quit_engine.store(true, std::sync::atomic::Ordering::Relaxed);
-        // Nudge the tray event loop so it notices the quit flag even if it
-        // is currently asleep in Wait.
+        // Nudge the tray event loop so it notices the quit flag even if it is currently asleep in Wait.
         let _ = proxy.send_event(tray::TrayEvent::StateChanged);
     });
 
@@ -316,8 +306,7 @@ fn run() {
 
     std::thread::spawn(move || {
         let phoneme_table = crate::layout::chords::PhonemeTable::new();
-        // English: PhonemeDictionary built from CMU + frequency data so the
-        // interpreter can resolve homographs (`to/two`) by phoneme path.
+        // English: PhonemeDictionary built from CMU + frequency data so the interpreter can resolve homographs (`to/two`) by phoneme path.
         // Māori: 1:1 grapheme→phoneme, no equivalent dictionary needed —
         // engine emits via the autospell (phoneme→grapheme) fallback.
         #[cfg(feature = "lang-en")]

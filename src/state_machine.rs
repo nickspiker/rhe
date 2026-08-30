@@ -32,9 +32,7 @@ pub enum Event {
 }
 
 // Hand partitions of the chord keyspace live in `scan::LEFT_MASK` and
-// `scan::RIGHT_MASK`. Right-thumb counts as right hand — it's the mod
-// bit and it participates in the right-hand "has this hand released
-// all its keys" check.
+// `scan::RIGHT_MASK`. Right-thumb counts as right hand — it's the mod bit and it participates in the right-hand "has this hand released all its keys" check.
 use scan::{LEFT_MASK, RIGHT_MASK};
 
 /// State machine for rhe's chord pipeline.
@@ -88,14 +86,8 @@ impl StateMachine {
             // Now this event resolves the gesture.
             //
             // A chord finger going DOWN while thumb is still live →
-            // symbol-mode entry (`+word +mod -word +chord ...`). Drop
-            // both deferred events, fire `SymbolMode`, and seed accum
-            // with the just-pressed finger so it leads the chord. The
-            // session lives in word-released brief territory: word_held
-            // stays false, the chord fires on combined-hands all-zero,
-            // and the still-held thumb stays in `live` until the user
-            // releases it (silent — try_fire on thumb-up sees empty
-            // hand-accum or non-empty live and short-circuits).
+            // symbol-mode entry (`+word +mod -word +chord ...`). Drop both deferred events, fire `SymbolMode`, and seed accum with the just-pressed finger so it leads the chord. The session lives in word-released brief territory: word_held stays false, the chord fires on combined-hands all-zero,
+            // and the still-held thumb stays in `live` until the user releases it (silent — try_fire on thumb-up sees empty hand-accum or non-empty live and short-circuits).
             if event.direction == KeyDirection::Down
                 && event.scan != scan::WORD
                 && event.scan != scan::R_THUMB
@@ -110,11 +102,9 @@ impl StateMachine {
                 self.mod_alone = false;
                 return vec![Event::SymbolMode];
             }
-            // Anything else → flush the deferred bundle, then process
-            // the event normally. Pristine-zero (`+word +mod -word
+            // Anything else → flush the deferred bundle, then process the event normally. Pristine-zero (`+word +mod -word
             // -mod`) lands here on the `-mod` event: emits `[Mod,
-            // SpaceUp]` (then any chord try_fire from -mod). The
-            // interpreter sees the same event sequence it always did
+            // SpaceUp]` (then any chord try_fire from -mod). The interpreter sees the same event sequence it always did
             // — `Mod` arms Number mode, `SpaceUp` exits with "zero ".
             self.pending_zero_commit = false;
             let mut events = Vec::new();
@@ -145,9 +135,7 @@ impl StateMachine {
                 self.word_held = true;
                 let thumb_mask = KeyMask::EMPTY.with(scan::R_THUMB);
                 let non_thumb = self.live & BOTH_HANDS & !thumb_mask;
-                // A pre-held finger counts as activity: word-up will
-                // commit via SpaceUp even if nothing else happens in
-                // between. A pre-held thumb *alone* doesn't count —
+                // A pre-held finger counts as activity: word-up will commit via SpaceUp even if nothing else happens in between. A pre-held thumb *alone* doesn't count —
                 // it just arms the Mod-event detector.
                 self.activity_during_word = !non_thumb.is_empty();
                 self.mod_alone = self.live.test(scan::R_THUMB) && non_thumb.is_empty();
@@ -159,10 +147,7 @@ impl StateMachine {
                 self.word_held = false;
                 let activity = self.activity_during_word;
                 // User released word while still holding thumb alone —
-                // the "press both, release both" gesture. Catch it
-                // here so the Mod event fires regardless of release
-                // order (otherwise word-first-release silently eats
-                // the gesture).
+                // the "press both, release both" gesture. Catch it here so the Mod event fires regardless of release order (otherwise word-first-release silently eats the gesture).
                 let fire_mod_on_word_up = self.mod_alone;
                 self.activity_during_word = false;
                 self.mod_alone = false;
@@ -214,11 +199,7 @@ impl StateMachine {
             }
             KeyDirection::Up => {
                 self.live.clear(scan);
-                // Mod gesture complete: thumb released during word-held
-                // with no finger ever joining it. Fire Mod immediately
-                // and skip try_fire — the user may press-and-release
-                // mod again inside this same word-held session (for a
-                // decimal).
+                // Mod gesture complete: thumb released during word-held with no finger ever joining it. Fire Mod immediately and skip try_fire — the user may press-and-release mod again inside this same word-held session (for a decimal).
                 if self.word_held && scan == crate::scan::R_THUMB && self.mod_alone {
                     // Capture activity BEFORE the assignment below so the emitted Mod reflects whether any finger pressed during this word session up to this moment, not the post-fire state.
                     let activity_before = self.activity_during_word;
@@ -249,12 +230,7 @@ impl StateMachine {
             if (self.live & hand_mask).is_empty() {
                 let hand_accum = self.accum & hand_mask;
                 if !hand_accum.is_empty() {
-                    // Thumb-only residue: the user pressed thumb
-                    // alone during word-held and released it. No
-                    // phoneme is mapped to mod-only, and firing the
-                    // chord would only produce noise. Clear the bits
-                    // silently — the `Mod` event will be emitted
-                    // later on word-up if this gesture sits alone.
+                    // Thumb-only residue: the user pressed thumb alone during word-held and released it. No phoneme is mapped to mod-only, and firing the chord would only produce noise. Clear the bits silently — the `Mod` event will be emitted later on word-up if this gesture sits alone.
                     let thumb_only = hand_accum.count_ones() == 1 && hand_accum.test(scan::R_THUMB);
                     if thumb_only {
                         self.accum &= !hand_mask;
@@ -264,9 +240,7 @@ impl StateMachine {
                         return vec![];
                     }
                     self.accum &= !hand_mask;
-                    // Per-hand phoneme fire — `first_down` is preserved
-                    // for a possible later all-zero brief fire but
-                    // passed along here too (phoneme lookup ignores it).
+                    // Per-hand phoneme fire — `first_down` is preserved for a possible later all-zero brief fire but passed along here too (phoneme lookup ignores it).
                     let first_down = self.first_down;
                     if self.accum.is_empty() {
                         self.first_down = None;
@@ -517,12 +491,7 @@ mod tests {
 
     #[test]
     fn word_then_thumb_alone_fires_mod() {
-        // word-down, thumb-down, thumb-up, word-up → Mod fires
-        // immediately on thumb-up (number mode is a sub-session — the
-        // user may press-and-release mod again for a decimal before
-        // releasing word). A Mod fire counts as activity, so word-up
-        // emits SpaceUp (which the interpreter uses to exit number
-        // mode with a trailing space).
+        // word-down, thumb-down, thumb-up, word-up → Mod fires immediately on thumb-up (number mode is a sub-session — the user may press-and-release mod again for a decimal before releasing word). A Mod fire counts as activity, so word-up emits SpaceUp (which the interpreter uses to exit number mode with a trailing space).
         let mut sm = StateMachine::new();
         let events = feed_all(
             &mut sm,
@@ -538,12 +507,7 @@ mod tests {
 
     #[test]
     fn word_up_before_thumb_up_still_fires_mod() {
-        // Natural "press both, release both" gesture where the user
-        // happens to release word before thumb. Without catching this
-        // on word-up, the Mod event gets silently eaten (thumb-up
-        // later sees word_held=false and the eligibility path is
-        // skipped). Expect the same Mod + SpaceUp that the canonical
-        // thumb-first-release order produces.
+        // Natural "press both, release both" gesture where the user happens to release word before thumb. Without catching this on word-up, the Mod event gets silently eaten (thumb-up later sees word_held=false and the eligibility path is skipped). Expect the same Mod + SpaceUp that the canonical thumb-first-release order produces.
         let mut sm = StateMachine::new();
         let events = feed_all(
             &mut sm,
@@ -559,11 +523,8 @@ mod tests {
 
     #[test]
     fn word_two_mod_events_in_one_session() {
-        // word-held stays down across two thumb press-and-release
-        // cycles: the first enters number mode (interpreter side),
-        // the second emits a decimal. The state machine just needs
-        // to produce two Mod events, followed by SpaceUp on word
-        // release.
+        // word-held stays down across two thumb press-and-release cycles: the first enters number mode (interpreter side),
+        // the second emits a decimal. The state machine just needs to produce two Mod events, followed by SpaceUp on word release.
         let mut sm = StateMachine::new();
         let events = feed_all(
             &mut sm,
@@ -593,8 +554,7 @@ mod tests {
 
     #[test]
     fn word_finger_and_thumb_is_spaceup_not_mod() {
-        // Fingers take priority — any non-thumb finger press during
-        // word-held commits via SpaceUp, regardless of thumb activity.
+        // Fingers take priority — any non-thumb finger press during word-held commits via SpaceUp, regardless of thumb activity.
         let mut sm = StateMachine::new();
         let events = feed_all(
             &mut sm,
@@ -607,8 +567,7 @@ mod tests {
                 word(KeyDirection::Up),
             ],
         );
-        // Exactly one Chord (thumb+idx fires as voiced consonant) and
-        // one SpaceUp. No Mod.
+        // Exactly one Chord (thumb+idx fires as voiced consonant) and one SpaceUp. No Mod.
         assert_eq!(events.len(), 2);
         assert!(matches!(events[0], Event::Chord { .. }));
         assert_eq!(events[1], Event::SpaceUp);
@@ -618,8 +577,7 @@ mod tests {
     fn thumb_only_chord_is_suppressed() {
         // Thumb-alone during word-held must not fire a chord (no mod-
         // only phoneme exists). Instead the gesture fires exactly one
-        // Mod on thumb-up and leaves accum clear so the next
-        // gesture starts from a clean slate.
+        // Mod on thumb-up and leaves accum clear so the next gesture starts from a clean slate.
         let mut sm = StateMachine::new();
         let events = feed_all(
             &mut sm,
@@ -635,9 +593,7 @@ mod tests {
 
     #[test]
     fn mod_then_phoneme_fires_cleanly() {
-        // After a clean Mod event inside word-held, the thumb bit
-        // must be cleared from accum — otherwise the next per-hand
-        // phoneme fire would spuriously carry the mod bit.
+        // After a clean Mod event inside word-held, the thumb bit must be cleared from accum — otherwise the next per-hand phoneme fire would spuriously carry the mod bit.
         let mut sm = StateMachine::new();
         let events = feed_all(
             &mut sm,

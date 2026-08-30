@@ -179,9 +179,7 @@ impl Practice {
     pub fn default_mode(&self) -> WordMode {
         if let Some(w) = self.current_word() {
             // Brief wins when present — even on digit words like "two"
-            // that also have number_steps. The user can fall through
-            // to Number / NumberFallback by pressing word, which the
-            // tick() handler swaps modes on.
+            // that also have number_steps. The user can fall through to Number / NumberFallback by pressing word, which the tick() handler swaps modes on.
             if w.brief_steps.is_some() {
                 WordMode::Brief
             } else if w.number_steps.is_some() && w.phoneme_steps.is_empty() {
@@ -470,11 +468,7 @@ fn lookup_form(word: &str) -> Option<(u64, u8)> {
     static TABLE: OnceLock<HashMap<String, (u64, u8)>> = OnceLock::new();
     let table = TABLE.get_or_init(|| {
         let mut m: HashMap<String, (u64, u8)> = HashMap::new();
-        // Cardinal first — broadest. Loop range covers everything
-        // each form might produce; multi-token outputs ("five
-        // hundred", "five times") will never match a single
-        // whitespace-split practice word, so they sit unused but
-        // harmless.
+        // Cardinal first — broadest. Loop range covers everything each form might produce; multi-token outputs ("five hundred", "five times") will never match a single whitespace-split practice word, so they sit unused but harmless.
         for n in 0u64..=1000 {
             let s = n.to_string();
             if let Some(w) = f::spelled_cardinal(&s) {
@@ -505,10 +499,8 @@ fn lookup_form(word: &str) -> Option<(u64, u8)> {
                 m.insert(w, (n, Form::Prefix.chord_bits()));
             }
         }
-        // Fraction limited to 2..=4 ("half", "third", "quarter") so
-        // it doesn't override ordinal forms ("fifth", "sixth", ...)
-        // for n>=5, where the same string is shared and the user
-        // almost always means ordinal.
+        // Fraction limited to 2..=4 ("half", "third", "quarter") so it doesn't override ordinal forms ("fifth", "sixth", ...)
+        // for n>=5, where the same string is shared and the user almost always means ordinal.
         for n in 2u64..=4 {
             let s = n.to_string();
             if let Some(w) = f::fraction(&s) {
@@ -579,16 +571,13 @@ pub fn build_spelled_form_steps(word: &str) -> Option<Vec<Step>> {
         });
     }
 
-    // Release word: exits number mode, engine emits space + arms
-    // number context for the form transform that's about to come.
+    // Release word: exits number mode, engine emits space + arms number context for the form transform that's about to come.
     steps.push(Step {
         target: all_off,
         ..Step::default()
     });
 
-    // Form chord — left-hand only, no word. Engine recognises this
-    // via has_number_context and applies the form, replacing the
-    // integer with the spelled form.
+    // Form chord — left-hand only, no word. Engine recognises this via has_number_context and applies the form, replacing the integer with the spelled form.
     steps.push(Step {
         target: Target {
             right: 0,
@@ -875,8 +864,7 @@ pub fn build_practice(
                 }
 
                 if let Some(number_steps) = build_digit_word_steps(word_str) {
-                    // Spelled digit words like "two" / "three" / etc. get
-                    // up to three drill paths the user can choose between:
+                    // Spelled digit words like "two" / "three" / etc. get up to three drill paths the user can choose between:
                     // (1) brief — if a brief like the to/too/two ordered
                     //     bundle exists for this word; default mode.
                     // (2) number_steps (built above) — spelled-digit
@@ -890,8 +878,7 @@ pub fn build_practice(
                     let lower = word_str.to_lowercase();
                     let brief_steps = brief_steps_for_word(&lower, brief_table);
                     // "zero" is special: number_steps is the pristine
-                    // 2-step gesture, which never reaches a +finger+mod
-                    // state, so the divergence detector that powers
+                    // 2-step gesture, which never reaches a +finger+mod state, so the divergence detector that powers
                     // Path 3 can't fire. Skip building the fallback —
                     // it would be dead weight.
                     let number_fallback_steps = if lower == "zero" {
@@ -1256,9 +1243,7 @@ impl TutorState {
                     self.practice.advance_step();
                     step_advanced_by_mod = true;
                 } else if self.practice.mode == WordMode::Phoneme && self.key_state.word {
-                    // Phoneme-mode mod-alone (thumb tap while word
-                    // held): the engine deletes the last buffered
-                    // phoneme. Mirror in the drill.
+                    // Phoneme-mode mod-alone (thumb tap while word held): the engine deletes the last buffered phoneme. Mirror in the drill.
                     //
                     // step_idx > 0:
                     // - Errored: the goofed step's wrong phoneme is
@@ -1275,9 +1260,7 @@ impl TutorState {
                     //   chord) rolls back two; an odd step_idx (just
                     //   typed a chord) rolls back one.
                     //
-                    // step_idx == 0: nothing to undo, but still clear
-                    // accumulators so the residual thumb bit doesn't
-                    // trip the post-release goof on the next tick.
+                    // step_idx == 0: nothing to undo, but still clear accumulators so the residual thumb bit doesn't trip the post-release goof on the next tick.
                     if self.practice.step_idx > 0 {
                         if self.errored {
                             self.errored = false;
@@ -1308,13 +1291,8 @@ impl TutorState {
             && !self.key_state.word;
 
         if self.errored {
-            // Clear when all fingers are off. Word stays optional for
-            // trivial step-0 misses (no progress made yet — user can
-            // retry the same chord without losing the word-held
-            // context); but if the goof discarded progress
-            // (`requires_word_release`), require word-up too so the
-            // engine's interpreter commits and resets cleanly before
-            // the user retries the word from the top.
+            // Clear when all fingers are off. Word stays optional for trivial step-0 misses (no progress made yet — user can retry the same chord without losing the word-held context); but if the goof discarded progress
+            // (`requires_word_release`), require word-up too so the engine's interpreter commits and resets cleanly before the user retries the word from the top.
             let hands_off =
                 self.key_state.right_bits() == 0 && self.key_state.left_bits() == 0;
             let cleared = if self.requires_word_release {
@@ -1343,10 +1321,8 @@ impl TutorState {
                 let is_symbol_word = self.practice.current_word().map_or(false, |w| {
                     w.symbol_steps.is_some() && w.phoneme_steps.is_empty()
                 });
-                // Multi-symbol words concatenate one 5-step gesture
-                // per char, so a `+word` mid-PracticeWord (step_idx > 0)
-                // is the start of the next char's gesture, not a
-                // restart of the current one.
+                // Multi-symbol words concatenate one 5-step gesture per char, so a `+word` mid-PracticeWord (step_idx > 0)
+                // is the start of the next char's gesture, not a restart of the current one.
                 let in_symbol_gesture = is_symbol_word
                     && self.practice.mode == WordMode::Symbol
                     && self.practice.step_idx > 0;
@@ -1384,20 +1360,12 @@ impl TutorState {
                 && self.practice.step_idx > 0
                 && self.practice.current_target().map_or(false, |t| t.word)
             {
-                // Number-mode botch: user released word while a
-                // mid-sequence step still required word held. Without
-                // this, the drill would silently stagnate and a later
-                // word re-press would reset to step 0 with no error
-                // ever shown — the user could "pass" on the retry.
+                // Number-mode botch: user released word while a mid-sequence step still required word held. Without this, the drill would silently stagnate and a later word re-press would reset to step 0 with no error ever shown — the user could "pass" on the retry.
                 // Phoneme mode catches this further down via
-                // `space_dropped`; number mode needs its own check
-                // because its matcher is state-based, not acc-based.
+                // `space_dropped`; number mode needs its own check because its matcher is state-based, not acc-based.
                 //
-                // Symbol mode is excluded: its gesture has a
-                // legitimate -word at step 2 (target word=f), so the
-                // generic check would false-positive there. The
-                // Symbol matcher's pressed-in-target rule + greedy
-                // advance catches mis-releases without it.
+                // Symbol mode is excluded: its gesture has a legitimate -word at step 2 (target word=f), so the generic check would false-positive there. The
+                // Symbol matcher's pressed-in-target rule + greedy advance catches mis-releases without it.
                 self.goof(all_off, prev_step_idx);
             }
 
@@ -1412,13 +1380,7 @@ impl TutorState {
                 .current_step()
                 .map_or(false, |s| s.advance_on_mod)
             {
-                // advance_on_mod step: tolerate R-thumb press/release without
-                // overshoot errors. Advance fires above via the Mod sm
-                // event when R-thumb releases. Any other finger going down
-                // is still a botch — the gesture is "thumb alone, no other
-                // input." Hoisted above the Number-mode arm so any future
-                // event-driven step doesn't trip the strict state matcher
-                // on R-thumb down.
+                // advance_on_mod step: tolerate R-thumb press/release without overshoot errors. Advance fires above via the Mod sm event when R-thumb releases. Any other finger going down is still a botch — the gesture is "thumb alone, no other input." Hoisted above the Number-mode arm so any future event-driven step doesn't trip the strict state matcher on R-thumb down.
                 if is_key_down
                     && rhe_event.scan != scan::WORD
                     && rhe_event.scan != scan::R_THUMB
@@ -1426,8 +1388,7 @@ impl TutorState {
                     self.goof(all_off, prev_step_idx);
                 }
             } else if self.practice.mode == WordMode::Number {
-                // Number mode: pure state matching. Advance when
-                // current key state exactly equals the target.
+                // Number mode: pure state matching. Advance when current key state exactly equals the target.
                 // Reset on any extra key that overshoots the target.
                 if let Some(target) = self.practice.current_target() {
                     let target = *target;
@@ -1447,13 +1408,10 @@ impl TutorState {
                             self.goof(all_off, prev_step_idx);
                         }
                     } else {
-                        // Key release: if the released key was a target
-                        // bit and the chord still isn't complete, the
-                        // user dropped it without finishing — botch.
+                        // Key release: if the released key was a target bit and the chord still isn't complete, the user dropped it without finishing — botch.
                         // Catches the "press, release, re-press, +mod"
                         // workaround: at the post-finger step
-                        // (target = finger+mod), releasing the finger
-                        // before mod has joined is a regression.
+                        // (target = finger+mod), releasing the finger before mod has joined is a regression.
                         let regress_right = scan::right_bit(rhe_event.scan)
                             .map(|bit| (target.right & (1u8 << bit)) != 0)
                             .unwrap_or(false);
@@ -1464,19 +1422,9 @@ impl TutorState {
                             || state_left != target.left
                             || state_word != target.word;
                         if (regress_right || regress_left) && chord_incomplete {
-                            // Path 2 → Path 3 fallback. The user is in
-                            // the spelled-digit gesture (number mode,
-                            // target = +finger+mod) and just released
-                            // the digit finger without joining mod.
-                            // That commits "2" instead of "two" in the
-                            // engine; recover by jumping to the
-                            // digit-then-form (Path 3) drill where the
-                            // user can complete with a SpelledCardinal
-                            // form chord. Only fires when the word has
-                            // a number_fallback_steps lane and the
-                            // current step actually expects mod (target
-                            // includes the R-thumb bit) — that's the
-                            // exact moment Path 2 and Path 3 diverge.
+                            // Path 2 → Path 3 fallback. The user is in the spelled-digit gesture (number mode,
+                            // target = +finger+mod) and just released the digit finger without joining mod.
+                            // That commits "2" instead of "two" in the engine; recover by jumping to the digit-then-form (Path 3) drill where the user can complete with a SpelledCardinal form chord. Only fires when the word has a number_fallback_steps lane and the current step actually expects mod (target includes the R-thumb bit) — that's the exact moment Path 2 and Path 3 diverge.
                             let target_has_mod_and_finger = (target.right & (1u8 << 4)) != 0
                                 && ((target.right & !(1u8 << 4)) != 0 || target.left != 0);
                             let post_release_state_word_only = state_right == 0
@@ -1494,8 +1442,7 @@ impl TutorState {
                                 // Path 3 layout for a single-digit word:
                                 // 0:+word+mod, 1:-mod, 2:+digit, 3:-digit,
                                 // 4:-word (commits digit), 5:+form, 6:-form.
-                                // The release we just processed satisfied
-                                // step 3, so we land on step 4.
+                                // The release we just processed satisfied step 3, so we land on step 4.
                                 self.practice.mode = WordMode::NumberFallback;
                                 self.practice.step_idx = 4;
                             } else {
@@ -1505,23 +1452,10 @@ impl TutorState {
                     }
                 }
             } else if self.practice.mode == WordMode::Symbol {
-                // Symbol mode: pure state matching with greedy
-                // advance. The gesture cycles through targets that
-                // alternate between word-held and word-released
-                // states (e.g. step 2 has target word=f, step 3
-                // word=t), so a single tick can satisfy multiple
-                // step transitions when the state lines up. Greedy
-                // advance walks the step index forward as long as
-                // each new target is already met.
+                // Symbol mode: pure state matching with greedy advance. The gesture cycles through targets that alternate between word-held and word-released states (e.g. step 2 has target word=f, step 3
+                // word=t), so a single tick can satisfy multiple step transitions when the state lines up. Greedy advance walks the step index forward as long as each new target is already met.
                 //
-                // Errors: if the user pressed a key that isn't in
-                // the current target after greedy advance, that's a
-                // wrong-key goof. If they released a target-bearing
-                // key without the target being fully met, that's a
-                // dropped-chord goof. Releasing word, thumb, or
-                // chord keys at the legitimate transition points
-                // doesn't trigger either branch because greedy
-                // advance has already moved past them.
+                // Errors: if the user pressed a key that isn't in the current target after greedy advance, that's a wrong-key goof. If they released a target-bearing key without the target being fully met, that's a dropped-chord goof. Releasing word, thumb, or chord keys at the legitimate transition points doesn't trigger either branch because greedy advance has already moved past them.
                 let mut advanced_this_tick = false;
                 loop {
                     let target = match self.practice.current_target() {
@@ -1664,13 +1598,10 @@ impl TutorState {
                         || (target.left == 0 && self.touched_left != 0)
                         || (self.key_state.word && !target.word);
 
-                    // Thumb-only press in progress: candidate mod-tap
-                    // gesture (engine reads as `Event::Mod`, which the
-                    // sm_event loop above treats as phoneme-undo).
+                    // Thumb-only press in progress: candidate mod-tap gesture (engine reads as `Event::Mod`, which the sm_event loop above treats as phoneme-undo).
                     // Suppress the goof so the user reaches thumb-up;
                     // if they DO press a non-thumb key before releasing,
-                    // chord_*_acc grows past thumb-only and the gate
-                    // re-engages naturally.
+                    // chord_*_acc grows past thumb-only and the gate re-engages naturally.
                     let thumb_only_acc =
                         self.chord_right_acc == (1u8 << 4) && self.chord_left_acc == 0;
 
@@ -1715,8 +1646,7 @@ impl TutorState {
             self.tutor_first_down = None;
         }
 
-        // Hand-zero accumulator reset (after step handler so abandon
-        // detection still saw partial-attempt bits).
+        // Hand-zero accumulator reset (after step handler so abandon detection still saw partial-attempt bits).
         if self.key_state.right_bits() == 0 {
             self.chord_right_acc = 0;
         }
@@ -1842,9 +1772,7 @@ pub fn cell_label(
         return c.map(|ch| ch.to_string()).unwrap_or_default();
     }
 
-    // Phoneme mode fires each hand independently — left hand's label
-    // must only see left-hand held bits. Brief mode is a single
-    // combined chord, so all held bits contribute.
+    // Phoneme mode fires each hand independently — left hand's label must only see left-hand held bits. Brief mode is a single combined chord, so all held bits contribute.
     let base = if held_word {
         if scan::LEFT_MASK.test(cell_scan) {
             held_mask & scan::LEFT_MASK
@@ -1866,8 +1794,7 @@ pub fn cell_label(
         user_first_down
     };
 
-    // Brief-mode L-hand chord with armed number context: this chord
-    // would transform the just-emitted integer, not append a suffix.
+    // Brief-mode L-hand chord with armed number context: this chord would transform the just-emitted integer, not append a suffix.
     // Show the form abbreviation instead of the brief lookup.
     if !held_word && has_number_context {
         if let Some(form) = crate::layout::number_forms::Form::from_chord(chord) {
@@ -1968,8 +1895,7 @@ mod tests {
         assert_eq!(last.target.right, 0);
         assert_eq!(last.target.left, 0);
         assert!(!last.target.word);
-        // The form-chord step (second-to-last) carries the spelled
-        // word as its glyph hint and the L_IDX chord for SpelledCardinal.
+        // The form-chord step (second-to-last) carries the spelled word as its glyph hint and the L_IDX chord for SpelledCardinal.
         let form_step = &steps[steps.len() - 2];
         assert_eq!(form_step.target.right, 0);
         assert_eq!(form_step.target.left, Form::SpelledCardinal.chord_bits());
@@ -1979,8 +1905,7 @@ mod tests {
 
     #[test]
     fn spelled_form_steps_skip_phoneme_words() {
-        // Words with no spelled-form mapping return None so the
-        // practice builder falls through to phoneme steps.
+        // Words with no spelled-form mapping return None so the practice builder falls through to phoneme steps.
         assert!(build_spelled_form_steps("hello").is_none());
         assert!(build_spelled_form_steps("answer").is_none());
     }
@@ -2023,8 +1948,7 @@ mod tests {
         state
     }
 
-    /// All four engine-accepted orders should drill cleanly through both
-    /// steps without botching: press order × release order.
+    /// All four engine-accepted orders should drill cleanly through both steps without botching: press order × release order.
     #[test]
     fn pristine_zero_drill_word_first_thumb_first_release() {
         // word↓, thumb↓, thumb↑, word↑
@@ -2101,8 +2025,7 @@ mod tests {
     fn symbol_steps_skip_unknown_chars() {
         // "hello" has no symbol mapping for any char.
         assert!(build_symbol_steps("hello").is_none());
-        // Mixed (Greek + ASCII) also returns None — symbol-mode is
-        // all-or-nothing per word.
+        // Mixed (Greek + ASCII) also returns None — symbol-mode is all-or-nothing per word.
         assert!(build_symbol_steps("πa").is_none());
     }
 
@@ -2270,9 +2193,7 @@ mod tests {
     // ─── Three-path drill for digit words (e.g. "two") ───
     //
     // build_practice produces brief_steps + number_steps +
-    // number_fallback_steps for digit words that have a brief. Here
-    // we hand-construct the three step lists so the test doesn't
-    // need a real brief table. The actual paths under test:
+    // number_fallback_steps for digit words that have a brief. Here we hand-construct the three step lists so the test doesn't need a real brief table. The actual paths under test:
     //   Path 1 (Brief)           — to/too/two ordered chord
     //   Path 2 (Number)          — entry, finger-then-mod, all-off
     //   Path 3 (NumberFallback)  — entry, digit, commit, form chord
@@ -2513,11 +2434,8 @@ mod tests {
 
     // ─── Phoneme-mode mod-undo (thumb tap deletes one phoneme) ───
     //
-    // Build a tiny 2-phoneme practice from raw chord targets so the
-    // test doesn't need a CMU dictionary. K = right 0b0011 (R_IDX +
-    // R_MID); T = right 0b0101 (R_IDX + R_RING) — picked just to be
-    // distinct, exact bits don't matter, only that they alternate
-    // correctly through the 5-step phoneme layout (chord, release,
+    // Build a tiny 2-phoneme practice from raw chord targets so the test doesn't need a CMU dictionary. K = right 0b0011 (R_IDX +
+    // R_MID); T = right 0b0101 (R_IDX + R_RING) — picked just to be distinct, exact bits don't matter, only that they alternate correctly through the 5-step phoneme layout (chord, release,
     // chord, release, commit).
 
     fn kt_practice() -> Practice {

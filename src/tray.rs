@@ -283,10 +283,7 @@ fn make_tray_icon(size: u32, online: bool) -> Icon {
     let w = size as usize;
     let h = size as usize;
 
-    // -2, not -1: with cx = size/2 on an even canvas the solid ring
-    // would otherwise extend one pixel past the canvas edge on the
-    // bottom-right (parity quirk). Subtracting 2 puts the last solid
-    // pixel exactly at the edge and leaves the alpha-0 outer-AA off-
+    // -2, not -1: with cx = size/2 on an even canvas the solid ring would otherwise extend one pixel past the canvas edge on the bottom-right (parity quirk). Subtracting 2 puts the last solid pixel exactly at the edge and leaves the alpha-0 outer-AA off-
     // canvas where it isn't visible.
     let radius = (size as isize) / 2 - 2;
     let diameter = (radius * 2) as usize;
@@ -370,22 +367,17 @@ struct TrayApp {
     mode_flags: Arc<AtomicU8>,
     ids: TrayIds,
 
-    // macOS and Windows keep the tray + menu items on the winit
-    // event-loop thread; Linux hands them off to a dedicated gtk
-    // thread, so on Linux this stays None.
+    // macOS and Windows keep the tray + menu items on the winit event-loop thread; Linux hands them off to a dedicated gtk thread, so on Linux this stays None.
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     mac_state: Option<MacTrayState>,
 
-    // Tutor window state. Declared renderer-before-window so they drop
-    // in that order (renderer holds `&'static Window` transmuted from
-    // the window below, and must be dropped first to avoid dangling).
+    // Tutor window state. Declared renderer-before-window so they drop in that order (renderer holds `&'static Window` transmuted from the window below, and must be dropped first to avoid dangling).
     tutor_renderer: Option<Renderer>,
     tutor_window: Option<Window>,
     tutor_state: Option<TutorState>,
     text_renderer: Option<TextRenderer>,
 
-    // Cached drill resources, kept alive between word transitions so a
-    // wiki wraparound can rebuild Practice without re-parsing cmudict /
+    // Cached drill resources, kept alive between word transitions so a wiki wraparound can rebuild Practice without re-parsing cmudict /
     // briefs. Built lazily on first `open_tutor`, dropped on close.
     tutor_word_lookup: Option<WordLookup>,
     tutor_brief_table: Option<BriefTable>,
@@ -413,8 +405,7 @@ struct TrayApp {
     /// Textbox alpha mask (0 = outside textbox, 255 = inside, AA edge values in between). Populated by draw_textbox, consumed by apply_textbox_glow. Sized to pixels.len().
     tutor_textbox_mask: Vec<u8>,
 
-    // Debug toggles (photon parity): Ctrl+D counters, Ctrl+H hitmap
-    // overlay, Ctrl+T textbox-mask overlay.
+    // Debug toggles (photon parity): Ctrl+D counters, Ctrl+H hitmap overlay, Ctrl+T textbox-mask overlay.
     tutor_debug: bool,
     tutor_debug_hit_test: bool,
     tutor_show_textbox_mask: bool,
@@ -426,8 +417,7 @@ struct TrayApp {
     /// Currently hovered chrome button (for hover fill effect).
     tutor_hovered_button: u8,
 
-    // Manual resize/move drag state (Photon parity — winit's
-    // drag_resize_window is unreliable on macOS).
+    // Manual resize/move drag state (Photon parity — winit's drag_resize_window is unreliable on macOS).
     tutor_dragging_resize: bool,
     tutor_dragging_move: bool,
     tutor_mouse_pressed: bool,
@@ -482,11 +472,8 @@ impl TrayApp {
             return;
         }
 
-        // Size and position the window from the primary monitor so it
-        // looks right at any DPI / resolution. Mirrors photon's
-        // resumed() — query the monitor, take a fraction of its size,
-        // centre on screen. Falls back to a fixed pair only if we
-        // somehow can't get a monitor.
+        // Size and position the window from the primary monitor so it looks right at any DPI / resolution. Mirrors photon's resumed() — query the monitor, take a fraction of its size,
+        // centre on screen. Falls back to a fixed pair only if we somehow can't get a monitor.
         let (window_width, window_height, window_x, window_y) = event_loop
             .primary_monitor()
             .or_else(|| event_loop.available_monitors().next())
@@ -507,11 +494,7 @@ impl TrayApp {
             .with_decorations(false)
             .with_transparent(true)
             // Request activation on creation so a tray-menu launch
-            // (which doesn't naturally hand focus to a brand-new
-            // window) pops to the front instead of opening behind
-            // whatever app the user was in. NOT AlwaysOnTop — that
-            // confuses some compositors into stranding other windows
-            // on top after the level swap.
+            // (which doesn't naturally hand focus to a brand-new window) pops to the front instead of opening behind whatever app the user was in. NOT AlwaysOnTop — that confuses some compositors into stranding other windows on top after the level swap.
             .with_active(true)
             .with_resizable(cfg!(not(target_os = "macos")));
         let window = match event_loop.create_window(attrs) {
@@ -539,18 +522,14 @@ impl TrayApp {
             self.tutor_renderer = Some(Renderer::new(w_ref, size.width, size.height));
             // Explicit focus request — needed on some compositors
             // (Wayland in particular) to start delivering
-            // ModifiersChanged / KeyboardInput events without an
-            // intermediate user click.
+            // ModifiersChanged / KeyboardInput events without an intermediate user click.
             w_ref.focus_window();
             w_ref.request_redraw();
         }
 
         // Lazy-load the dictionary + brief table so source switchers
-        // (Tutor / Test Text / Brown Corpus / dropped file) don't
-        // each reload them. Source content itself is the caller's
-        // responsibility — `open_tutor` no longer picks a default,
-        // so the menu handler that triggered the open is the one
-        // that decides Wikipedia vs Test Text vs Brown Corpus etc.
+        // (Tutor / Test Text / Brown Corpus / dropped file) don't each reload them. Source content itself is the caller's responsibility — `open_tutor` no longer picks a default,
+        // so the menu handler that triggered the open is the one that decides Wikipedia vs Test Text vs Brown Corpus etc.
         if self.tutor_word_lookup.is_none() {
             let cmudict = crate::data::load_cmudict();
             self.tutor_word_lookup = Some(WordLookup::new(&cmudict));
@@ -675,31 +654,19 @@ impl TrayApp {
         };
         renderer.resize(width as u32, height as u32);
 
-        // CRITICAL: mark the whole frame dirty on the Renderer BEFORE
-        // locking the buffer. Photon's Linux softbuffer path only
-        // copies rows in the current dirty range to the compositor
-        // buffer on present(); after the first frame that range is
-        // empty unless we re-mark, so every subsequent redraw would
-        // otherwise silently present zero bytes and the screen would
-        // freeze at the initial frame. The `buf.mark_all()` method on
-        // the SoftbufferBuffer guard is a stub — it has to be called
-        // on the Renderer itself.
+        // CRITICAL: mark the whole frame dirty on the Renderer BEFORE locking the buffer. Photon's Linux softbuffer path only copies rows in the current dirty range to the compositor buffer on present(); after the first frame that range is empty unless we re-mark, so every subsequent redraw would otherwise silently present zero bytes and the screen would freeze at the initial frame. The `buf.mark_all()` method on the SoftbufferBuffer guard is a stub — it has to be called on the Renderer itself.
         renderer.mark_all();
 
         let mut buf = renderer.lock_buffer();
         let pixels = buf.as_mut();
 
         // Patchwork background texture — gives the chord cells'
-        // bevels something varied to read against. The chrome's
-        // edges-and-mask pass clears the squircle corners to fully
-        // transparent on top of this, so what's underneath the
-        // squircle stays untouched by the texture.
+        // bevels something varied to read against. The chrome's edges-and-mask pass clears the squircle corners to fully transparent on top of this, so what's underneath the squircle stays untouched by the texture.
         drawing::draw_background_texture(pixels, width, height, 0, true, 0);
         self.tutor_hit_test.fill(HIT_NONE);
         self.tutor_textbox_mask.fill(0);
 
-        // Photon's chrome. window_controls returns the squircle bounds
-        // that edges_and_mask + button_hairlines both need.
+        // Photon's chrome. window_controls returns the squircle bounds that edges_and_mask + button_hairlines both need.
         let (start, crossings, button_x_start, button_height) = TutorApp::draw_window_controls(
             pixels,
             &mut self.tutor_hit_test,
@@ -726,10 +693,7 @@ impl TrayApp {
             &crossings,
         );
 
-        // Chrome-button hover fill: brighten every pixel tagged
-        // with the currently-hovered button's hit id by the photon
-        // hover delta. Done after chrome is drawn so the delta lands
-        // on top of the chrome fill / glyph, not under it.
+        // Chrome-button hover fill: brighten every pixel tagged with the currently-hovered button's hit id by the photon hover delta. Done after chrome is drawn so the delta lands on top of the chrome fill / glyph, not under it.
         if self.tutor_hovered_button != HIT_NONE {
             let delta = hover_delta(self.tutor_hovered_button);
             let target_id = self.tutor_hovered_button;
@@ -743,11 +707,9 @@ impl TrayApp {
         }
 
         // ── Drill view ─────────────────────────────────────────────
-        // Layout: target word (big, centered, Oxanium Bold) at top of
-        // the content area, step hint below (small, Josefin Slab,
+        // Layout: target word (big, centered, Oxanium Bold) at top of the content area, step hint below (small, Josefin Slab,
         // either IPA / Autospell letters or a number-mode glyph),
-        // then a row of keyboard cells reflecting the current target
-        // and live key state. Geometry computed once via TutorLayout
+        // then a row of keyboard cells reflecting the current target and live key state. Geometry computed once via TutorLayout
         // (outer positions span-only; cell + font sizes scale with ru).
         let layout =
             TutorLayout::compute(size.width, size.height, button_height as i32, self.tutor_ru);
@@ -765,9 +727,7 @@ impl TrayApp {
             .unwrap_or(false);
         // Word-complete signal: current step is "release everything"
         // (target.right == 0, target.left == 0, target.word == false).
-        // The user has typed the whole word and just needs to lift the
-        // last keys to commit. Repaints the formerly-red error text in
-        // bright green so the visual cue is unmistakable.
+        // The user has typed the whole word and just needs to lift the last keys to commit. Repaints the formerly-red error text in bright green so the visual cue is unmistakable.
         let drill_complete = self
             .tutor_state
             .as_ref()
@@ -801,17 +761,10 @@ impl TrayApp {
             .map(|s| s.errored)
             .unwrap_or(false);
 
-        // Sentence context: the full current sentence rendered as a
-        // single line, anchored so the current word stays centered.
-        // As word_idx advances the line shifts left, sliding completed
-        // words off and bringing upcoming words in.
+        // Sentence context: the full current sentence rendered as a single line, anchored so the current word stays centered.
+        // As word_idx advances the line shifts left, sliding completed words off and bringing upcoming words in.
         // Flat word list across every sentence in the practice
-        // (no sentence boundaries / no line returns), with the
-        // current word's index in the flat list. Used by the top
-        // line render which walks outward from the current word
-        // until it spills past the window edges, so the strip is
-        // continuous text in both directions regardless of how the
-        // wiki batch was split into sentences.
+        // (no sentence boundaries / no line returns), with the current word's index in the flat list. Used by the top line render which walks outward from the current word until it spills past the window edges, so the strip is continuous text in both directions regardless of how the wiki batch was split into sentences.
         let (sentence_words, cur_word_idx): (Vec<String>, usize) = {
             let mut flat: Vec<String> = Vec::new();
             let mut cur = 0usize;
@@ -831,14 +784,9 @@ impl TrayApp {
             (flat, cur)
         };
 
-        // Phoneme line: every chord-firing step in the current
-        // target word's `current_steps()`, filtered to only those
-        // with a displayable glyph (phoneme IPA or number_glyph).
-        // Skips entry-only advance_on_mod and space_only commits so
-        // the strip is just content, not state markers. cur_phon_idx
-        // is the position of the current step in the filtered list,
-        // pinned at the most-recent displayable step ≤ step_idx so
-        // the highlight tracks the user's progress through commits /
+        // Phoneme line: every chord-firing step in the current target word's `current_steps()`, filtered to only those with a displayable glyph (phoneme IPA or number_glyph).
+        // Skips entry-only advance_on_mod and space_only commits so the strip is just content, not state markers. cur_phon_idx is the position of the current step in the filtered list,
+        // pinned at the most-recent displayable step ≤ step_idx so the highlight tracks the user's progress through commits /
         // entry steps too.
         let (phoneme_glyphs, cur_phon_idx): (Vec<String>, usize) = {
             let mut glyphs: Vec<String> = Vec::new();
@@ -865,19 +813,13 @@ impl TrayApp {
         };
 
         if let Some(text) = self.text_renderer.as_mut() {
-            // Sentence line — italic Bona Nova, current word centred
-            // on target_cx and bold; past / future words walk
-            // outward until they spill past the window edges with a
-            // quarter-span overflow margin. Each word is measured at
-            // its actual render weight (400 vs 700) so bold's wider
-            // glyphs don't stomp on adjacent regular words.
+            // Sentence line — italic Bona Nova, current word centred on target_cx and bold; past / future words walk outward until they spill past the window edges with a quarter-span overflow margin. Each word is measured at its actual render weight (400 vs 700) so bold's wider glyphs don't stomp on adjacent regular words.
             if !sentence_words.is_empty() && cur_word_idx < sentence_words.len() {
                 let span = crate::tutor::ui::span(size.width, size.height);
                 let stop_left = -span * 0.25;
                 let stop_right = (size.width as f32) + span * 0.25;
 
-                // Current word: measure at weight 700 (its render
-                // weight), centre on target_cx.
+                // Current word: measure at weight 700 (its render weight), centre on target_cx.
                 let cur_w = text.draw_text_left_u32(
                     pixels,
                     width,
@@ -905,9 +847,7 @@ impl TrayApp {
                 );
 
                 // Forward walk (future words to the right of current).
-                // Wraps cyclically through the flat list so the line
-                // keeps streaming text past the window edge regardless
-                // of how many words remain in the practice batch.
+                // Wraps cyclically through the flat list so the line keeps streaming text past the window edge regardless of how many words remain in the practice batch.
                 let n = sentence_words.len();
                 let mut x = cur_x + cur_w + layout.sentence_space_w;
                 let mut i = cur_word_idx + 1;
@@ -992,11 +932,7 @@ impl TrayApp {
                 false,
             );
 
-            // Brief mode: render the word in photon-logo style — black
-            // glyph with a soft horizontal smear behind it. Visually
-            // unmistakable from the italic IPA glyph strip that the
-            // same line shows in phoneme mode, signalling "one-shot
-            // chord shortcut, not a sounded-out spelling."
+            // Brief mode: render the word in photon-logo style — black glyph with a soft horizontal smear behind it. Visually unmistakable from the italic IPA glyph strip that the same line shows in phoneme mode, signalling "one-shot chord shortcut, not a sounded-out spelling."
             if is_brief_mode && !word_text.is_empty() {
                 let logo_colour = if drill_errored { 0xFFFF0000 } else if drill_complete { 0xFF00FF00 } else { theme::LOGO_TEXT };
                 crate::tutor::ui::compositor::TutorApp::draw_logo_text(
@@ -1012,10 +948,8 @@ impl TrayApp {
                     logo_colour,
                 );
             } else
-            // Phoneme line: italic Bona Nova. Each glyph is measured
-            // at its actual render weight (400 for past/future, 700
-            // for current) so the bold current glyph doesn't crowd
-            // its neighbours. Outward walk centred on target_cx,
+            // Phoneme line: italic Bona Nova. Each glyph is measured at its actual render weight (400 for past/future, 700
+            // for current) so the bold current glyph doesn't crowd its neighbours. Outward walk centred on target_cx,
             // matching the sentence line.
             if !phoneme_glyphs.is_empty() && cur_phon_idx < phoneme_glyphs.len() {
                 // Current glyph at weight 700, centred on target_cx.
@@ -1046,10 +980,7 @@ impl TrayApp {
                     true,
                 );
 
-                // Forward walk (future glyphs, weight 400). Phonemes
-                // pack flush against each other — no inter-glyph
-                // spacing — since the strip is the spelling of the
-                // word, not a sentence of separate tokens.
+                // Forward walk (future glyphs, weight 400). Phonemes pack flush against each other — no inter-glyph spacing — since the strip is the spelling of the word, not a sentence of separate tokens.
                 let mut x = cur_x + cur_w;
                 for g in phoneme_glyphs.iter().skip(cur_phon_idx + 1) {
                     let w = text.draw_text_left_u32(
@@ -1133,15 +1064,10 @@ impl TrayApp {
             }
         }
 
-        // Keyboard diagram: 10 home/inner cells in a row + thumb cell
-        // below the row's centre. Cell colour signals (target,
+        // Keyboard diagram: 10 home/inner cells in a row + thumb cell below the row's centre. Cell colour signals (target,
         // pressed, errored) state.
         //
-        // Adaptive label per cell: shows what the cell's key would emit
-        // as part of the currently-held chord. Labels are computed
-        // ahead of cell rendering so the immutable tutor_state borrow
-        // doesn't conflict with the mutable text_renderer borrow that
-        // comes after.
+        // Adaptive label per cell: shows what the cell's key would emit as part of the currently-held chord. Labels are computed ahead of cell rendering so the immutable tutor_state borrow doesn't conflict with the mutable text_renderer borrow that comes after.
         let label_data: Option<(_, [String; 10], _, _, _, _)> =
             if let Some(state) = self.tutor_state.as_ref() {
                 let target = state.practice.current_target().copied().unwrap_or_default();
@@ -1156,12 +1082,7 @@ impl TrayApp {
                 let held_word = key_state.word;
                 let first_down = state.tutor_first_down;
                 // Live mode bits straight from the engine's
-                // Interpreter (single relaxed load on a shared
-                // atomic). Always coherent with what the next press
-                // would actually emit, regardless of where the drill
-                // happens to be. has_number_context flips L-hand
-                // brief cells to number-form labels (alt suffix
-                // meaning when a pure integer is one slot back).
+                // Interpreter (single relaxed load on a shared atomic). Always coherent with what the next press would actually emit, regardless of where the drill happens to be. has_number_context flips L-hand brief cells to number-form labels (alt suffix meaning when a pure integer is one slot back).
                 let mode_bits = self.mode_flags.load(Ordering::Relaxed);
                 let in_number_mode = mode_bits & crate::interpreter::MODE_FLAG_NUMBER != 0;
                 let has_number_context = mode_bits & crate::interpreter::MODE_FLAG_HAS_NUMBER != 0;
@@ -1252,11 +1173,7 @@ impl TrayApp {
                 crate::scan::R_RING,
                 crate::scan::R_PINKY,
             ];
-            // Primary = bright key colour. Every target cell is primary
-            // when there's no ordering constraint, OR once the user has
-            // committed to a lead (any key down). Otherwise only cells
-            // listed in target.accepted_leads are bright; the rest dim
-            // to dot_color as a "press one of these first" cue.
+            // Primary = bright key colour. Every target cell is primary when there's no ordering constraint, OR once the user has committed to a lead (any key down). Otherwise only cells listed in target.accepted_leads are bright; the rest dim to dot_color as a "press one of these first" cue.
             let is_primary = |cell_scan: u8| -> bool {
                 if target.accepted_leads.is_empty() {
                     return true;
@@ -1268,12 +1185,10 @@ impl TrayApp {
             };
 
             // Cell rectangles in display order (left 0..5, right 5..10),
-            // captured during drawing so the label pass can reuse the
-            // exact centres without repeating the layout math.
+            // captured during drawing so the label pass can reuse the exact centres without repeating the layout math.
             let mut cell_centres: [(i32, i32); 10] = [(0, 0); 10];
 
-            // Per-cell pressed state in display order. Drives both the
-            // press-darken on idle grey and the bevel reversal in
+            // Per-cell pressed state in display order. Drives both the press-darken on idle grey and the bevel reversal in
             // `cell()` so any held key reads as pushed-in.
             let pressed: [bool; 10] = [
                 key_state.left[0],  // L pinky
@@ -1291,14 +1206,10 @@ impl TrayApp {
             let left_bits = [3usize, 2, 1, 0, 4];
             let right_bits = [5usize, 0, 1, 2, 3];
 
-            // 11 slots, uniform cell_d + cell_gap step. Slot 5 is
-            // the invisible "between hands" slot — skip rendering,
+            // 11 slots, uniform cell_d + cell_gap step. Slot 5 is the invisible "between hands" slot — skip rendering,
             // its space holds the in-hand-gap step-hint glyph.
-            // Press circle: black on lit / target cells, white on
-            // dark / idle cells. Drawn over the pill after the cell
-            // body so the contrast inverts cleanly.
-            // Half the visual size, +1px floor so the dot is at
-            // least one pixel even when cell_d is tiny.
+            // Press circle: black on lit / target cells, white on dark / idle cells. Drawn over the pill after the cell body so the contrast inverts cleanly.
+            // Half the visual size, +1px floor so the dot is at least one pixel even when cell_d is tiny.
             let press_dot_radius = cell_d / 10 + 1;
             for slot in 0..11usize {
                 let cx_cell = row_x + slot as i32 * (cell_d + cell_gap) + cell_d / 2;
@@ -1339,8 +1250,7 @@ impl TrayApp {
             // Second row below the chord cells: word bar (long, left-
             // aligned under L-pinky) + mod cell (2 cells wide, right-
             // aligned under R-pinky). Word = purple, mod = green —
-            // distinct from the finger gradient so the thumb/word
-            // roles read at a glance.
+            // distinct from the finger gradient so the thumb/word roles read at a glance.
             let bottom_cy = layout.bottom_cy;
             let mod_w = layout.mod_w;
             let mod_cx = layout.mod_cx;
@@ -1421,9 +1331,7 @@ impl TrayApp {
                     let (cx_cell, _cy_cell) = cell_centres[i];
 
                     // Trim to fit. Off-screen measure pass: cosmic-
-                    // text's bounds check skips per-pixel writes at
-                    // far-negative coords, so this is effectively a
-                    // measure with no rendering cost.
+                    // text's bounds check skips per-pixel writes at far-negative coords, so this is effectively a measure with no rendering cost.
                     let mut display: String = labels[i].clone();
                     let mut measured = text.draw_text_left_u32(
                         pixels,
@@ -1487,11 +1395,8 @@ impl TrayApp {
             }
         }
 
-        // Top-left zoom-percentage hint. Bumped to `now + 1s` on
-        // every ru change (Ctrl+= / Ctrl+- / Ctrl+0 / Ctrl+scroll);
-        // about_to_wait schedules a wake at the deadline so this
-        // disappears on its own. Photon-parity with theme::ZOOM_HINT_TEXT
-        // for the colour.
+        // Top-left zoom-percentage hint. Bumped to `now + 1s` on every ru change (Ctrl+= / Ctrl+- / Ctrl+0 / Ctrl+scroll);
+        // about_to_wait schedules a wake at the deadline so this disappears on its own. Photon-parity with theme::ZOOM_HINT_TEXT for the colour.
         if let Some(until) = self.tutor_zoom_hint_until {
             if std::time::Instant::now() < until {
                 if let Some(text) = self.text_renderer.as_mut() {
@@ -1543,9 +1448,7 @@ impl TrayApp {
             }
         }
 
-        // Debug HUD — counters + current zoom. Visible when Ctrl+D
-        // toggled the global debug flag. Photon's layout: bottom strip
-        // with R/U/F counters + top-left zoom percentage.
+        // Debug HUD — counters + current zoom. Visible when Ctrl+D toggled the global debug flag. Photon's layout: bottom strip with R/U/F counters + top-left zoom percentage.
         self.tutor_redraw_counter += 1;
         self.tutor_frame_counter += 1;
         if self.tutor_debug {
@@ -1711,9 +1614,7 @@ impl TrayApp {
         let _ = window.request_inner_size(PhysicalSize::new(nw, nh));
     }
     fn handle_keyboard(&mut self, event: KeyEvent) {
-        // Track Ctrl via the key event directly — ModifiersChanged can
-        // skip events on some Wayland compositors until after the
-        // window has held keyboard focus for a bit.
+        // Track Ctrl via the key event directly — ModifiersChanged can skip events on some Wayland compositors until after the window has held keyboard focus for a bit.
         if matches!(event.logical_key, Key::Named(NamedKey::Control)) {
             self.tutor_ctrl_held = event.state == ElementState::Pressed;
         }
@@ -1721,10 +1622,7 @@ impl TrayApp {
             return;
         }
         let ctrl = self.tutor_mods.control_key() || self.tutor_ctrl_held;
-        // Plain Enter (no modifiers) wipes the tutor log so the user
-        // can isolate a single repro attempt. Only fires while the
-        // tutor window has focus, so it doesn't clobber log state
-        // when the user hits Enter elsewhere on the desktop.
+        // Plain Enter (no modifiers) wipes the tutor log so the user can isolate a single repro attempt. Only fires while the tutor window has focus, so it doesn't clobber log state when the user hits Enter elsewhere on the desktop.
         if !ctrl
             && !self.tutor_mods.shift_key()
             && !self.tutor_mods.alt_key()
@@ -1750,11 +1648,7 @@ impl TrayApp {
         };
 
         // rhe's evdev grab eats the home-row letters (A/S/D/F/G/H/J/K/L/;)
-        // as chord roles, so photon's default Ctrl+D / Ctrl+H never
-        // reach this handler while rhe is enabled. We use digit keys
-        // for the primary shortcuts so they pass through the grab
-        // untouched. Letter aliases are kept as a courtesy for muscle
-        // memory from photon — they work whenever rhe is disabled.
+        // as chord roles, so photon's default Ctrl+D / Ctrl+H never reach this handler while rhe is enabled. We use digit keys for the primary shortcuts so they pass through the grab untouched. Letter aliases are kept as a courtesy for muscle memory from photon — they work whenever rhe is disabled.
         //
         //   Ctrl+1 / Ctrl+D   debug counters HUD
         //   Ctrl+2 / Ctrl+H   hit-map colour overlay
@@ -1885,9 +1779,7 @@ impl TrayApp {
             // (Re)load Wikipedia content every time the user picks
             // "Tutor". Without this, a previous Test Text / Brown
             // Corpus / dropped-file session leaves `tutor_state`
-            // populated with that source — and the open-tutor path
-            // would skip the wiki init, leaving the user staring at
-            // the wrong source. Symmetric with how Test Text and
+            // populated with that source — and the open-tutor path would skip the wiki init, leaving the user staring at the wrong source. Symmetric with how Test Text and
             // Brown Corpus always switch to their own source.
             if self.tutor_word_lookup.is_some() && self.tutor_brief_table.is_some() {
                 // Kick off the fetch on a worker thread; it fires `TrayEvent::WikiBatch` when done. The window opens immediately with `tutor_state = None`, which the redraw path renders as just the chord row in idle state. Wikipedia fetches can take a minute; blocking here used to freeze the whole UI.
@@ -1974,9 +1866,7 @@ impl TrayApp {
 impl ApplicationHandler<TrayEvent> for TrayApp {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn resumed(&mut self, _event_loop: &ActiveEventLoop) {
-        // macOS / Windows: build the tray on the event-loop thread so
-        // the platform's status-bar item is constructed on the right
-        // thread (NSApp main on Mac, message-pump owner on Windows).
+        // macOS / Windows: build the tray on the event-loop thread so the platform's status-bar item is constructed on the right thread (NSApp main on Mac, message-pump owner on Windows).
         if self.mac_state.is_some() {
             return;
         }
@@ -2019,9 +1909,7 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
         }
 
         if self.tutor_dragging_resize {
-            // Recompute window-relative cursor from current window
-            // position so the resize math sees the right cursor for
-            // edges that move the window (NW / N / W / SW / NE).
+            // Recompute window-relative cursor from current window position so the resize math sees the right cursor for edges that move the window (NW / N / W / SW / NE).
             if let Ok(wp) = window.outer_position() {
                 self.tutor_cursor = PhysicalPosition::new(
                     self.tutor_drag_screen_cursor.0 - wp.x as f64,
@@ -2114,12 +2002,7 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                     w.set_cursor(icon);
 
                     // Hover fill: track which chrome button (if any)
-                    // the cursor is over and request a redraw on
-                    // change. The actual delta is applied during
-                    // the full redraw_tutor pass over the chrome
-                    // pixels, not here — a partial cpu_buffer patch
-                    // wasn't marking dirty rows on the renderer, so
-                    // the present() silently dropped the change.
+                    // the cursor is over and request a redraw on change. The actual delta is applied during the full redraw_tutor pass over the chrome pixels, not here — a partial cpu_buffer patch wasn't marking dirty rows on the renderer, so the present() silently dropped the change.
                     let new_hover = if is_button { hit } else { HIT_NONE };
                     if new_hover != self.tutor_hovered_button {
                         self.tutor_hovered_button = new_hover;
@@ -2172,9 +2055,7 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
                         wp.x as f64 + self.tutor_cursor.x,
                         wp.y as f64 + self.tutor_cursor.y,
                     );
-                    // Seed the running screen cursor so the macOS
-                    // device_event handler has a starting absolute
-                    // position to add deltas onto.
+                    // Seed the running screen cursor so the macOS device_event handler has a starting absolute position to add deltas onto.
                     self.tutor_drag_screen_cursor = self.tutor_drag_start_screen_pos;
                 }
 
@@ -2305,15 +2186,9 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
         }
 
         // (macOS drag tracking moved off polling onto
-        // ApplicationHandler::device_event — DeviceEvent::MouseMotion
-        // delivers raw cursor deltas regardless of where the cursor
-        // is relative to the window, which is exactly when a
-        // resize/move drag needs the data.)
+        // ApplicationHandler::device_event — DeviceEvent::MouseMotion delivers raw cursor deltas regardless of where the cursor is relative to the window, which is exactly when a resize/move drag needs the data.)
 
-        // Zoom hint auto-fade. While the hint is armed, schedule a
-        // wake at its deadline so we redraw and clear it without
-        // any user input. If the deadline already passed, kick a
-        // redraw immediately so the next frame draws without it.
+        // Zoom hint auto-fade. While the hint is armed, schedule a wake at its deadline so we redraw and clear it without any user input. If the deadline already passed, kick a redraw immediately so the next frame draws without it.
         if let Some(until) = self.tutor_zoom_hint_until {
             let now = std::time::Instant::now();
             if now >= until {
@@ -2391,8 +2266,7 @@ fn build_mac_tray(
     let initial_fallback = FallbackMode::from_u8(fallback.load(Ordering::Relaxed));
     let is_autospell = initial_fallback == FallbackMode::Autospell;
 
-    // Rebuild MenuItems with the IDs we pre-allocated so that the
-    // winit thread can match click events.
+    // Rebuild MenuItems with the IDs we pre-allocated so that the winit thread can match click events.
     let tutor_item = MenuItem::with_id(ids.tutor.clone(), "Tutor", true, None);
     let test_item = MenuItem::with_id(ids.test_text.clone(), "Test Text", true, None);
     let brown_item = MenuItem::with_id(ids.brown_corpus.clone(), "Brown Corpus", true, None);
@@ -2502,10 +2376,8 @@ fn spawn_linux_tray_thread(
             .build()
             .expect("failed to build tray icon");
 
-        // Stateful closure that polls the shared atomics and updates the
-        // tray icon + menu labels when they diverge. Runs on this (gtk)
-        // thread via glib::timeout_add_local — safe for MenuItem/TrayIcon
-        // which are !Send on Linux.
+        // Stateful closure that polls the shared atomics and updates the tray icon + menu labels when they diverge. Runs on this (gtk)
+        // thread via glib::timeout_add_local — safe for MenuItem/TrayIcon which are !Send on Linux.
         let mut last_enabled = initial_enabled;
         let mut last_fallback = initial_fallback.as_u8();
         glib::timeout_add_local(std::time::Duration::from_millis(50), move || {

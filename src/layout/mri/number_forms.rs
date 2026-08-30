@@ -33,8 +33,7 @@ pub fn apply(_form: Form, _digits: &str) -> Option<String> {
 }
 
 // Per-form generator stubs. All return `None` so the drill builder
-// (`build_spelled_form_steps`) treats every word as having no spelled
-// form, falling through to the phoneme path for words like "tahi" /
+// (`build_spelled_form_steps`) treats every word as having no spelled form, falling through to the phoneme path for words like "tahi" /
 // "rua" — which is exactly what we want for v0.1.2.
 
 pub fn spelled_cardinal(_digits: &str) -> Option<String> {

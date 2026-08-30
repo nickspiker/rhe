@@ -163,8 +163,7 @@ fn extract_all_json_strings(json: &str, key: &str) -> Vec<String> {
         if let Some(v) = value {
             results.push(v);
         }
-        // Advance cursor past the end of this value, accounting for
-        // whitespace skipped before the opening quote.
+        // Advance cursor past the end of this value, accounting for whitespace skipped before the opening quote.
         let ws_skipped = rest.len() - remainder.len();
         cursor = start + ws_skipped + 1 + consumed + 1;
     }

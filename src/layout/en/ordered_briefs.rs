@@ -11,18 +11,14 @@ use crate::scan;
 // Finger difficulty for LEADING a chord (easiest → hardest):
 //     thumb < pinky < index < middle < ring
 //
-// Thumb is the easiest lead because the thumb is stronger and more
-// independent than any home-row finger. Pinky has its own tendon so
-// it's easy to drop first. Ring is tendon-coupled to middle and the
-// hardest finger to move alone.
+// Thumb is the easiest lead because the thumb is stronger and more independent than any home-row finger. Pinky has its own tendon so it's easy to drop first. Ring is tendon-coupled to middle and the hardest finger to move alone.
 //
 // Assignment convention:
 //   * Easiest-available finger in the chord  → most-common word
 //   * Medium fingers                         → mid-frequency word
 //   * Hardest-available finger               → rare word
 //
-// For 2-way pairs: the rare variant rides on ring (or middle, if no
-// ring is in the chord); every other finger fires the primary.
+// For 2-way pairs: the rare variant rides on ring (or middle, if no ring is in the chord); every other finger fires the primary.
 // For 3-way sets: easiest = most common, medium = middle, hardest = rare.
 //
 // Exception: symmetric same-finger-per-hand splits (no/know,
@@ -161,10 +157,8 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     (0b0110, 0b01100, scan::L_RING, "bye"),
     (0b0110, 0b01100, scan::R_RING, "bye"),
     // ─── Morphological pairs (base + suffix on one chord) ───────────
-    // Same chord serves both forms; first-down disambiguates. The
-    // base + suffix path still works (`go` typed phonetically + `+ing`
-    // suffix still emits `going`) — this just gives the inflected form
-    // its own one-chord shortcut without consuming an extra slot.
+    // Same chord serves both forms; first-down disambiguates. The base + suffix path still works (`go` typed phonetically + `+ing`
+    // suffix still emits `going`) — this just gives the inflected form its own one-chord shortcut without consuming an extra slot.
     //
     // Convention for these pairs:
     //   thumb → more-common form; non-thumb fingers → less-common form.
@@ -238,9 +232,7 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     (0b1100, 0b10010, scan::L_RING, "gray"),
 
     // ─── Unreachable-homophone pairs needing new chord allocations ──
-    // Each pair takes one chord slot from the regular brief assignment
-    // pool. Lower-freq word goes on the hardest-available finger of the
-    // chord; higher-freq word claims the easy fingers (thumb-lead first).
+    // Each pair takes one chord slot from the regular brief assignment pool. Lower-freq word goes on the hardest-available finger of the chord; higher-freq word claims the easy fingers (thumb-lead first).
     //
     // peace / piece — chord R-I+R-M+R-P+R-thumb+L-M (displaces `black`)
     (0b0010, 0b11011, scan::R_THUMB, "piece"),
@@ -360,9 +352,7 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     (0b1110, 0b10110, scan::L_MID, "questions"),
     (0b1110, 0b10110, scan::L_RING, "questions"),
     (0b1110, 0b10110, scan::L_PINKY, "questions"),
-    // (minute/minutes removed — chord (0b1000, 0b10011) now used by
-    // green/greene; minute reachable via regular brief, minutes via
-    // minute + s suffix.)
+    // (minute/minutes removed — chord (0b1000, 0b10011) now used by green/greene; minute reachable via regular brief, minutes via minute + s suffix.)
     // think / thinking — R-thumb + L-mid + L-ring (think's chord)
     (0b0110, 0b10000, scan::R_THUMB, "think"),
     (0b0110, 0b10000, scan::L_MID, "thinking"),
@@ -403,9 +393,7 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
     (0b0100, 0b11101, scan::R_RING, "careful"),
     (0b0100, 0b11101, scan::R_PINKY, "careful"),
     (0b0100, 0b11101, scan::L_RING, "careful"),
-    // (feel/feeling removed — chord 0b10111 is now the thing-family base
-    // shared with something via L-MID modifier; feel and feeling go back
-    // to separate auto-assigned briefs.)
+    // (feel/feeling removed — chord 0b10111 is now the thing-family base shared with something via L-MID modifier; feel and feeling go back to separate auto-assigned briefs.)
     // play / playing — R-ring + R-pinky + R-thumb + L-ring + L-pinky (play's chord; playing more common)
     (0b1100, 0b11100, scan::R_THUMB, "playing"),
     (0b1100, 0b11100, scan::R_RING, "play"),
@@ -427,8 +415,7 @@ pub const ORDERED_BRIEFS: &[(u8, u8, u8, &str)] = &[
 // Total: 424 ORDERED_CLAIMED entries
     // ─── Free morphological ride-alongs (170 sets) ────────
     // Each set reuses an existing auto-assigned brief chord.
-    // The brief word keeps the easy finger(s); morphological
-    // relatives ride on harder fingers at zero slot cost.
+    // The brief word keeps the easy finger(s); morphological relatives ride on harder fingers at zero slot cost.
     // call(572,997) / called(264,588)
     (0b0011, 0b10110, scan::R_THUMB, "call"),
     (0b0011, 0b10110, scan::L_IDX, "call"),

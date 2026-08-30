@@ -350,10 +350,7 @@ extern "C" fn hid_callback(
             return;
         }
 
-        // Wide layouts put a chord key on Return, so one shift key
-        // gets remapped to synthesize Return (otherwise the user
-        // loses newline). Runs before everything else — it's just a
-        // passthrough with a rewritten code, not a rhe event.
+        // Wide layouts put a chord key on Return, so one shift key gets remapped to synthesize Return (otherwise the user loses newline). Runs before everything else — it's just a passthrough with a rewritten code, not a rhe event.
         if let Some(synth_usage) = crate::layout::keyboard::hid_enter_synth_usage() {
             if usage == synth_usage {
                 // HID 0x28 = Return, virtual keycode 0x24.
@@ -362,11 +359,9 @@ extern "C" fn hid_callback(
             }
         }
 
-        // Auto-switch: flip `enabled` based on chord-key patterns so
-        // rhe self-corrects when the user forgot to toggle it. See
+        // Auto-switch: flip `enabled` based on chord-key patterns so rhe self-corrects when the user forgot to toggle it. See
         // `crate::layout::keyboard::AUTO_SWITCH` for the rule. On a switch,
-        // release the held keys from whichever side didn't see their
-        // down so they don't stay stuck after the ownership flip.
+        // release the held keys from whichever side didn't see their down so they don't stay stuck after the ownership flip.
         let mut auto_switched = false;
         if crate::layout::keyboard::AUTO_SWITCH {
             let rhe_role = hid_usage_to_scan(usage);
@@ -390,8 +385,7 @@ extern "C" fn hid_callback(
                 {
                     ctx.enabled.store(true, Ordering::Relaxed);
                     set_caps_lock_led(ctx.manager, false);
-                    // Release held keys from OS's view (they were
-                    // passing through while rhe was off).
+                    // Release held keys from OS's view (they were passing through while rhe was off).
                     for &u in &sw.held {
                         if let Some(vk) = hid_usage_to_virtual_keycode(u) {
                             reinject_key(vk, u, false, &ctx.modifier_flags);
@@ -437,9 +431,7 @@ extern "C" fn hid_callback(
             drop(sw);
         }
 
-        // After auto-enable the triggering event is already queued
-        // to rhe as part of the held-set replay; skip the rest of
-        // this callback to avoid double-sending it.
+        // After auto-enable the triggering event is already queued to rhe as part of the held-set replay; skip the rest of this callback to avoid double-sending it.
         if auto_switched {
             return;
         }

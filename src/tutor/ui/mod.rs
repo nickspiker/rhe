@@ -20,8 +20,7 @@ pub mod layout;
 pub mod text_rasterizing;
 pub mod theme;
 
-// Same softbuffer-backed renderer for both Linux and Windows — they
-// each go through softbuffer's per-platform present path internally,
+// Same softbuffer-backed renderer for both Linux and Windows — they each go through softbuffer's per-platform present path internally,
 // but the CPU-side double-buffering logic is identical.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use renderer_linux_softbuffer as renderer;

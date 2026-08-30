@@ -20,9 +20,7 @@
 //! When in doubt, stay narrow. Upgrade to medium/wide once you've verified your keyboard's rollover across the target keys.
 
 // The two platforms each consume one half of this module's surface;
-// the other half is "dead" from that platform's perspective but the
-// code still needs to compile and test. Silence the cross-platform
-// warnings rather than cfg-gate every other definition.
+// the other half is "dead" from that platform's perspective but the code still needs to compile and test. Silence the cross-platform warnings rather than cfg-gate every other definition.
 #![allow(dead_code)]
 
 use crate::scan;
@@ -490,10 +488,8 @@ mod tests {
     use super::*;
 
     // Each layout maps exactly one physical key to each of the 12
-    // required roles (10 finger slots + word + mod). A missing or
-    // duplicated role would silently kill part of the input surface,
-    // so the test below is blunt: enumerate every key the layout
-    // recognizes and demand the role set matches the canonical one.
+    // required roles (10 finger slots + word + mod). A missing or duplicated role would silently kill part of the input surface,
+    // so the test below is blunt: enumerate every key the layout recognizes and demand the role set matches the canonical one.
     const REQUIRED_ROLES: &[u8] = &[
         scan::L_PINKY,
         scan::L_RING,
@@ -627,8 +623,7 @@ mod tests {
 
     #[test]
     fn non_home_row_letter_detection_linux() {
-        // Top-row letter positions (Q-P) and bottom-row letter
-        // positions (Z-M) should all be flagged.
+        // Top-row letter positions (Q-P) and bottom-row letter positions (Z-M) should all be flagged.
         for code in 16..=25u16 {
             assert!(
                 linux_is_non_home_row_letter(code),
@@ -689,8 +684,7 @@ mod tests {
 
     #[test]
     fn wide_layouts_have_enter_synth() {
-        // If the active layout is wide, both backends advertise a
-        // synth key. Narrow layouts leave it unset.
+        // If the active layout is wide, both backends advertise a synth key. Narrow layouts leave it unset.
         if matches!(CURRENT, Layout::WideR | Layout::WideL) {
             assert!(linux_enter_synth_key().is_some());
             assert!(hid_enter_synth_usage().is_some());

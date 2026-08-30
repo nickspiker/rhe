@@ -878,24 +878,14 @@ fn main() {
     }
     eprintln!("Selected {} words for brief assignment", top_words.len());
 
-    // 3b. (No inflection filter.) Past iterations stripped inflected
-    // forms whose base word was already in the list (e.g. "looking"
-    // dropped because "look" was present). In practice too many
-    // high-frequency irregulars share almost no phonemes with their
-    // base — "was" vs "be", "thought" vs "think", "better" vs "good"
-    // — so filtering cost real keystrokes for no gain. Cheaper to
-    // rely on `data/brief_candidates.txt` pruning for the rare cases
-    // where the base + suffix path really does dominate.
+    // 3b. (No inflection filter.) Past iterations stripped inflected forms whose base word was already in the list (e.g. "looking"
+    // dropped because "look" was present). In practice too many high-frequency irregulars share almost no phonemes with their base — "was" vs "be", "thought" vs "think", "better" vs "good"
+    // — so filtering cost real keystrokes for no gain. Cheaper to rely on `data/brief_candidates.txt` pruning for the rare cases where the base + suffix path really does dominate.
 
     // 3c. Candidate curation.
     //
-    // If `data/brief_candidates.txt` exists, treat it as the user-curated
-    // source of truth: only words listed in it get assigned briefs. That
-    // file is what the user edits — `#`-out a line to blacklist that word.
-    // The candidate file is rewritten each run with refreshed ranks/values
-    // and inline `+suffix→base(freq) tag` annotations next to any word
-    // that decomposes as `base + <SUFFIX>`. The user's exclusions and any
-    // custom-added words survive the rewrite; inline user notes do not.
+    // If `data/brief_candidates.txt` exists, treat it as the user-curated source of truth: only words listed in it get assigned briefs. That file is what the user edits — `#`-out a line to blacklist that word.
+    // The candidate file is rewritten each run with refreshed ranks/values and inline `+suffix→base(freq) tag` annotations next to any word that decomposes as `base + <SUFFIX>`. The user's exclusions and any custom-added words survive the rewrite; inline user notes do not.
     let freq_map: HashMap<String, u64> = freq_words.iter().cloned().collect();
     let excludes_path = project.join("data/brief_excludes.txt");
     let excludes = read_excludes_file(&excludes_path);
@@ -920,10 +910,7 @@ fn main() {
         candidates_path.display()
     );
 
-    // 3d. Write a homophone-collision report. Helps the user decide
-    // which pairs/sets deserve ordered-brief entries. Scope: any CMU
-    // word sharing a phoneme sequence with a candidate word, restricted
-    // to words that also appear in the frequency list (drops obscure
+    // 3d. Write a homophone-collision report. Helps the user decide which pairs/sets deserve ordered-brief entries. Scope: any CMU word sharing a phoneme sequence with a candidate word, restricted to words that also appear in the frequency list (drops obscure
     // CMU entries that would otherwise pollute the report).
     write_homophone_report(&homophones_path, &top_words, &cmu, &freq_words);
 
@@ -964,22 +951,15 @@ fn main() {
     // 5. Assignment
     //
     // Pinned / ordered-claimed slots first, then one greedy pass:
-    // words sorted by savings-weighted value descending, slots sorted
-    // by ergonomic effort ascending, zip them. Highest-value word
-    // gets the easiest free slot.
+    // words sorted by savings-weighted value descending, slots sorted by ergonomic effort ascending, zip them. Highest-value word gets the easiest free slot.
 
-    // Hand-pinned brief slots. These claim a specific chord before the greedy
-    // pass runs, so the chord is locked to this word regardless of value rank.
+    // Hand-pinned brief slots. These claim a specific chord before the greedy pass runs, so the chord is locked to this word regardless of value rank.
     // Format: (right_5bits, left_4bits, word).
-    // Hand-pinned brief slots. These claim a specific chord before the greedy
-    // pass runs, so the chord is locked to this word regardless of value rank.
+    // Hand-pinned brief slots. These claim a specific chord before the greedy pass runs, so the chord is locked to this word regardless of value rank.
     // Format: (right_5bits, left_4bits, word).
     //
     // Compound family — `thing` and its prefix-modified compounds.
-    // Base chord = R-IDX + R-MID + R-RING + R-thumb (0b10111). Compounds
-    // add a left-finger modifier per prefix, building muscle memory across
-    // every `prefix-X` family (one, body, where, way, ...) when those are
-    // pinned with the same prefix→finger convention:
+    // Base chord = R-IDX + R-MID + R-RING + R-thumb (0b10111). Compounds add a left-finger modifier per prefix, building muscle memory across every `prefix-X` family (one, body, where, way, ...) when those are pinned with the same prefix→finger convention:
     //   some-  → L-MID    any-   → L-RING
     //   no-    → L-PINKY  every- → L-IDX
     let pinned: &[(u8, u8, &str)] = &[
@@ -989,18 +969,14 @@ fn main() {
         (0b10111, 0b0100, "anything"),
         (0b10111, 0b1000, "nothing"),
         (0b10111, 0b0001, "everything"),
-        // one-family — base chord = R-RING+R-thumb (also in ordered_briefs
-        // for one/won homophone bundle). Compounds extend with the same
-        // prefix-modifier convention. No `noone` (it's two words "no one").
+        // one-family — base chord = R-RING+R-thumb (also in ordered_briefs for one/won homophone bundle). Compounds extend with the same prefix-modifier convention. No `noone` (it's two words "no one").
         (0b10100, 0b0010, "someone"),
         (0b10100, 0b0100, "anyone"),
         (0b10100, 0b0001, "everyone"),
         // three — center 6 fingers (idx+mid+ring on both hands, no thumbs,
         // no pinkies). Symmetric, near digit-3's number-mode finger
-        // (R-IDX), and parallel to the digit-word brief slots for
-        // one (R-RING+R-thumb), two (R-IDX+R-MID+R-thumb), four (all 4
-        // right fingers). Auto-assignment had given "three" a 5-finger
-        // chord that didn't fit the family.
+        // (R-IDX), and parallel to the digit-word brief slots for one (R-RING+R-thumb), two (R-IDX+R-MID+R-thumb), four (all 4
+        // right fingers). Auto-assignment had given "three" a 5-finger chord that didn't fit the family.
         (0b00111, 0b0111, "three"),
         // Primary colours not covered by ordered briefs (red, green,
         // blue already ordered). Natural phoneme chord where free,
@@ -1265,9 +1241,7 @@ fn write_homophone_report(
     let freq_lookup: HashMap<&str, u64> =
         freq_words.iter().map(|(w, c)| (w.as_str(), *c)).collect();
 
-    // Candidate phoneme sequences — we only report groups whose
-    // phoneme sequence is reachable via a candidate word (so the report
-    // is useful to curation, not noisy).
+    // Candidate phoneme sequences — we only report groups whose phoneme sequence is reachable via a candidate word (so the report is useful to curation, not noisy).
     let candidate_seqs: HashSet<String> =
         candidates.iter().map(|(_, _, phs)| seq_of(phs)).collect();
 
@@ -1351,10 +1325,7 @@ fn refresh_candidate_file(
     //     `# my note` with no `excluded:`, `+suffix→`, `homophone of`, or
     //     `ordered brief` prefix is treated as a pure user note.
     //
-    // The new column order puts the word FIRST, but old files have rank
-    // first and word last. Handle both: if the first token looks like a
-    // word (alphabetic), use it; otherwise fall back to the last token
-    // before any inline `#`.
+    // The new column order puts the word FIRST, but old files have rank first and word last. Handle both: if the first token looks like a word (alphabetic), use it; otherwise fall back to the last token before any inline `#`.
     let mut excluded: HashSet<String> = HashSet::new();
     let mut custom: Vec<String> = Vec::new();
     let mut custom_set: HashSet<String> = HashSet::new();
@@ -1367,11 +1338,8 @@ fn refresh_candidate_file(
             if trimmed.is_empty() {
                 continue;
             }
-            // The "Custom user-added words" marker switches us into
-            // single-token-acceptable mode. Before this marker, single-word
-            // lines are header text — reject them so leaked header words
-            // (e.g., `defer`, `omitted`, `whitespace`) don't end up in the
-            // custom set.
+            // The "Custom user-added words" marker switches us into single-token-acceptable mode. Before this marker, single-word lines are header text — reject them so leaked header words
+            // (e.g., `defer`, `omitted`, `whitespace`) don't end up in the custom set.
             if trimmed.contains("Custom user-added words") {
                 in_custom_section = true;
                 continue;
@@ -1382,8 +1350,7 @@ fn refresh_candidate_file(
             } else {
                 trimmed
             };
-            // Split body at the first `#` to separate the columns from any
-            // trailing comment text.
+            // Split body at the first `#` to separate the columns from any trailing comment text.
             let (before_comment, comment) = match body.find('#') {
                 Some(i) => (body[..i].trim(), Some(body[i + 1..].trim())),
                 None => (body, None),
@@ -1393,8 +1360,7 @@ fn refresh_candidate_file(
             let word_str = match tokens.first() {
                 Some(first) if is_alpha(first) => Some(first.to_string()),
                 _ => {
-                    // Old format: word is the last whitespace token before
-                    // any inline `#`.
+                    // Old format: word is the last whitespace token before any inline `#`.
                     tokens.last().map(|s| s.to_string())
                 }
             };
@@ -1406,8 +1372,7 @@ fn refresh_candidate_file(
                 continue;
             }
             // Validate line shape: a real candidate line is either column-
-            // formatted (word + numeric value/phc/rank columns) or a single
-            // token in the custom section. Anything else is header text.
+            // formatted (word + numeric value/phc/rank columns) or a single token in the custom section. Anything else is header text.
             let is_column_formatted = tokens.len() >= 4
                 && tokens[1..]
                     .iter()
@@ -1456,9 +1421,7 @@ fn refresh_candidate_file(
     scored.sort_by(|a, b| b.1.cmp(&a.1));
 
     // Phase 3: pre-compute homophone winners. For each phoneme sequence,
-    // find the highest-frequency word in CMU; if a candidate word ISN'T
-    // that winner, the phoneme path will emit the winner instead and this
-    // word would only be reachable via its own brief.
+    // find the highest-frequency word in CMU; if a candidate word ISN'T that winner, the phoneme path will emit the winner instead and this word would only be reachable via its own brief.
     let seq_of = |phs: &[String]| -> String {
         phs.iter()
             .map(|p| strip_stress(p))
@@ -1484,24 +1447,18 @@ fn refresh_candidate_file(
             .or_insert((word.clone(), freq));
     }
 
-    // Phase 4: format the comment column = auto reasons + preserved user
-    // notes. Auto reasons regenerate each run (suffix collision, homophone,
+    // Phase 4: format the comment column = auto reasons + preserved user notes. Auto reasons regenerate each run (suffix collision, homophone,
     // ordered-brief slot). User notes (if present) survive verbatim,
     // separated by ` ; ` from any auto reasons.
     let format_reason = |word: &str, inflected_freq: u64, phs: &[String]| -> String {
         let mut reasons: Vec<String> = Vec::new();
 
-        // Sidecar excludes file category match: auto-`#` and tag with the
-        // category so the user can see WHY it's excluded (and adjust the
-        // sidecar file if they want to opt back in).
+        // Sidecar excludes file category match: auto-`#` and tag with the category so the user can see WHY it's excluded (and adjust the sidecar file if they want to opt back in).
         if let Some(category) = excludes.get(word) {
             reasons.push(format!("excluded: {}", category));
         }
 
-        // Already covered by an ordered brief: the chord slot is locked
-        // and the word is excluded from regular brief assignment. Listing
-        // it here is purely informational so the user can see WHY it
-        // doesn't get a normal slot.
+        // Already covered by an ordered brief: the chord slot is locked and the word is excluded from regular brief assignment. Listing it here is purely informational so the user can see WHY it doesn't get a normal slot.
         if ordered_set.contains(word) {
             reasons.push("ordered brief (slot already claimed)".to_string());
         }
@@ -1522,8 +1479,7 @@ fn refresh_candidate_file(
             }
         }
 
-        // Homophone: another higher-frequency word shares this phoneme
-        // sequence, so phoneme-path emits THAT word, not this one.
+        // Homophone: another higher-frequency word shares this phoneme sequence, so phoneme-path emits THAT word, not this one.
         let seq = seq_of(phs);
         if let Some((winner, winner_freq)) = seq_winner.get(&seq) {
             if winner != word {
@@ -1634,8 +1590,7 @@ fn refresh_candidate_file(
         }
     }
 
-    // Surface `#`-excluded words that fell out of the candidate pool. Keep
-    // them around so re-entry re-applies the exclusion.
+    // Surface `#`-excluded words that fell out of the candidate pool. Keep them around so re-entry re-applies the exclusion.
     let stale_excluded: Vec<&String> = excluded
         .iter()
         .filter(|w| !emitted_excluded.contains(*w))
@@ -1652,8 +1607,7 @@ fn refresh_candidate_file(
 
     fs::write(path, text).expect("cannot write brief_candidates.txt");
 
-    // Phase 6: build the return list (active candidates + custom, minus excluded
-    // and minus ordered-claimed words which already have a permanent home).
+    // Phase 6: build the return list (active candidates + custom, minus excluded and minus ordered-claimed words which already have a permanent home).
     let mut out: Vec<(String, u64, Vec<String>)> = Vec::new();
     for (entry, _, _) in scored {
         if excluded.contains(&entry.0) || ordered_set.contains(&entry.0) || excludes.contains_key(&entry.0) {

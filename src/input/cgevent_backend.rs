@@ -240,8 +240,7 @@ extern "C" fn event_callback(
 
         let ctx = &*(user_info as *const CallbackContext);
 
-        // Strip caps lock flag from EVERY event — caps lock is rhe's
-        // private mode toggle, never the OS text-level caps lock.
+        // Strip caps lock flag from EVERY event — caps lock is rhe's private mode toggle, never the OS text-level caps lock.
         let flags = ffi::CGEventGetFlags(event);
         if flags & 0x10000 != 0 {
             ffi::CGEventSetFlags(event, flags & !0x10000);
@@ -318,15 +317,8 @@ extern "C" fn event_callback(
             return std::ptr::null_mut();
         }
 
-        // Modifier passthrough: while ANY OS modifier other than the
-        // ones rhe owns is held, every key event sails straight to
-        // the OS. Lets Cmd+C, Ctrl+letter, Shift+letter, Fn-key
-        // combos, etc. all work without rhe eating one half of the
-        // combo. Word/mod roles (left cmd by default + space) don't
-        // appear in `flags` for regular key events because we
-        // suppress their FlagsChanged events above, so a set shift
-        // / ctrl / alt / cmd / fn bit always means a non-rhe
-        // modifier is currently held.
+        // Modifier passthrough: while ANY OS modifier other than the ones rhe owns is held, every key event sails straight to the OS. Lets Cmd+C, Ctrl+letter, Shift+letter, Fn-key combos, etc. all work without rhe eating one half of the combo. Word/mod roles (left cmd by default + space) don't appear in `flags` for regular key events because we suppress their FlagsChanged events above, so a set shift
+        // / ctrl / alt / cmd / fn bit always means a non-rhe modifier is currently held.
         const SHIFT: u64 = 0x20000;
         const CTRL: u64 = 0x40000;
         const ALT: u64 = 0x80000;
@@ -334,17 +326,14 @@ extern "C" fn event_callback(
         const FN: u64 = 0x800000;
         const PASSTHROUGH_MODIFIERS: u64 = SHIFT | CTRL | ALT | CMD | FN;
 
-        // Strip modifier flags for keys rhe owns — their flags leak
-        // through even though we suppress FlagsChanged events, because
-        // the OS tracks modifier state below the event tap layer.
+        // Strip modifier flags for keys rhe owns — their flags leak through even though we suppress FlagsChanged events, because the OS tracks modifier state below the event tap layer.
         let mut flags = ffi::CGEventGetFlags(event);
         // Strip flags for any modifier that maps to a rhe scan code
         if vk_to_scan(0x37).is_some() { flags &= !CMD; }  // left cmd
         if vk_to_scan(0x36).is_some() { flags &= !CMD; }  // right cmd
         if vk_to_scan(0x3A).is_some() { flags &= !ALT; }  // left alt
         if vk_to_scan(0x3D).is_some() { flags &= !ALT; }  // right alt
-        // Also strip the leaked flags from the event itself so apps
-        // don't see phantom modifier state
+        // Also strip the leaked flags from the event itself so apps don't see phantom modifier state
         ffi::CGEventSetFlags(event, flags);
 
         if flags & PASSTHROUGH_MODIFIERS != 0 {

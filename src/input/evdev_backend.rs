@@ -19,24 +19,19 @@ const EV_KEY: u16 = 0x01;
 const EV_LED: u16 = 0x11;
 const SYN_REPORT: u16 = 0x00;
 // LED codes: 0 = num-lock, 1 = caps-lock, 2 = scroll-lock.
-// All are potentially reconciled by xkb against its own state; scroll-lock
-// is usually the least-managed, but whichever works on the user's box.
+// All are potentially reconciled by xkb against its own state; scroll-lock is usually the least-managed, but whichever works on the user's box.
 const LED_CODE: u16 = 0x00; // LED_NUML
 const BUS_VIRTUAL: u16 = 0x06;
 
-// Positional scancodes from linux/input-event-codes.h — these are
-// pre-xkb hardware positions, identical whether the user is on QWERTY,
-// Dvorak, Colemak, or anything else. The layout-specific chord key
-// mappings live in `crate::layout::keyboard`; only non-layout keys are kept here.
+// Positional scancodes from linux/input-event-codes.h — these are pre-xkb hardware positions, identical whether the user is on QWERTY,
+// Dvorak, Colemak, or anything else. The layout-specific chord key mappings live in `crate::layout::keyboard`; only non-layout keys are kept here.
 const KEY_ESC: u16 = 1;
 const KEY_CAPSLOCK: u16 = 58;
 /// Keyboard-detection probe. Any standard keyboard advertises KEY_A in its EV_KEY bitmap; mice don't. The role this position plays in rhe depends on the layout — see `crate::layout::keyboard::linux_to_role`.
 const KEY_A: u16 = 30;
 const KEY_ENTER: u16 = 28;
 
-// OS-modifier scancodes. A press of any of these — when the scancode
-// isn't already bound to a chord/word/mod role — flips rhe into
-// modifier-passthrough until every key releases.
+// OS-modifier scancodes. A press of any of these — when the scancode isn't already bound to a chord/word/mod role — flips rhe into modifier-passthrough until every key releases.
 const KEY_LEFTSHIFT: u16 = 42;
 const KEY_RIGHTSHIFT: u16 = 54;
 const KEY_LEFTCTRL: u16 = 29;
@@ -150,8 +145,7 @@ impl EvdevInput {
         }
 
         // Open a uinput virtual keyboard for passing non-rhe keys back to the OS.
-        // If this fails (no permission on /dev/uinput) we still run, we just
-        // can't forward — ESC will quit the grab.
+        // If this fails (no permission on /dev/uinput) we still run, we just can't forward — ESC will quit the grab.
         let uinput_fd = match open_uinput() {
             Ok(fd) => Some(fd),
             Err(e) => {
@@ -163,9 +157,7 @@ impl EvdevInput {
             }
         };
 
-        // In caps-is-rhe-key mode, set the scroll-lock LED to mirror the
-        // initial passthrough state. "LED on = typing normally" → so LED
-        // is off when rhe starts enabled.
+        // In caps-is-rhe-key mode, set the scroll-lock LED to mirror the initial passthrough state. "LED on = typing normally" → so LED is off when rhe starts enabled.
         let caps_controls_led = matches!(
             quit,
             QuitTrigger::CapsLockPlusEsc | QuitTrigger::EscOrCapsPlusEsc
@@ -214,25 +206,14 @@ fn reader_loop(
         QuitTrigger::CapsLockPlusEsc | QuitTrigger::EscOrCapsPlusEsc
     );
 
-    // Auto-switch tracking: the *scancodes* of currently-held chord
-    // keys, so we can (a) derive the finger/word/thumb tallies for
-    // the transition heuristic, and (b) know which keys to release
-    // on each side of the switch to avoid stuck-key bugs — when
-    // rhe flips on, keys that were passing through to OS must get
-    // a synthetic key-up so the OS doesn't see them held forever;
-    // when rhe flips off, the state machine needs synthetic key-ups
-    // so its own live mask doesn't leak either.
+    // Auto-switch tracking: the *scancodes* of currently-held chord keys, so we can (a) derive the finger/word/thumb tallies for the transition heuristic, and (b) know which keys to release on each side of the switch to avoid stuck-key bugs — when rhe flips on, keys that were passing through to OS must get a synthetic key-up so the OS doesn't see them held forever;
+    // when rhe flips off, the state machine needs synthetic key-ups so its own live mask doesn't leak either.
     let mut auto_held: Vec<u16> = Vec::new();
 
-    // Modifier-passthrough state. When the user presses any non-rhe
-    // modifier (Shift / Ctrl / Alt / Super / Fn, when that scancode
-    // isn't bound to a chord/word/mod role), rhe steps out of the
-    // way until every key has been released. Lets Ctrl+C, Cmd+Tab,
-    // etc. work normally without the chord engine eating half the
-    // combo.
+    // Modifier-passthrough state. When the user presses any non-rhe modifier (Shift / Ctrl / Alt / Super / Fn, when that scancode isn't bound to a chord/word/mod role), rhe steps out of the way until every key has been released. Lets Ctrl+C, Cmd+Tab,
+    // etc. work normally without the chord engine eating half the combo.
     //
-    // `all_held` tracks every physical key currently down so we know
-    // when "all up" lands and can drop back into rhe mode.
+    // `all_held` tracks every physical key currently down so we know when "all up" lands and can drop back into rhe mode.
     let mut modifier_passthrough = false;
     let mut all_held: std::collections::HashSet<u16> = std::collections::HashSet::new();
 
@@ -278,9 +259,7 @@ fn reader_loop(
             }
 
             // Track every physical key's down/up so the modifier-
-            // passthrough exit condition ("all keys released") can be
-            // checked on each event. Autorepeats (value=2) leave the
-            // set unchanged.
+            // passthrough exit condition ("all keys released") can be checked on each event. Autorepeats (value=2) leave the set unchanged.
             match ev.value {
                 1 => {
                     all_held.insert(ev.code);
@@ -291,12 +270,9 @@ fn reader_loop(
                 _ => {}
             }
 
-            // Modifier-passthrough trigger: any non-rhe modifier
-            // press → suspend rhe interpretation until every key has
-            // been released. Lets Ctrl+C, Super+Tab, Shift+letter,
+            // Modifier-passthrough trigger: any non-rhe modifier press → suspend rhe interpretation until every key has been released. Lets Ctrl+C, Super+Tab, Shift+letter,
             // etc. work without rhe eating one half of the combo.
-            // Word + R_THUMB roles count as rhe keys, so pressing
-            // them never trips the gate.
+            // Word + R_THUMB roles count as rhe keys, so pressing them never trips the gate.
             let rhe_role_check = crate::layout::keyboard::linux_to_role(ev.code);
             if ev.value == 1
                 && !modifier_passthrough
@@ -304,11 +280,7 @@ fn reader_loop(
                 && is_modifier_scan(ev.code)
             {
                 modifier_passthrough = true;
-                // Tell the engine to release any chord keys it
-                // currently believes are held — otherwise the state
-                // machine carries stale bits across the passthrough
-                // window. We track scancodes; map them through the
-                // layout to roles before sending.
+                // Tell the engine to release any chord keys it currently believes are held — otherwise the state machine carries stale bits across the passthrough window. We track scancodes; map them through the layout to roles before sending.
                 for &code in all_held.iter() {
                     if let Some(role) = crate::layout::keyboard::linux_to_role(code) {
                         let _ = tx.send(HidEvent::Key(KeyEvent {
@@ -319,9 +291,7 @@ fn reader_loop(
                 }
             }
 
-            // While in modifier-passthrough, every event flows
-            // straight to the OS — no engine, no auto-switch
-            // bookkeeping. Exit the moment the held set empties.
+            // While in modifier-passthrough, every event flows straight to the OS — no engine, no auto-switch bookkeeping. Exit the moment the held set empties.
             if modifier_passthrough {
                 if let Some(ufd) = uinput_fd {
                     forward_key(ufd, ev.code, ev.value);
@@ -332,11 +302,8 @@ fn reader_loop(
                 continue;
             }
 
-            // Wide layouts put a chord key on physical Enter, so one
-            // of the shift keys is remapped to synthesize Enter (else
-            // the user loses newline). Runs before everything else —
-            // the synth is a passthrough with a rewritten code, not a
-            // chord event, and it bypasses both rhe and caps-lock.
+            // Wide layouts put a chord key on physical Enter, so one of the shift keys is remapped to synthesize Enter (else the user loses newline). Runs before everything else —
+            // the synth is a passthrough with a rewritten code, not a chord event, and it bypasses both rhe and caps-lock.
             if let Some(synth_key) = crate::layout::keyboard::linux_enter_synth_key() {
                 if ev.code == synth_key {
                     if let Some(ufd) = uinput_fd {
@@ -349,9 +316,7 @@ fn reader_loop(
             let rhe_scan = crate::layout::keyboard::linux_to_role(ev.code);
 
             // Auto-switch tracking: maintain the set of currently-
-            // held chord keys. Transitions use it both to detect the
-            // chording/typing pattern and to release stuck keys on
-            // each side of the switch.
+            // held chord keys. Transitions use it both to detect the chording/typing pattern and to release stuck keys on each side of the switch.
             if crate::layout::keyboard::AUTO_SWITCH && rhe_scan.is_some() {
                 match ev.value {
                     1 => {
@@ -375,16 +340,13 @@ fn reader_loop(
                 {
                     enabled.store(true, Ordering::Relaxed);
                     set_scroll_led(fd, false);
-                    // Release the held chord keys from OS's view so
-                    // they don't stay physically "pressed" after rhe
-                    // takes over.
+                    // Release the held chord keys from OS's view so they don't stay physically "pressed" after rhe takes over.
                     if let Some(ufd) = uinput_fd {
                         for &scan in &auto_held {
                             forward_key(ufd, scan, 0);
                         }
                     }
-                    // Bring rhe's state machine up to the same known
-                    // state — everything in auto_held is pressed.
+                    // Bring rhe's state machine up to the same known state — everything in auto_held is pressed.
                     for &scan in &auto_held {
                         if let Some(role) = crate::layout::keyboard::linux_to_role(scan) {
                             let _ = tx.send(HidEvent::Key(KeyEvent {
@@ -399,8 +361,7 @@ fn reader_loop(
                     auto_switched = true;
                 }
 
-                // Auto-disable: non-home-row letter means "typing
-                // prose, not chording."
+                // Auto-disable: non-home-row letter means "typing prose, not chording."
                 if !auto_switched
                     && rhe_scan.is_none()
                     && crate::layout::keyboard::linux_is_non_home_row_letter(ev.code)
@@ -408,9 +369,7 @@ fn reader_loop(
                 {
                     enabled.store(false, Ordering::Relaxed);
                     set_scroll_led(fd, true);
-                    // Tell rhe to release any chord keys it was
-                    // tracking — otherwise the state machine leaves
-                    // them pressed forever.
+                    // Tell rhe to release any chord keys it was tracking — otherwise the state machine leaves them pressed forever.
                     for &scan in &auto_held {
                         if let Some(role) = crate::layout::keyboard::linux_to_role(scan) {
                             let _ = tx.send(HidEvent::Key(KeyEvent {
@@ -419,10 +378,7 @@ fn reader_loop(
                             }));
                         }
                     }
-                    // Inject matching key-downs to the OS so
-                    // subsequent physical releases pair up — without
-                    // this, the OS sees key-ups for keys it never
-                    // saw pressed (rhe was swallowing them).
+                    // Inject matching key-downs to the OS so subsequent physical releases pair up — without this, the OS sees key-ups for keys it never saw pressed (rhe was swallowing them).
                     if let Some(ufd) = uinput_fd {
                         for &scan in &auto_held {
                             forward_key(ufd, scan, 1);
@@ -434,9 +390,7 @@ fn reader_loop(
                 }
             }
 
-            // After auto-enable, this event has already been queued
-            // to rhe (as part of the held-set replay); skip normal
-            // processing to avoid double-sending it.
+            // After auto-enable, this event has already been queued to rhe (as part of the held-set replay); skip normal processing to avoid double-sending it.
             if auto_switched {
                 continue;
             }
@@ -449,8 +403,7 @@ fn reader_loop(
                     QuitTrigger::EscAlone => active,
                     QuitTrigger::CapsLockPlusEsc => caps_held,
                     // Tutor: Esc always quits, regardless of enabled state.
-                    // If caps-toggled rhe off and user hits Esc, they still
-                    // expect the tutor to exit.
+                    // If caps-toggled rhe off and user hits Esc, they still expect the tutor to exit.
                     QuitTrigger::EscOrCapsPlusEsc => true,
                 };
                 if should_quit {
@@ -584,8 +537,7 @@ fn open_uinput() -> Result<RawFd, String> {
     unsafe {
         libc::ioctl(fd, UI_SET_EVBIT, EV_KEY as i32);
         libc::ioctl(fd, UI_SET_EVBIT, EV_SYN as i32);
-        // Register every key code up through KEY_MICMUTE (0xF8). Covers the
-        // full standard keyboard range without needing per-key logic.
+        // Register every key code up through KEY_MICMUTE (0xF8). Covers the full standard keyboard range without needing per-key logic.
         for code in 1..=0xF8i32 {
             libc::ioctl(fd, UI_SET_KEYBIT, code);
         }
@@ -631,8 +583,7 @@ fn find_keyboards() -> std::io::Result<Vec<String>> {
         if !name.starts_with("event") {
             continue;
         }
-        // Skip our own uinput devices — grabbing them creates a feedback loop
-        // where every char we emit comes right back in as input.
+        // Skip our own uinput devices — grabbing them creates a feedback loop where every char we emit comes right back in as input.
         let dev_name = std::fs::read_to_string(format!("/sys/class/input/{}/device/name", name))
             .unwrap_or_default();
         if dev_name.trim().starts_with("rhe ") {

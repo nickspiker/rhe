@@ -19,9 +19,7 @@ impl super::TextOutput for WindowsOutput {
     fn emit(&self, text: &str) {
         let mut units: Vec<u16> = Vec::with_capacity(text.len());
         units.extend(text.encode_utf16());
-        // Each code unit becomes a down/up pair. Surrogates are
-        // sent as two separate units; Windows reassembles them
-        // into the original codepoint at the destination app.
+        // Each code unit becomes a down/up pair. Surrogates are sent as two separate units; Windows reassembles them into the original codepoint at the destination app.
         let mut inputs: Vec<INPUT> = Vec::with_capacity(units.len() * 2);
         for &u in &units {
             inputs.push(unicode_input(u, false));

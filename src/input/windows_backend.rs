@@ -34,10 +34,7 @@ impl WindowsInput {
         let (tx, rx) = mpsc::channel();
 
         std::thread::spawn(move || {
-            // rdev::grab callback is `Fn`, not `FnMut`, so caps-solo
-            // bookkeeping lives in shared atomics. caps_held = caps
-            // physically pressed; caps_solo = no other key seen since
-            // caps went down (cleared on any non-caps press).
+            // rdev::grab callback is `Fn`, not `FnMut`, so caps-solo bookkeeping lives in shared atomics. caps_held = caps physically pressed; caps_solo = no other key seen since caps went down (cleared on any non-caps press).
             let caps_held = Arc::new(AtomicBool::new(false));
             let caps_solo = Arc::new(AtomicBool::new(false));
             let caps_held_cb = caps_held.clone();
@@ -71,8 +68,7 @@ impl WindowsInput {
                     _ => {}
                 }
 
-                // Esc — quit gesture. Whether plain Esc quits depends
-                // on the QuitTrigger; caps+Esc always does.
+                // Esc — quit gesture. Whether plain Esc quits depends on the QuitTrigger; caps+Esc always does.
                 if matches!(event.event_type, EventType::KeyPress(Key::Escape)) {
                     // Any non-caps press breaks the solo flag.
                     caps_solo_cb.store(false, Ordering::Relaxed);
@@ -88,9 +84,7 @@ impl WindowsInput {
                     }
                 }
 
-                // Any other key-down breaks the caps-solo tracking so a
-                // chorded press of caps+anything doesn't double as a
-                // solo-toggle on release.
+                // Any other key-down breaks the caps-solo tracking so a chorded press of caps+anything doesn't double as a solo-toggle on release.
                 if matches!(event.event_type, EventType::KeyPress(_)) {
                     caps_solo_cb.store(false, Ordering::Relaxed);
                 }
@@ -101,9 +95,7 @@ impl WindowsInput {
 
                 if let Some(key_event) = convert(&event) {
                     let _ = tx_cb.send(HidEvent::Key(key_event));
-                    // Win key (WORD) passes through so OS shortcuts
-                    // like Win+L still work; finger keys and space
-                    // are swallowed.
+                    // Win key (WORD) passes through so OS shortcuts like Win+L still work; finger keys and space are swallowed.
                     match event.event_type {
                         EventType::KeyPress(Key::MetaLeft | Key::MetaRight)
                         | EventType::KeyRelease(Key::MetaLeft | Key::MetaRight) => Some(event),
@@ -143,8 +135,7 @@ fn rdev_to_scan(key: rdev::Key) -> Option<u8> {
         rdev::Key::KeyL => Some(scan::R_RING),
         rdev::Key::SemiColon => Some(scan::R_PINKY),
         rdev::Key::Space => Some(scan::R_THUMB),
-        // Left Win key as the WORD/mode-selector, mirroring macOS's
-        // left ⌘. A solo press still opens Start; chord usage
+        // Left Win key as the WORD/mode-selector, mirroring macOS's left ⌘. A solo press still opens Start; chord usage
         // (Win+letter) emits a chord event then suppresses Start.
         rdev::Key::MetaLeft => Some(scan::WORD),
         _ => None,

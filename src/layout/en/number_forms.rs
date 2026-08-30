@@ -108,8 +108,7 @@ pub fn group(digits: &str) -> Option<String> {
 pub fn fraction(digits: &str) -> Option<String> {
     let n: u64 = digits.parse().ok()?;
     match n {
-        // "half" and "quarter" are the only fraction-specific words
-        // in English. 1/3 = "third" but that's also the ordinal —
+        // "half" and "quarter" are the only fraction-specific words in English. 1/3 = "third" but that's also the ordinal —
         // same output, chord-context disambiguates intent.
         2 => Some("half".into()),
         3 => Some("third".into()),
@@ -164,8 +163,7 @@ fn spell_cardinal(n: u64) -> Option<String> {
 }
 
 fn spell_ordinal(n: u64) -> Option<String> {
-    // Exact-match special cases (million/billion) go first so we don't
-    // trip over the "one million" prefix in the general speller.
+    // Exact-match special cases (million/billion) go first so we don't trip over the "one million" prefix in the general speller.
     match n {
         0 => return Some("zeroth".into()),
         1_000 => return Some("thousandth".into()),
@@ -293,9 +291,7 @@ fn spell_under_hundred_cardinal(n: u64) -> String {
 }
 
 fn spell_under_thousand_ordinal(n: u64) -> Option<String> {
-    // 100-999. Hundreds digit + (cardinal "hundred") + (remainder
-    // spelled as ordinal). "two hundred first", "five hundred
-    // twenty-third", "seven hundredth".
+    // 100-999. Hundreds digit + (cardinal "hundred") + (remainder spelled as ordinal). "two hundred first", "five hundred twenty-third", "seven hundredth".
     let hundreds = n / 100;
     let remainder = n % 100;
     let hundreds_word = spell_under_hundred_cardinal(hundreds);

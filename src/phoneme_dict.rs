@@ -84,8 +84,7 @@ impl PhonemeDictionary {
                 .or_default()
                 .push((word, word_freq));
         }
-        // Deduplicate (CMU dict can have variant pronunciations for the
-        // same word) and sort by frequency descending.
+        // Deduplicate (CMU dict can have variant pronunciations for the same word) and sort by frequency descending.
         let mut homophones: HashMap<Vec<Phoneme>, Vec<String>> = HashMap::new();
         for (phonemes, mut words) in all_words {
             // Deduplicate by word, keeping highest freq per word

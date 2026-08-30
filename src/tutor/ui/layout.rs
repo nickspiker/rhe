@@ -144,8 +144,7 @@ pub struct TutorLayout {
     pub row_w: i32,
     pub row_cy: i32,
 
-    // Step-hint glyph rendered in the hand-gap centre between the
-    // two finger groups (same Y as the chord row).
+    // Step-hint glyph rendered in the hand-gap centre between the two finger groups (same Y as the chord row).
     pub hint_font: f32,
     pub hint_cx: f32,
     pub hint_cy: f32,
@@ -200,9 +199,7 @@ impl TutorLayout {
         skip_gap(&mut y);
         let phoneme_cy = advance(&mut y, PHONEME);
         skip_gap(&mut y);
-        // Advance past LABELS to keep row_cy math correct. The actual
-        // label_cy is computed below from chord-row top so labels
-        // float against the buttons with a tiny gap.
+        // Advance past LABELS to keep row_cy math correct. The actual label_cy is computed below from chord-row top so labels float against the buttons with a tiny gap.
         let _ = advance(&mut y, LABELS);
         skip_gap(&mut y);
         let row_cy_f = advance(&mut y, CHORD_ROW);
@@ -221,8 +218,7 @@ impl TutorLayout {
         //   slot = cell_d + cell_gap = (3/2)·cell_d
         //   row_w = SLOT_COUNT·cell_d + GAP_COUNT·cell_gap
         //         = 11·cell_d + 10·(cell_d/2) = 16·cell_d
-        // Below ru=1 the buttons shrink and the gaps absorb the
-        // slack; above ru=1 we cap at the slot fit / vertical fit.
+        // Below ru=1 the buttons shrink and the gaps absorb the slack; above ru=1 we cap at the slot fit / vertical fit.
         let cell_d_natural = ((row_w as f32 / CELL_D_AT_RU1_DIVISOR) * ru).round() as i32;
         let cell_d_h_max = ((row_w - GAP_COUNT * MIN_CELL_GAP) / SLOT_COUNT).max(MIN_CELL_D);
         let cell_d_v_max = ((CHORD_ROW * unit).round() as i32).max(MIN_CELL_D);
@@ -236,11 +232,8 @@ impl TutorLayout {
         let row_cy = row_cy_f.round() as i32;
         let bottom_cy = bottom_cy_f.round() as i32;
 
-        // Bottom-row pills (mod right-aligned, word left-aligned and
-        // ending at the right edge of slot 6 — the right-hand inner-
-        // index, the rightmost non-finger key. That keeps the word
-        // bar visually anchored to "the row except the right-hand
-        // fingers" rather than running into the middle finger.
+        // Bottom-row pills (mod right-aligned, word left-aligned and ending at the right edge of slot 6 — the right-hand inner-
+        // index, the rightmost non-finger key. That keeps the word bar visually anchored to "the row except the right-hand fingers" rather than running into the middle finger.
         // Slot k's right edge = row_x + k·(cell_d+cell_gap) + cell_d.
         let mod_w = 2 * cell_d + cell_gap;
         let mod_cx = row_x + row_w - mod_w / 2;
@@ -265,16 +258,11 @@ impl TutorLayout {
         let phoneme_space_w = phoneme_font * PHONEME_SPACE_FRAC;
 
         // Labels anchor a hairline above the chord-row top — eighth-
-        // of-a-GAP of breathing room (so glyphs don't touch the pill
-        // edge) but otherwise tight. The LABELS section weight still
-        // reserves vertical space in the grid; this just overrides
-        // the centre to float against the buttons.
+        // of-a-GAP of breathing room (so glyphs don't touch the pill edge) but otherwise tight. The LABELS section weight still reserves vertical space in the grid; this just overrides the centre to float against the buttons.
         //
-        // text.draw_text_center_u32 anchors at the vertical centre
-        // of the line-height box (font · 1.2). Setting
+        // text.draw_text_center_u32 anchors at the vertical centre of the line-height box (font · 1.2). Setting
         //   label_cy = row_top − tiny_gap − line_height/2
-        // puts the bottom edge of that box `tiny_gap` above the
-        // cell pill top.
+        // puts the bottom edge of that box `tiny_gap` above the cell pill top.
         let label_tiny_gap = GAP / 8.0 * unit;
         let label_cy = (row_cy as f32) - (cell_d as f32) / 2.0 - label_tiny_gap - label_font * 0.6;
 

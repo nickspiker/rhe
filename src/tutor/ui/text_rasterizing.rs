@@ -11,8 +11,7 @@ impl TextRenderer {
 
         let db = font_system.db_mut();
 
-        // Bona Nova — the only face the tutor uses. Regular + italic
-        // only; weight is held at 400 throughout. Italic is the per-
+        // Bona Nova — the only face the tutor uses. Regular + italic only; weight is held at 400 throughout. Italic is the per-
         // element style switch (sentence + phoneme line italic;
         // target word / hint / labels regular).
         db.load_font_data(

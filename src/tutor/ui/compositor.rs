@@ -28,8 +28,7 @@ impl TutorApp {
         let window_width = window_width as usize;
         let window_height = window_height as usize;
 
-        // Calculate button dimensions using harmonic mean (span) scaled by ru
-        // span = 2wh/(w+h), base button size = span/32, scaled by ru (zoom multiplier)
+        // Calculate button dimensions using harmonic mean (span) scaled by ru span = 2wh/(w+h), base button size = span/32, scaled by ru (zoom multiplier)
         let span = 2.0 * window_width as f32 * window_height as f32
             / (window_width as f32 + window_height as f32);
         let button_height = (span / 32.0 * ru).ceil() as usize;
@@ -1389,8 +1388,7 @@ impl TutorApp {
         let virtual_height = stop - start;
         let buffer_size = window_width * virtual_height;
 
-        // Glow buffer: lighter grey at the text, will get a wide soft
-        // horizontal smear plus a vertical pass for an underglow halo.
+        // Glow buffer: lighter grey at the text, will get a wide soft horizontal smear plus a vertical pass for an underglow halo.
         let mut glow_buffer = vec![0u8; buffer_size];
         text_renderer.draw_text_center(
             &mut glow_buffer,
@@ -1406,9 +1404,7 @@ impl TutorApp {
             font,
         );
 
-        // Highlight buffer: medium grey at the text, then a 1px x and y
-        // offset zero-write that effectively carves the bottom-right
-        // sliver off — gives the smear a directional crispness.
+        // Highlight buffer: medium grey at the text, then a 1px x and y offset zero-write that effectively carves the bottom-right sliver off — gives the smear a directional crispness.
         let mut highlight_buffer = vec![0u8; buffer_size];
         text_renderer.draw_text_center(
             &mut highlight_buffer,
@@ -1451,9 +1447,7 @@ impl TutorApp {
         );
 
         // Horizontal smear: 16-tap EMA on the highlight (sharper),
-        // 4-tap EMA on the glow (wider). Forward pass + backward pass
-        // for symmetry. .max() keeps the source pixels from being
-        // dimmed — smear only spreads outward.
+        // 4-tap EMA on the glow (wider). Forward pass + backward pass for symmetry. .max() keeps the source pixels from being dimmed — smear only spreads outward.
         let mut prev = highlight_buffer[0];
         for i in 1..highlight_buffer.len() {
             prev = (((highlight_buffer[i] as u16 + prev as u16 * 15) >> 4) as u8)
@@ -1478,8 +1472,7 @@ impl TutorApp {
             glow_buffer[i] = prev;
         }
 
-        // Vertical 2-tap smear on glow only — gives the underglow a
-        // bit of vertical bleed without bloating the highlight.
+        // Vertical 2-tap smear on glow only — gives the underglow a bit of vertical bleed without bloating the highlight.
         for x in 0..window_width {
             let mut prev = glow_buffer[x];
             for y in 1..virtual_height {
@@ -1644,8 +1637,7 @@ impl TutorApp {
                 let mut p = (pixel | (pixel << 16)) & 0x0000FFFF0000FFFF;
                 p = (p | (p << 8)) & 0x00FF00FF00FF00FF;
 
-                // 255 − pixel per channel, scaled by (1−α)/256, then
-                // subtracted from 255 to lerp toward white.
+                // 255 − pixel per channel, scaled by (1−α)/256, then subtracted from 255 to lerp toward white.
                 let inv_p = 0x00FF00FF00FF00FFu64 - p;
                 let scaled = ((inv_p * inv_alpha) >> 8) & 0x00FF00FF00FF00FF;
                 let result = 0x00FF00FF00FF00FFu64 - scaled;
@@ -1673,16 +1665,11 @@ impl TutorApp {
         let radius = pill_h / 2;
         let half_axis = (pill_w - pill_h) / 2;
 
-        // End-caps: full circles at the two cap centers. The columns
-        // at each cap-center belong to the strip; circles only fill
-        // the half OUTSIDE their cap-center column (no overlap).
+        // End-caps: full circles at the two cap centers. The columns at each cap-center belong to the strip; circles only fill the half OUTSIDE their cap-center column (no overlap).
         Self::draw_black_circle(pixels, width, cx - half_axis, cy, radius);
         Self::draw_black_circle(pixels, width, cx + half_axis, cy, radius);
 
-        // Middle strip: solid rectangle of height pill_h between the
-        // cap centers, with the same vertical AA edge band as the
-        // circles. Skip when the pill is square (caps already cover
-        // the whole shape).
+        // Middle strip: solid rectangle of height pill_h between the cap centers, with the same vertical AA edge band as the circles. Skip when the pill is square (caps already cover the whole shape).
         if half_axis > 0 {
             Self::darken_strip(pixels, width, cx, cy, half_axis, radius);
         }
@@ -1731,8 +1718,7 @@ impl TutorApp {
         for dy in -r_outer..=r_outer {
             let y = cy as isize + dy;
             let dy2 = dy * dy;
-            // Strip alpha depends only on |dy|: full-darken inside
-            // r_inner, AA fade out to r_outer.
+            // Strip alpha depends only on |dy|: full-darken inside r_inner, AA fade out to r_outer.
             let inv_alpha = if dy2 <= r_inner2 {
                 0
             } else {
@@ -1895,14 +1881,11 @@ impl TutorApp {
                         // Outer AA edge (r_outer to r_outer_outer)
                         let alpha = (((r_outer_outer2 - dist2) << 8) / diff_outer) as u8;
                         if straight_alpha {
-                            // Tray-icon mode: full ring RGB, fade alpha
-                            // to zero so the fringe goes transparent
-                            // when the icon is composited.
+                            // Tray-icon mode: full ring RGB, fade alpha to zero so the fringe goes transparent when the icon is composited.
                             let (rb, gb, bb, _) = unpack_argb(ring);
                             pixels[idx] = pack_argb(rb, gb, bb, alpha);
                         } else {
-                            // Window mode: blend opaque ring color with
-                            // whatever's behind, alpha forced to 0xFF.
+                            // Window mode: blend opaque ring color with whatever's behind, alpha forced to 0xFF.
                             pixels[idx] = blend_rgb_only(pixels[idx], ring, 255 - alpha, alpha);
                         }
                     }

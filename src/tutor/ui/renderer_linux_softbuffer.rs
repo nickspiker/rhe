@@ -105,8 +105,7 @@ impl Renderer {
         let mut buffer = self.surface.buffer_mut().map_err(|_| ())?;
         let age = buffer.age();
 
-        // Determine copy range: union of current dirty + however many frames
-        // this buffer is behind.
+        // Determine copy range: union of current dirty + however many frames this buffer is behind.
         let (copy_min, copy_max) = if age == 0 {
             // Buffer never presented — full copy
             (0, self.height)

@@ -257,9 +257,7 @@ impl Interpreter {
 
     pub fn process(&mut self, event: &Event) -> Option<Action> {
         let result = self.process_inner(event);
-        // Single publish per event, regardless of path. Covers every
-        // mode + last_number transition without sprinkling the body
-        // with explicit calls.
+        // Single publish per event, regardless of path. Covers every mode + last_number transition without sprinkling the body with explicit calls.
         self.write_mode_flags();
         result
     }
@@ -325,9 +323,7 @@ impl Interpreter {
                             {
                                 let after = format!("{} ", out);
                                 let before = ctx.current.clone();
-                                // Snapshot must happen BEFORE we
-                                // update last_number so undo can
-                                // restore the pre-transform ctx.
+                                // Snapshot must happen BEFORE we update last_number so undo can restore the pre-transform ctx.
                                 let action = self.record_replace(before, after.clone());
                                 self.last_number = Some(NumberContext {
                                     digits: ctx.digits,
@@ -335,8 +331,7 @@ impl Interpreter {
                                 });
                                 return Some(action);
                             }
-                            // Form recognized but this number isn't
-                            // in its range — no-op, preserve context.
+                            // Form recognized but this number isn't in its range — no-op, preserve context.
                             return None;
                         }
                         // No number context — fall through to suffix.
@@ -351,9 +346,7 @@ impl Interpreter {
                     // Any non-form brief-mode chord clears context.
                     self.last_number = None;
                     self.last_phonemes = None;
-                    // Materialize into an owned String up front so
-                    // the immutable borrow of self.briefs is dropped
-                    // before we call record_* which wants &mut self.
+                    // Materialize into an owned String up front so the immutable borrow of self.briefs is dropped before we call record_* which wants &mut self.
                     let brief = self.briefs.lookup(*key, *first_down).map(|s| s.to_string());
                     brief.map(|s| {
                         if let Some(suffix) = s.strip_prefix('\x01') {
@@ -398,9 +391,7 @@ impl Interpreter {
                 }
             }
             Event::SymbolMode => {
-                // The `+word +mod -word +word` gesture resolved to
-                // symbol-mode entry. Switch sub-session and clear any
-                // residual phoneme/number buffers — fresh slate.
+                // The `+word +mod -word +word` gesture resolved to symbol-mode entry. Switch sub-session and clear any residual phoneme/number buffers — fresh slate.
                 self.last_number = None;
                 self.mode = Mode::Symbol;
                 self.buffer.clear();
@@ -413,24 +404,13 @@ impl Interpreter {
                     // Exit number mode with a trailing space.
                     //
                     // If the session produced only plain digits,
-                    // consolidate the per-digit history entries into
-                    // a single combined one covering the whole
-                    // number + space, and arm the form context so
+                    // consolidate the per-digit history entries into a single combined one covering the whole number + space, and arm the form context so
                     // L-hand chords can transform it.
                     //
-                    // Empty buffer + pristine session: the user entered
-                    // number mode (word-held + Mod event) and released
-                    // word without typing any chord. Repurpose this
-                    // gesture to emit the spelled "zero" — a fast
-                    // standalone shortcut that doesn't consume a brief
-                    // slot. Number-form transforms still work on it
-                    // ("zero" + Ordinal → "zeroth") because we arm
-                    // last_number too.
+                    // Empty buffer + pristine session: the user entered number mode (word-held + Mod event) and released word without typing any chord. Repurpose this gesture to emit the spelled "zero" — a fast standalone shortcut that doesn't consume a brief slot. Number-form transforms still work on it
+                    // ("zero" + Ordinal → "zeroth") because we arm last_number too.
                     //
-                    // Empty buffer + non-pristine: a symbol/decimal
-                    // cleared the buffer mid-session. Emit just a
-                    // trailing space and don't arm last_number — the
-                    // session was a non-pure-integer expression.
+                    // Empty buffer + non-pristine: a symbol/decimal cleared the buffer mid-session. Emit just a trailing space and don't arm last_number — the session was a non-pure-integer expression.
                     self.mode = Mode::Normal;
                     let pristine = std::mem::replace(&mut self.number_session_pristine, false);
                     let buf = std::mem::take(&mut self.number_buffer);
@@ -448,17 +428,12 @@ impl Interpreter {
                         return Some(self.record_emit(" ".to_string()));
                     }
                     let digit_count = buf.chars().count();
-                    // Pop the per-digit entries (they'll be subsumed
-                    // by the single combined entry). Each was pushed
-                    // individually during number mode so per-digit
-                    // backspace works mid-typing.
+                    // Pop the per-digit entries (they'll be subsumed by the single combined entry). Each was pushed individually during number mode so per-digit backspace works mid-typing.
                     for _ in 0..digit_count {
                         self.emit_history.pop();
                     }
                     let combined = format!("{} ", buf);
-                    // Push combined with prior = None (the number
-                    // context didn't exist before this commit — it's
-                    // the emission that's arming it).
+                    // Push combined with prior = None (the number context didn't exist before this commit — it's the emission that's arming it).
                     self.emit_history.push(HistoryEntry::Emit {
                         text: combined.clone(),
                         prior_number_state: None,
@@ -469,12 +444,7 @@ impl Interpreter {
                     });
                     return Some(Action::Emit(" ".to_string()));
                 }
-                // Phoneme commit from Normal mode. The in-progress word
-                // has already been typed incrementally into the focused
-                // app via Replace/Emit actions; `current_preview` mirrors
-                // what's visible. Commit appends a trailing space and
-                // pushes a single history entry covering the whole
-                // word+space so word-level backspace undoes the token.
+                // Phoneme commit from Normal mode. The in-progress word has already been typed incrementally into the focused app via Replace/Emit actions; `current_preview` mirrors what's visible. Commit appends a trailing space and pushes a single history entry covering the whole word+space so word-level backspace undoes the token.
                 self.last_number = None;
                 self.phoneme_session = false;
                 if self.current_preview.is_empty() {
@@ -502,12 +472,7 @@ impl Interpreter {
                 Some(Action::Emit(" ".to_string()))
             }
             Event::Backspace => {
-                // Pop one history entry and invert it. A plain Emit
-                // becomes a backspace of its text. A Replace becomes
-                // a Replace with before/after swapped, restoring the
-                // prior visible state. Either way, last_number is
-                // set back to whatever it was before the popped
-                // emission, so undo restores number-form context.
+                // Pop one history entry and invert it. A plain Emit becomes a backspace of its text. A Replace becomes a Replace with before/after swapped, restoring the prior visible state. Either way, last_number is set back to whatever it was before the popped emission, so undo restores number-form context.
                 match self.emit_history.pop() {
                     Some(HistoryEntry::Emit {
                         text,
@@ -737,8 +702,7 @@ mod tests {
 
     #[test]
     fn number_mode_spaceup_empty_emits_zero_and_exits() {
-        // Empty number-mode commit (word-held + Mod event + word-up
-        // with no digit chord between) is the spelled-zero shortcut.
+        // Empty number-mode commit (word-held + Mod event + word-up with no digit chord between) is the spelled-zero shortcut.
         let mut interp = setup();
         interp.process(&Event::Mod { activity_in_session: false });
         let action = interp.process(&Event::SpaceUp).unwrap();
@@ -788,8 +752,7 @@ mod tests {
     fn number_mode_unmapped_multi_finger_silent() {
         let mut interp = setup();
         interp.process(&Event::Mod { activity_in_session: false });
-        // Cross-hand chord (R + L finger) isn't in the multi-glyph
-        // table — silently no-ops, doesn't crash or emit garbage.
+        // Cross-hand chord (R + L finger) isn't in the multi-glyph table — silently no-ops, doesn't crash or emit garbage.
         use crate::key_mask::KeyMask;
         let key = ChordKey::from_mask(
             KeyMask::EMPTY
@@ -881,8 +844,7 @@ mod tests {
 
     #[test]
     fn ordinal_transform_falls_back_when_number_too_large() {
-        // 1921 is outside v1 ordinal table (>999); L-pinky should
-        // fall through to the standard -ing suffix behavior.
+        // 1921 is outside v1 ordinal table (>999); L-pinky should fall through to the standard -ing suffix behavior.
         let mut interp = setup();
         interp.process(&Event::Mod { activity_in_session: false });
         // "1921" — R_RING=1, R_RING=9? actually 9 is L_PINKY, 2=R_MID, 1=R_RING.
@@ -893,8 +855,7 @@ mod tests {
         interp.process(&digit_event(crate::scan::R_RING));
         interp.process(&Event::SpaceUp);
         // L-pinky with last_number=Some("1921") but ordinal("1921")
-        // returns None (v1 only handles 0-999). Should fall through
-        // to the English suffix path. Since the brief table in setup()
+        // returns None (v1 only handles 0-999). Should fall through to the English suffix path. Since the brief table in setup()
         // doesn't register L-pinky as a suffix, the result is None.
         let result = interp.process(&l_ring_brief_event());
         // No transform emitted (ordinal failed, brief table empty).
@@ -904,8 +865,7 @@ mod tests {
     #[test]
     fn ordinal_not_triggered_after_symbol() {
         // Typing "3+" leaves the buffer invalidated by the symbol;
-        // last_number should be None on commit, so L-pinky falls
-        // through to regular suffix behavior.
+        // last_number should be None on commit, so L-pinky falls through to regular suffix behavior.
         let mut interp = setup();
         interp.process(&Event::Mod { activity_in_session: false });
         interp.process(&digit_event(crate::scan::R_IDX)); // "3"
@@ -961,9 +921,7 @@ mod tests {
 
     #[test]
     fn forms_swap_in_place_on_same_number() {
-        // Type "3" then cycle through three forms on the same number
-        // without retyping. Each Replace backspaces the prior
-        // emission and emits the new one.
+        // Type "3" then cycle through three forms on the same number without retyping. Each Replace backspaces the prior emission and emits the new one.
         let mut interp = setup();
         interp.process(&Event::Mod { activity_in_session: false });
         interp.process(&digit_event(crate::scan::R_IDX)); // "3"
@@ -1005,8 +963,7 @@ mod tests {
 
     #[test]
     fn backspace_restores_number_context_after_form() {
-        // Type "3" → ordinal → backspace should restore "3 " AND
-        // re-arm last_number so a different form can be applied.
+        // Type "3" → ordinal → backspace should restore "3 " AND re-arm last_number so a different form can be applied.
         let mut interp = setup();
         interp.process(&Event::Mod { activity_in_session: false });
         interp.process(&digit_event(crate::scan::R_IDX)); // "3"
@@ -1083,8 +1040,7 @@ mod tests {
 
     #[test]
     fn form_for_larger_number_falls_back() {
-        // Type "1921" (outside group's 10-max range). L-mid should
-        // fall back to the English -ly suffix.
+        // Type "1921" (outside group's 10-max range). L-mid should fall back to the English -ly suffix.
         let mut interp = setup();
         interp.process(&Event::Mod { activity_in_session: false });
         interp.process(&digit_event(crate::scan::R_RING)); // 1
@@ -1092,9 +1048,7 @@ mod tests {
         interp.process(&digit_event(crate::scan::R_MID)); // 2
         interp.process(&digit_event(crate::scan::R_RING)); // 1
         interp.process(&Event::SpaceUp);
-        // L-mid = group, but group("1921") is None (>10). Falls
-        // through to English -ly suffix. The setup() brief table
-        // doesn't register -ly, so the result is None.
+        // L-mid = group, but group("1921") is None (>10). Falls through to English -ly suffix. The setup() brief table doesn't register -ly, so the result is None.
         let result = interp.process(&l_chord_event(0b0010));
         assert!(result.is_none());
     }
@@ -1106,8 +1060,7 @@ mod tests {
         interp.process(&digit_event(crate::scan::R_IDX)); // "3"
         interp.process(&Event::SpaceUp); // last_number = Some("3")
         // Intervening word: word-held + phoneme chord + word-up.
-        // (Setup's empty phoneme table means no phoneme buffered, but
-        // the SpaceUp in Normal mode still clears last_number.)
+        // (Setup's empty phoneme table means no phoneme buffered, but the SpaceUp in Normal mode still clears last_number.)
         interp.process(&Event::SpaceUp);
         // Now L-pinky should NOT see ordinal context anymore.
         assert!(interp.process(&l_ring_brief_event()).is_none());
