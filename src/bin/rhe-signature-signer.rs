@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             format!("{}/.rhe-keys/rhe-signing-key", home),
             format!("{}/MEGA/Code/keys/rhe-signing-key", home),
             format!("{}/Code/keys/rhe-signing-key", home),
-            "/mnt/Octopus/Code/keys/rhe-signing-key".to_string(),
+            "/mnt/Harbor/Code/keys/rhe-signing-key".to_string(),
             "/mnt/Chiton/MEGA/Code/keys/rhe-signing-key".to_string(),
             format!("{}/Library/Application Support/rhe/rhe-signing-key", home),
         ];

@@ -18,7 +18,7 @@
 # Prerequisites (all already present on the Octopus dev box):
 #   rustup target add x86_64-unknown-linux-gnu x86_64-pc-windows-gnu aarch64-apple-darwin
 #   sudo apt install mingw-w64    # (or distro equivalent for windows-gnu)
-#   osxcross at /mnt/Octopus/Code/osxcross with macOS SDK
+#   osxcross at /mnt/Harbor/Code/osxcross with macOS SDK
 #   ed25519 signing key at $RHE_SIGNING_KEY (or one of the searched defaults)
 #
 # ARM Linux is intentionally out of scope: the Linux backend pulls in
@@ -29,7 +29,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-OSXCROSS_BIN="/mnt/Octopus/Code/osxcross/target/bin"
+OSXCROSS_BIN="/mnt/Harbor/Code/osxcross/target/bin"
 
 # Build the signing tool once (native target).
 echo "Building rhe-signature-signer (native)..."
